@@ -4,10 +4,8 @@ import axios from "axios";
 import { Settings, Save } from "lucide-react";
 import { motion } from "framer-motion";
 
-// 动态获取 API 基础路径
-const API_BASE = typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : "http://127.0.0.1:8000";
+// 统一使用相对路径
+const API_BASE = "/api";
 
 export default function ModelConfig({ onClose, projectId }: { onClose: () => void; projectId?: string }) {
     const [activeTab, setActiveTab] = useState<"verification" | "optimization">("verification");

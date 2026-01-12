@@ -5,11 +5,8 @@ import axios from "axios";
 import { Plus, Rocket, FileText, ChevronRight, Activity, Settings } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// 动态获取 API 基础路径，优先使用环境变量，否则根据当前页面主机名自动匹配
-// 如果是远程访问，则使用当前主机的 8000 端口（假设后端与前端同机且端口一致性通过代理或直接访问保持）
-const API_BASE = typeof window !== "undefined"
-  ? `${window.location.protocol}//${window.location.hostname}:8000`
-  : "http://127.0.0.1:8000";
+// 统一使用相对路径，由 Next.js rewrites 转发到后端
+const API_BASE = "/api";
 
 export default function Home() {
   const [projects, setProjects] = useState<any[]>([]);
