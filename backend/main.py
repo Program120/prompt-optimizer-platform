@@ -72,7 +72,21 @@ if os.getenv("HTTP_PROXY"):
 if os.getenv("HTTPS_PROXY"):
     os.environ["HTTPS_PROXY"] = os.getenv("HTTPS_PROXY")
 
-app = FastAPI(title="Prompt Optimizer API")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """服务的生命周期管理 (替代 startup/shutdown 事件)"""
+    loguru_logger.info("Service is starting... Checking dependencies...")
+    try:
+        import python_multipart
+        loguru_logger.info("python-multipart is installed.")
+    except ImportError:
+        loguru_logger.error("Create: python-multipart module is missing! Form data parsing will fail.")
+    yield
+    loguru_logger.info("Service is shutting down...")
+
+app = FastAPI(title="Prompt Optimizer API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -97,16 +111,6 @@ app.mount("/data", StaticFiles(directory=storage.DATA_DIR), name="data")
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import JSONResponse
-
-@app.on_event("startup")
-async def startup_event():
-    """服务的启动事件"""
-    loguru_logger.info("Service is starting... Checking dependencies...")
-    try:
-        import python_multipart
-        loguru_logger.info("python-multipart is installed.")
-    except ImportError:
-        loguru_logger.error("Create: python-multipart module is missing! Form data parsing will fail.")
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
