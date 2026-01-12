@@ -183,7 +183,12 @@ export default function ProjectDetail() {
             if (res.data.columns.length >= 2) {
                 setConfig({ query_col: res.data.columns[0], target_col: res.data.columns[1] });
             }
-        } catch (e) { alert("上传失败"); }
+            showToast(`文件 ${file.name} 上传并解析成功`, "success");
+        } catch (e: any) {
+            console.error(e);
+            const errorMsg = e.response?.data?.detail || "上传失败";
+            showToast(`上传失败: ${errorMsg}`, "error");
+        }
     };
 
     const startTask = async () => {
@@ -234,9 +239,16 @@ export default function ProjectDetail() {
     const handleOptimize = async () => {
         if (!taskStatus?.id) return;
 
-        // 校验模型配置
+        // 校验模型配置 (验证模型)
         if (!project.model_config || !project.model_config.api_key) {
-            showToast("请先配置模型参数(API Key)", "error");
+            showToast("请先在【模型配置】中设置验证模型的 API Key", "error");
+            return;
+        }
+
+        // 校验优化模型配置
+        // optimization_model_config 可能为空，或者 api_key 为空
+        if (!project.optimization_model_config || !project.optimization_model_config.api_key) {
+            showToast("请先在【模型配置】-【优化配置】中设置 API Key", "error");
             return;
         }
 
@@ -312,8 +324,9 @@ export default function ProjectDetail() {
         try {
             await navigator.clipboard.writeText(context);
             showToast("优化上下文已复制到剪贴板！", "success");
-        } catch (e) {
-            showToast("复制失败，请手动复制", "error");
+        } catch (e: any) {
+            console.error("Clipboard write failed:", e);
+            showToast(`复制失败: ${e.message || "请手动复制"}`, "error");
         }
     };
 
@@ -451,6 +464,7 @@ export default function ProjectDetail() {
                         setExternalPrompt={setExternalPrompt}
                         onCopyOptimizeContext={copyOptimizeContext}
                         onApplyExternalOptimize={applyExternalOptimize}
+                        optimizeContext={generateOptimizeContext()}
                     />
                 </div>
 

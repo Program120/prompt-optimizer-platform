@@ -29,6 +29,7 @@ interface ExecutionPanelProps {
     setExternalPrompt: (prompt: string) => void;
     onCopyOptimizeContext: () => void;
     onApplyExternalOptimize: () => void;
+    optimizeContext: string;
 }
 
 export default function ExecutionPanel({
@@ -53,7 +54,8 @@ export default function ExecutionPanel({
     externalPrompt,
     setExternalPrompt,
     onCopyOptimizeContext,
-    onApplyExternalOptimize
+    onApplyExternalOptimize,
+    optimizeContext
 }: ExecutionPanelProps) {
     return (
         <section className="glass p-6 rounded-2xl">
@@ -281,6 +283,17 @@ export default function ExecutionPanel({
                                         3. 将优化后的提示词粘贴到下方输入框并应用
                                     </div>
 
+                                    {/* 增加一个只读文本框，用于展示待复制的内容，方便手动复制 */}
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 block">优化上下文 (如复制失败请手动全选复制):</label>
+                                        <textarea
+                                            readOnly
+                                            className="w-full h-24 bg-black/20 border border-white/5 rounded-lg p-2 text-xs text-slate-400 resize-none focus:outline-none"
+                                            value={optimizeContext}
+                                        />
+                                    </div>
+
+
                                     <button
                                         onClick={onCopyOptimizeContext}
                                         className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -340,7 +353,8 @@ export default function ExecutionPanel({
                         </div>
                     )}
                 </div>
-            )}
-        </section>
+            )
+            }
+        </section >
     );
 }
