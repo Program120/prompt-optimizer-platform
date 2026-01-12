@@ -16,7 +16,8 @@ async def start_task(
     query_col: str = Form(...),
     target_col: str = Form(...),
     prompt: str = Form(...),
-    extract_field: Optional[str] = Form(None)
+    extract_field: Optional[str] = Form(None),
+    original_filename: Optional[str] = Form(None)
 ):
     # 查找文件路径
     file_path = None
@@ -41,7 +42,7 @@ async def start_task(
     if not is_interface_mode and (not model_config or not model_config.get("api_key")):
         raise HTTPException(status_code=400, detail="请先在项目设置中配置模型参数(API Key)")
 
-    task_id = tm.create_task(project_id, file_path, query_col, target_col, prompt, model_config, extract_field)
+    task_id = tm.create_task(project_id, file_path, query_col, target_col, prompt, model_config, extract_field, original_filename)
     return {"task_id": task_id}
 
 @router.get("/{task_id}")
@@ -77,13 +78,16 @@ async def export_task_results(task_id: str):
     
     # 获取所有结果
     results = status.get("results", [])
-    if not results:
-        raise HTTPException(status_code=404, detail="No results found to export")
+    # 允许导出空结果或正在运行的任务（可能已有部分结果）
     
     # 分离成功和失败的数据
     success_data = [r for r in results if r.get("is_correct")]
     failed_data = [r for r in results if not r.get("is_correct")]
     
+    # 文件名包含进度信息
+    current = len(results)
+    total = status.get("total_count", "?")
+    task_status = status.get("status", "unknown")
     export_path = os.path.join(storage.DATA_DIR, f"results_{task_id}.xlsx")
     
     # 使用 ExcelWriter 写入多个 sheet
@@ -101,9 +105,31 @@ async def export_task_results(task_id: str):
         else:
             pd.DataFrame(columns=["index", "query", "target", "output", "is_correct"]).to_excel(writer, sheet_name='Failed', index=False)
     
-    # 直接返回文件下载
+    # 返回文件，文件名中包含进度信息
+    filename = f"results_{task_id}_{current}of{total}.xlsx"
     return FileResponse(
         export_path,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=f"results_{task_id}.xlsx"
+        filename=filename
+    )
+
+@router.get("/{task_id}/download_dataset")
+async def download_task_dataset(task_id: str):
+    status = tm.get_task_status(task_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    file_path = status.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Dataset file not found")
+        
+    original_filename = status.get("original_filename")
+    if not original_filename:
+        # 如果没有保存原始文件名，尝试从路径提取 UUID 或回退
+        original_filename = os.path.basename(file_path)
+    
+    return FileResponse(
+        file_path,
+        media_type="application/octet-stream",
+        filename=original_filename
     )

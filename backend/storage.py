@@ -114,7 +114,7 @@ def update_project(project_id: str, updates: Dict[str, Any]) -> Optional[Dict[st
     return None
 
 def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
-    """获取项目关联的所有任务"""
+    """获取项目关联的所有任务（完整的运行历史）"""
     tasks = []
     for filename in os.listdir(DATA_DIR):
         if filename.startswith("task_") and filename.endswith(".json"):
@@ -122,14 +122,31 @@ def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
             with open(task_path, "r", encoding="utf-8") as f:
                 task_data = json.load(f)
                 if task_data.get("project_id") == project_id:
-                    # 返回简化的任务信息用于列表展示
+                    # 从文件路径提取数据集名称
+                    file_path = task_data.get("file_path", "")
+                    original_filename = task_data.get("original_filename")
+                    dataset_name = original_filename if original_filename else (os.path.basename(file_path) if file_path else "未知")
+                    
+                    # 计算准确率
+                    results = task_data.get("results", [])
+                    errors = task_data.get("errors", [])
+                    accuracy = (len(results) - len(errors)) / len(results) if results else 0
+                    
+                    # 从任务ID提取时间戳 (格式: task_1234567890)
+                    task_id = task_data.get("id", "")
+                    timestamp = task_id.replace("task_", "") if task_id.startswith("task_") else ""
+                    
                     tasks.append({
-                        "id": task_data.get("id"),
+                        "id": task_id,
                         "status": task_data.get("status"),
-                        "current_index": task_data.get("current_index"),
-                        "total_count": task_data.get("total_count"),
-                        "results_count": len(task_data.get("results", [])),
-                        "errors_count": len(task_data.get("errors", []))
+                        "current_index": task_data.get("current_index", 0),
+                        "total_count": task_data.get("total_count", 0),
+                        "results_count": len(results),
+                        "errors_count": len(errors),
+                        "accuracy": accuracy,
+                        "prompt": task_data.get("prompt", ""),
+                        "dataset_name": dataset_name,
+                        "created_at": timestamp
                     })
     # 按任务ID排序（最新的在前）
     tasks.sort(key=lambda x: x["id"], reverse=True)

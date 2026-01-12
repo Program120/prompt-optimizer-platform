@@ -46,9 +46,9 @@ const formatJSON = (obj: any): string => {
     }
 };
 
-export default function ModelConfig({ onClose, projectId, onSave }: { onClose: () => void; projectId?: string; onSave?: () => void }) {
+export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "verification" }: { onClose: () => void; projectId?: string; onSave?: () => void; defaultTab?: "verification" | "optimization" }) {
     const { success, error, toast } = useToast();
-    const [activeTab, setActiveTab] = useState<"verification" | "optimization">("verification");
+    const [activeTab, setActiveTab] = useState<"verification" | "optimization">(defaultTab);
 
     // 测试连接状态（不阻塞保存操作）
     const [isTesting, setIsTesting] = useState<boolean>(false);

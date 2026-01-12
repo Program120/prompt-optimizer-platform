@@ -20,7 +20,7 @@ class TaskManager:
                     cls._instance.tasks = {} # task_id -> {status, thread, stop_event, pause_event}
         return cls._instance
 
-    def create_task(self, project_id: str, file_path: str, query_col: str, target_col: str, prompt: str, model_config: Dict[str, str], extract_field: Optional[str] = None):
+    def create_task(self, project_id: str, file_path: str, query_col: str, target_col: str, prompt: str, model_config: Dict[str, str], extract_field: Optional[str] = None, original_filename: Optional[str] = None):
         task_id = f"task_{int(time.time())}"
         
         # 加载数据以校验
@@ -41,6 +41,7 @@ class TaskManager:
             "prompt": prompt,
             "extract_field": extract_field, # 保存需要提取的字段名
             "model_config": model_config,   # 保存模型配置
+            "original_filename": original_filename, # 保存原始文件名
             "results": [],
             "errors": []
         }

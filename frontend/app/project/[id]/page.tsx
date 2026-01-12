@@ -24,6 +24,7 @@ export default function ProjectDetail() {
     const [taskStatus, setTaskStatus] = useState<any>(null);
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
+    const [configTab, setConfigTab] = useState<"verification" | "optimization">("verification");
     const [extractField, setExtractField] = useState("");
     const [selectedLog, setSelectedLog] = useState<any>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -229,6 +230,8 @@ export default function ProjectDetail() {
         formData.append("target_col", config.target_col);
         formData.append("prompt", project.current_prompt);
         if (extractField) formData.append("extract_field", extractField);
+        // 传递原始文件名
+        if (fileInfo.filename) formData.append("original_filename", fileInfo.filename);
 
         try {
             const res = await axios.post(`${API_BASE}/tasks/start`, formData);
@@ -266,6 +269,8 @@ export default function ProjectDetail() {
         // optimization_model_config 可能为空，或者 api_key 为空
         if (!project.optimization_model_config || !project.optimization_model_config.api_key) {
             showToast("请先在【模型配置】-【优化配置】中设置 API Key", "error");
+            setConfigTab("optimization");
+            setShowConfig(true);
             return;
         }
 
@@ -287,6 +292,7 @@ export default function ProjectDetail() {
         // 校验优化模型配置
         if (!project.optimization_model_config || !project.optimization_model_config.api_key) {
             showToast("请先在【模型配置】-【优化配置】中配置模型参数(API Key)", "error");
+            setConfigTab("optimization");
             setShowConfig(true);
             return;
         }
@@ -461,7 +467,10 @@ export default function ProjectDetail() {
                 onNameChange={(name) => setProject({ ...project, name })}
                 isSaving={isSaving}
                 onSave={() => saveProject(false)}
-                onOpenConfig={() => setShowConfig(true)}
+                onOpenConfig={() => {
+                    setConfigTab("verification");
+                    setShowConfig(true);
+                }}
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -505,13 +514,14 @@ export default function ProjectDetail() {
                     <HistoryPanel
                         taskStatus={taskStatus}
                         project={project}
+                        runHistory={taskHistory}
                         onSelectLog={setSelectedLog}
                         onSelectIteration={setSelectedIteration}
                     />
                 </div>
             </div>
 
-            {showConfig && <ModelConfig onClose={() => setShowConfig(false)} projectId={id as string} onSave={fetchProject} />}
+            {showConfig && <ModelConfig onClose={() => setShowConfig(false)} projectId={id as string} onSave={fetchProject} defaultTab={configTab} />}
 
             <LogDetailModal
                 selectedLog={selectedLog}

@@ -1,24 +1,79 @@
 import { useState } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight, Download } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy } from "lucide-react";
 
 interface HistoryPanelProps {
     taskStatus: any;
     project: any;
+    runHistory: any[];  // 运行历史列表
     onSelectLog: (log: any) => void;
     onSelectIteration: (iteration: any) => void;
 }
 
-export default function HistoryPanel({ taskStatus, project, onSelectLog, onSelectIteration }: HistoryPanelProps) {
-    const [activeTab, setActiveTab] = useState("run"); // run, history
+export default function HistoryPanel({ taskStatus, project, runHistory, onSelectLog, onSelectIteration }: HistoryPanelProps) {
+    const [activeTab, setActiveTab] = useState("run"); // run, history, runHistory
+    const [showPromptModal, setShowPromptModal] = useState(false);
+    const [currentPrompt, setCurrentPrompt] = useState("");
+
+    // 格式化时间戳
+    const formatTime = (timestamp: string) => {
+        if (!timestamp) return "未知";
+        try {
+            const ts = parseInt(timestamp) * 1000;
+            return new Date(ts).toLocaleString();
+        } catch {
+            return "未知";
+        }
+    };
+
+    // 获取状态标签样式
+    const getStatusStyle = (status: string) => {
+        switch (status) {
+            case "running":
+                return "bg-blue-500/20 text-blue-400";
+            case "completed":
+                return "bg-emerald-500/20 text-emerald-400";
+            case "stopped":
+                return "bg-orange-500/20 text-orange-400";
+            default:
+                return "bg-slate-500/20 text-slate-400";
+        }
+    };
+
+    const getStatusText = (status: string) => {
+        switch (status) {
+            case "running": return "运行中";
+            case "completed": return "已完成";
+            case "stopped": return "已停止";
+            case "paused": return "已暂停";
+            default: return status;
+        }
+    };
+
+    const handleViewPrompt = (prompt: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setCurrentPrompt(prompt);
+        setShowPromptModal(true);
+    };
+
+    const copyPrompt = () => {
+        navigator.clipboard.writeText(currentPrompt);
+        // 可以添加一个简单的 toast 提示，但这儿为了简单先省略
+    };
 
     return (
-        <section className="glass rounded-2xl overflow-hidden h-[600px] flex flex-col">
+        <section className="glass rounded-2xl overflow-hidden h-[600px] flex flex-col relative">
             <div className="flex border-b border-white/10">
                 <button
                     onClick={() => setActiveTab("run")}
                     className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "run" ? "bg-white/5 text-blue-400 border-b-2 border-blue-500" : "text-slate-500 hover:text-slate-300"}`}
                 >
                     运行日志
+                </button>
+                <button
+                    onClick={() => setActiveTab("runHistory")}
+                    className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "runHistory" ? "bg-white/5 text-blue-400 border-b-2 border-blue-500" : "text-slate-500 hover:text-slate-300"}`}
+                >
+                    运行历史
                 </button>
                 <button
                     onClick={() => setActiveTab("history")}
@@ -31,6 +86,14 @@ export default function HistoryPanel({ taskStatus, project, onSelectLog, onSelec
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 {activeTab === "run" ? (
                     <>
+                        {/* 进度信息 (移除了下载按钮) */}
+                        {taskStatus?.id && taskStatus?.results?.length > 0 && (
+                            <div className="mb-3 flex justify-between items-center">
+                                <span className="text-xs text-slate-500">
+                                    已完成 {taskStatus.results.length}/{taskStatus.total_count || '?'} 条
+                                </span>
+                            </div>
+                        )}
                         {taskStatus?.results?.slice().reverse().map((r: any, idx: number) => (
                             <div
                                 key={idx}
@@ -51,7 +114,85 @@ export default function HistoryPanel({ taskStatus, project, onSelectLog, onSelec
                         ))}
                         {!taskStatus?.results?.length && <p className="text-center text-slate-600 mt-20">暂无运行日志</p>}
                     </>
+                ) : activeTab === "runHistory" ? (
+                    // 运行历史 Tab
+                    <div className="space-y-3">
+                        {runHistory?.map((task: any, idx: number) => (
+                            <div
+                                key={task.id}
+                                className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+                            >
+                                {/* 头部: 时间和状态 */}
+                                <div className="flex justify-between items-center mb-2">
+                                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                                        <Clock size={12} />
+                                        <span>{formatTime(task.created_at)}</span>
+                                    </div>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${getStatusStyle(task.status)}`}>
+                                        {getStatusText(task.status)}
+                                    </span>
+                                </div>
+
+                                {/* 数据集信息 & 下载 */}
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2 text-xs text-slate-500 overflow-hidden">
+                                        <Database size={12} />
+                                        <span className="truncate" title={task.dataset_name}>{task.dataset_name}</span>
+                                    </div>
+                                    <a
+                                        href={`${API_BASE}/tasks/${task.id}/download_dataset`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 flex-shrink-0"
+                                    >
+                                        <Download size={10} /> 下载数据集
+                                    </a>
+                                </div>
+
+                                {/* 提示词预览 & 查看 */}
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                    <div className="flex items-start gap-2 text-xs text-slate-500 overflow-hidden">
+                                        <FileText size={12} className="mt-0.5 flex-shrink-0" />
+                                        <p className="line-clamp-2 italic text-slate-400" title={task.prompt}>
+                                            "{task.prompt}"
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={(e) => handleViewPrompt(task.prompt, e)}
+                                        className="text-[10px] text-blue-400 hover:text-blue-300 whitespace-nowrap flex-shrink-0"
+                                    >
+                                        查看提示词
+                                    </button>
+                                </div>
+
+                                {/* 底部: 进度和准确率 & 结果下载 */}
+                                <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                                    <div className="flex items-center gap-4 text-xs">
+                                        <span className="text-slate-500">
+                                            进度: <span className="text-slate-300">{task.results_count}/{task.total_count}</span>
+                                        </span>
+                                        <span className="text-slate-500">
+                                            准确率: <span className="text-emerald-400 font-medium">{(task.accuracy * 100).toFixed(1)}%</span>
+                                        </span>
+                                    </div>
+                                    <a
+                                        href={`/api/tasks/${task.id}/export`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                                    >
+                                        <Download size={12} />
+                                        下载结果
+                                    </a>
+                                </div>
+                            </div>
+                        ))}
+                        {!runHistory?.length && <p className="text-center text-slate-600 mt-20">暂无运行历史</p>}
+                    </div>
                 ) : (
+                    // 迭代历史 Tab
                     <div className="space-y-4">
                         {project.iterations?.slice().reverse().map((it: any, idx: number) => (
                             <div
@@ -93,6 +234,33 @@ export default function HistoryPanel({ taskStatus, project, onSelectLog, onSelec
                     </div>
                 )}
             </div>
+
+            {/* Prompt Modal */}
+            {showPromptModal && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-white/10 rounded-xl shadow-2xl w-full max-w-sm flex flex-col max-h-[90%]">
+                        <div className="flex justify-between items-center p-3 border-b border-white/10">
+                            <h3 className="text-sm font-medium text-white">完整提示词</h3>
+                            <button onClick={() => setShowPromptModal(false)} className="text-slate-400 hover:text-white transition-colors">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
+                            <pre className="text-xs text-slate-300 whitespace-pre-wrap font-mono bg-black/20 p-2 rounded-lg border border-white/5">
+                                {currentPrompt}
+                            </pre>
+                        </div>
+                        <div className="p-3 border-t border-white/10 flex justify-end">
+                            <button
+                                onClick={copyPrompt}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg transition-colors"
+                            >
+                                <Copy size={12} /> 复制
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </section>
     );
 }
