@@ -89,7 +89,7 @@ async def test_config(
             
         else:
             # LLM 模式测试
-            from openai import AsyncOpenAI
+            # from openai import AsyncOpenAI (Removed, using factory)
             import os
             import json as json_lib
             
@@ -100,7 +100,7 @@ async def test_config(
             logger.info(f"Current HTTP_PROXY: {os.environ.get('HTTP_PROXY')}")
             logger.info(f"Current HTTPS_PROXY: {os.environ.get('HTTPS_PROXY')}")
             
-            # 解析 extra_body 和 default_headers
+            # 解析 extra_body
             extra_body_dict = None
             if extra_body:
                 try:
@@ -109,21 +109,26 @@ async def test_config(
                 except Exception as e:
                     logger.warning(f"Failed to parse extra_body: {e}")
 
-            default_headers_dict = {"Content-Type": "application/json; charset=utf-8"}
+            # 解析 default_headers (LLMFactory 会自动添加默认 Content-Type)
+            default_headers_dict = None
             if default_headers:
                 try:
                     user_headers = json_lib.loads(default_headers)
                     if isinstance(user_headers, dict):
-                        default_headers_dict.update(user_headers)
+                        default_headers_dict = user_headers
                     logger.info(f"Default Headers: {default_headers_dict}")
                 except Exception as e:
                     logger.warning(f"Failed to parse default_headers: {e}")
             
-            client = AsyncOpenAI(
-                api_key=api_key, 
-                base_url=base_url,
-                default_headers=default_headers_dict
-            )
+            # 构造临时 model_config
+            model_config = {
+                "api_key": api_key,
+                "base_url": base_url,
+                "default_headers": default_headers_dict
+            }
+            
+            from llm_factory import LLMFactory
+            client = LLMFactory.create_async_client(model_config)
             
             logger.info("Sending chat completion request...")
             await client.chat.completions.create(

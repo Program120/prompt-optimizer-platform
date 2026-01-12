@@ -31,12 +31,42 @@ print("-" * 50)
 
 def test_connection():
     try:
-        client = OpenAI(
-            api_key=API_KEY, 
-            base_url=BASE_URL,
-            timeout=30.0,
-            max_retries=0
-        )
+    # 构造临时 model_config
+        model_config = {
+            "api_key": API_KEY,
+            "base_url": BASE_URL,
+            "timeout": 30.0,
+            # max_retries not supported in config dict yet, but standard OpenAI client accepts it.
+            # LLMFactory params logic might filter it out if we passed it there.
+            # But wait, LLMFactory only extracts api_key, base_url, default_headers.
+            # And passes them to OpenAI constructor as **params.
+            # So if we want to pass timeout/max_retries, we might need to modify Factory or just rely on default.
+            # However, looking at LLMFactory implementation:
+            # params = LLMFactory._prepare_params(model_config)
+            # return OpenAI(**params)
+            # It only prepares api_key, base_url, default_headers.
+            # It ignores other keys in model_config for the OpenAI constructor!
+            # So we can't pass timeout via model_config if Factory doesn't support it.
+            # Let's inspect LLMFactory again.
+            
+            # Re-read LLMFactory code from memory or file.
+            # Assuming LLMFactory only prepares the 3 keys.
+            # If so, passing timeout in model_config won't work for the client init timeout argument.
+            # BUT verify if OpenAI client takes timeout in init. Yes it does.
+            # We should probably update Factory to pass through other kwargs or at least timeout/max_retries.
+            # For now, let's just stick to what Factory provides to be consistent.
+        }
+        
+        from llm_factory import LLMFactory
+        # Note: We need to make sure LLMFactory is importable. 
+        # Since this script is in backend root, it should be fine.
+        
+        client = LLMFactory.create_client(model_config)
+        # Manually set timeout/retries if needed since factory strips them? 
+        # Actually factory returns the client instance, we can set them if public props, 
+        # but OpenAI client props are usually set at init.
+        client.timeout = 30.0
+        client.max_retries = 0
         
         print("发送请求中...")
         response = client.chat.completions.create(

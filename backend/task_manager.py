@@ -6,12 +6,7 @@ import os
 import pandas as pd
 from typing import Dict, Any, Optional
 import storage
-from openai import OpenAI
-
-# 模拟或真实的 LLM 调用
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", "sk-xxx"))
-BASE_URL = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
-client.base_url = BASE_URL
+from llm_factory import LLMFactory
 
 class TaskManager:
     _instance = None
@@ -96,7 +91,7 @@ class TaskManager:
         
         task_client = None
         if validation_mode != "interface":
-            task_client = OpenAI(api_key=model_config["api_key"], base_url=model_config["base_url"])
+            task_client = LLMFactory.create_client(model_config)
         
         # 线程安全锁
         results_lock = threading.Lock()

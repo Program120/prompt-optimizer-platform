@@ -1,4 +1,4 @@
-from openai import OpenAI
+from llm_factory import LLMFactory
 import re
 import storage
 from prompts import DEFAULT_OPTIMIZATION_PROMPT
@@ -78,17 +78,8 @@ def optimize_prompt(
     if not model_config:
         model_config = storage.get_model_config()
     
-    # 构造默认 headers
-    headers = {"Content-Type": "application/json; charset=utf-8"}
-    if model_config.get("default_headers"):
-        headers.update(model_config.get("default_headers"))
-
-    # 初始化 OpenAI 客户端
-    client: OpenAI = OpenAI(
-        api_key=model_config.get("api_key", ""),
-        base_url=model_config.get("base_url", "https://api.openai.com/v1"),
-        default_headers=headers
-    )
+    # 使用 Factory 初始化 OpenAI 客户端
+    client = LLMFactory.create_client(model_config)
     
     # 复用 generate_optimize_context 生成用户消息内容
     user_content: str = generate_optimize_context(
