@@ -71,17 +71,29 @@ async def update_project(
     
     logger.info(f"Update project {project_id} - Prompt len: {len(current_prompt) if current_prompt else 0}")
     
-    config = {
-        "query_col": query_col,
-        "target_col": target_col,
-        "extract_field": extract_field
-    }
+    # 获取现有项目以进行增量更新
+    existing_project = storage.get_project(project_id)
+    if not existing_project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    # 获取现有 config，如果没有则为空字典
+    config = existing_project.get("config", {})
+    
+    # 仅当参数不为 None 时才更新 config
+    if query_col is not None:
+        config["query_col"] = query_col
+    if target_col is not None:
+        config["target_col"] = target_col
+    if extract_field is not None:
+        config["extract_field"] = extract_field
+
     # 解析文件信息 JSON
     if file_info:
         try:
             config["file_info"] = json_lib.loads(file_info)
         except:
             pass
+            
     # 解析自动迭代配置 JSON
     if auto_iterate_config:
         try:

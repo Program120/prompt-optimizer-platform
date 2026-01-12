@@ -40,18 +40,14 @@ def generate_optimize_context(
     final_prompt: str = system_prompt_template if system_prompt_template else DEFAULT_OPTIMIZATION_PROMPT
     
     # 替换模板变量
+    # 替换模板变量
+    # 使用 replace 而不是 format，以避免自定义提示词中包含 {} 导致的解析错误
     try:
-        context: str = final_prompt.format(
-            old_prompt=old_prompt,
-            error_samples=error_samples_str
-        )
-    except KeyError as e:
-        # 如果模板格式不对，回退到默认模板
-        context = DEFAULT_OPTIMIZATION_PROMPT.format(
-            old_prompt=old_prompt,
-            error_samples=error_samples_str
-        )
-        print(f"Warning: Prompt template error {e}, using default.")
+        context = final_prompt.replace("{old_prompt}", old_prompt).replace("{error_samples}", error_samples_str)
+    except Exception as e:
+        # 理论上 replace 不会抛出 template error，但为了保险起见
+        context = DEFAULT_OPTIMIZATION_PROMPT.replace("{old_prompt}", old_prompt).replace("{error_samples}", error_samples_str)
+        print(f"Warning: Prompt template replace error {e}, using default.")
     
     return context
 
