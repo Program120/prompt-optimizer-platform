@@ -181,6 +181,13 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
         formData.append("api_key", targetConfig.api_key);
         formData.append("model_name", targetConfig.model_name);
 
+        if (activeTab === "verification") {
+            // @ts-ignore
+            formData.append("validation_mode", targetConfig.validation_mode || "llm");
+            // @ts-ignore
+            formData.append("interface_code", targetConfig.interface_code || "");
+        }
+
         try {
             const res = await axios.post(`${API_BASE}/config/test`, formData);
             if (res.data.success !== false) {
@@ -197,37 +204,75 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
 
     const renderConfigForm = (cfg: any, setCfg: any, isVerification: boolean) => (
         <div className="space-y-4">
+            {isVerification && (
+                <div className="bg-white/5 p-1 rounded-lg flex mb-4">
+                    <button
+                        onClick={() => setCfg({ ...cfg, validation_mode: "llm" })}
+                        className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${!cfg.validation_mode || cfg.validation_mode === "llm" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    >
+                        模型直接验证 (LLM)
+                    </button>
+                    <button
+                        onClick={() => setCfg({ ...cfg, validation_mode: "interface" })}
+                        className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${cfg.validation_mode === "interface" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    >
+                        接口调用验证 (Interface)
+                    </button>
+                </div>
+            )}
+
             <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Base URL</label>
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                    {cfg.validation_mode === "interface" ? "Interface URL" : "Base URL"}
+                </label>
                 <input
                     type="text"
                     value={cfg.base_url}
                     onChange={e => setCfg({ ...cfg, base_url: e.target.value })}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
-                    placeholder="https://api.openai.com/v1"
+                    placeholder={cfg.validation_mode === "interface" ? "https://api.example.com/check" : "https://api.openai.com/v1"}
                 />
             </div>
-            <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">API Key</label>
-                <input
-                    type="password"
-                    value={cfg.api_key}
-                    onChange={e => setCfg({ ...cfg, api_key: e.target.value })}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
-                    placeholder="sk-..."
-                />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+            {(!isVerification || cfg.validation_mode !== "interface") && (
                 <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-2">模型名称</label>
+                    <label className="block text-sm font-medium text-slate-400 mb-2">
+                        {cfg.validation_mode === "interface" ? "API Key (Optional)" : "API Key"}
+                    </label>
                     <input
-                        type="text"
-                        value={cfg.model_name}
-                        onChange={e => setCfg({ ...cfg, model_name: e.target.value })}
+                        type="password"
+                        value={cfg.api_key}
+                        onChange={e => setCfg({ ...cfg, api_key: e.target.value })}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
-                        placeholder="gpt-3.5-turbo"
+                        placeholder="sk-..."
                     />
                 </div>
+            )}
+
+            {(!cfg.validation_mode || cfg.validation_mode === "llm") && (
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">模型名称</label>
+                        <input
+                            type="text"
+                            value={cfg.model_name}
+                            onChange={e => setCfg({ ...cfg, model_name: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                            placeholder="gpt-3.5-turbo"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">超时 (秒)</label>
+                        <input
+                            type="number"
+                            value={cfg.timeout}
+                            onChange={e => setCfg({ ...cfg, timeout: parseInt(e.target.value) || 60 })}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                        />
+                    </div>
+                </div>
+            )}
+
+            {(cfg.validation_mode === "interface") && (
                 <div>
                     <label className="block text-sm font-medium text-slate-400 mb-2">超时 (秒)</label>
                     <input
@@ -237,7 +282,7 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
                     />
                 </div>
-            </div>
+            )}
 
             {isVerification && (
                 <div>
@@ -253,29 +298,46 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
                 </div>
             )}
 
-            <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">温度 (Temperature) - {cfg.temperature}</label>
-                <div className="flex items-center gap-4">
-                    <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={cfg.temperature}
-                        onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) })}
-                        className="flex-1 accent-blue-500 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                    />
-                    <input
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={cfg.temperature}
-                        onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) || 0 })}
-                        className="w-16 bg-white/5 border border-white/10 rounded-xl px-2 py-1 text-center text-sm focus:outline-none focus:border-blue-500"
+            {cfg.validation_mode === "interface" && (
+                <div>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="block text-sm font-medium text-slate-400">参数转换脚本 (Python)</label>
+                        <span className="text-xs text-slate-500">将 query/target/prompt 转换为 params</span>
+                    </div>
+                    <textarea
+                        value={cfg.interface_code || ""}
+                        onChange={e => setCfg({ ...cfg, interface_code: e.target.value })}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm font-mono min-h-[150px]"
+                        placeholder={`# Available variables: query, target, prompt\n# Must assign final dict to 'params' variable\n\nparams = {\n    "messages": [{"role": "user", "content": query}],\n    "model": "my-model"\n}`}
                     />
                 </div>
-            </div>
+            )}
+
+            {(!cfg.validation_mode || cfg.validation_mode === "llm") && (
+                <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-2">温度 (Temperature) - {cfg.temperature}</label>
+                    <div className="flex items-center gap-4">
+                        <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={cfg.temperature}
+                            onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) })}
+                            className="flex-1 accent-blue-500 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                        />
+                        <input
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={cfg.temperature}
+                            onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) || 0 })}
+                            className="w-16 bg-white/5 border border-white/10 rounded-xl px-2 py-1 text-center text-sm focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 
@@ -311,7 +373,7 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                     <div className="space-y-6">
                         <h3 className="text-lg font-semibold text-slate-200">
-                            {activeTab === "verification" ? "提示词验证模型" : "提示词优化模型"}
+                            {activeTab === "verification" ? "验证配置" : "提示词优化模型"}
                         </h3>
                         {activeTab === "verification"
                             ? renderConfigForm(config, setConfig, true)

@@ -194,10 +194,19 @@ export default function ProjectDetail() {
     };
 
     const startTask = async () => {
-        if (!fileInfo || !config.query_col || !config.target_col) return;
+        if (!fileInfo) {
+            showToast("请先上传测试数据文件", "error");
+            return;
+        }
+        if (!config.query_col || !config.target_col) {
+            showToast("请配置数据列映射", "error");
+            return;
+        }
 
         // 校验模型配置
-        if (!project.model_config || !project.model_config.api_key) {
+        // 如果是接口验证模式，不需要校验 API Key
+        const isInterfaceMode = project.model_config?.validation_mode === "interface";
+        if (!isInterfaceMode && (!project.model_config || !project.model_config.api_key)) {
             showToast("请先在右上角【模型配置】中设置 API Key", "error");
             setShowConfig(true);
             return;
@@ -224,7 +233,12 @@ export default function ProjectDetail() {
         try {
             const res = await axios.post(`${API_BASE}/tasks/start`, formData);
             setTaskStatus({ id: res.data.task_id, status: "running" });
-        } catch (e) { alert("启动失败"); }
+            showToast("任务启动成功", "success");
+        } catch (e: any) {
+            console.error("Start task failed:", e);
+            const errorMsg = e.response?.data?.detail || e.message || "任务启动失败";
+            showToast(`启动失败: ${errorMsg}`, "error");
+        }
     };
 
     const controlTask = async (action: string) => {
