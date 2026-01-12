@@ -80,6 +80,15 @@ export default function ProjectDetail() {
 
     const router = useRouter();
 
+    const fetchTaskHistory = async () => {
+        try {
+            const tasksRes = await axios.get(`${API_BASE}/projects/${id}/tasks`);
+            setTaskHistory(tasksRes.data.tasks || []);
+        } catch (e) {
+            console.error("Failed to fetch task history", e);
+        }
+    };
+
     const fetchProject = async () => {
         try {
             const res = await axios.get(`${API_BASE}/projects/${id}`);
@@ -109,11 +118,21 @@ export default function ProjectDetail() {
                 }
             }
 
-            // 获取任务历史并恢复最近任务状态
-            const tasksRes = await axios.get(`${API_BASE}/projects/${id}/tasks`);
-            setTaskHistory(tasksRes.data.tasks || []);
+            // 获取任务历史
+            await fetchTaskHistory();
 
-            // 如果有历史任务，恢复最近一个的状态
+            // 如果有历史任务，恢复最近一个的状态 (这里我们要小心，因为 fetchTaskHistory 是异步的，
+            // 但我们需要 taskHistory 里的数据。await fetchTaskHistory() 会设置 state，
+            // 但 state 更新是异步的。所以我们最好在 fetchTaskHistory 里返回数据，或者在这里重新请求/从 state 拿不到最新)
+            // 简单起见，这里再次请求一下或者让 fetchTaskHistory 返回数据
+            // 为了避免冲突，我们手动在这里请求一次用于恢复状态，或者直接信任 fetchTaskHistory 的副作用
+            // 但由于 React state update batching，这里拿不到 updated taskHistory。
+            // 所以保留原来的逻辑用于恢复状态，但使用 fetchTaskHistory 来设置 history list。
+
+            const tasksRes = await axios.get(`${API_BASE}/projects/${id}/tasks`);
+            // setTaskHistory 已经在 fetchTaskHistory 做过了，但也无妨
+
+            // 恢复最近一个的状态
             if (tasksRes.data.tasks?.length > 0) {
                 const latestTaskId = tasksRes.data.tasks[0].id;
                 try {
@@ -171,7 +190,14 @@ export default function ProjectDetail() {
         if (!taskStatus?.id) return;
         try {
             const res = await axios.get(`${API_BASE}/tasks/${taskStatus.id}`);
-            setTaskStatus(res.data);
+            const newData = res.data;
+            setTaskStatus(newData);
+
+            // 如果任务状态变为完成/停止，刷新历史列表
+            // 注意：这里利用闭包中的 taskStatus (它是 running) 来判断状态变化
+            if (taskStatus.status === "running" && ["completed", "stopped", "failed"].includes(newData.status)) {
+                fetchTaskHistory();
+            }
         } catch (e) { console.error(e); }
     };
 
@@ -237,6 +263,8 @@ export default function ProjectDetail() {
             const res = await axios.post(`${API_BASE}/tasks/start`, formData);
             setTaskStatus({ id: res.data.task_id, status: "running" });
             showToast("任务启动成功", "success");
+            // 刷新历史列表，显示当前正在运行的任务
+            fetchTaskHistory();
         } catch (e: any) {
             console.error("Start task failed:", e);
             const errorMsg = e.response?.data?.detail || e.message || "任务启动失败";
@@ -247,12 +275,13 @@ export default function ProjectDetail() {
     const controlTask = async (action: string) => {
         try {
             await axios.post(`${API_BASE}/tasks/${taskStatus.id}/${action}`);
-            // 如果是停止操作且自动迭代正在运行，同时停止自动迭代
             if (action === "stop" && autoIterateStatus?.status === "running") {
                 await axios.post(`${API_BASE}/projects/${id}/auto-iterate/stop`);
                 setAutoIterateStatus({ ...autoIterateStatus, status: "stopped", message: "已手动停止" });
             }
             fetchTaskStatus();
+            // 刷新历史列表状态
+            fetchTaskHistory();
         } catch (e) { console.error(e); }
     };
 

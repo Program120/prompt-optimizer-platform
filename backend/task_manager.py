@@ -62,6 +62,9 @@ class TaskManager:
             "pause_event": pause_event
         }
         
+        # 立即保存初始状态，以便在历史记录中可见
+        storage.save_task_status(project_id, task_id, task_info)
+        
         thread.start()
         return task_id
 
@@ -214,7 +217,8 @@ class TaskManager:
             for future in as_completed(futures):
                 if stop_event.is_set():
                     info["status"] = "stopped"
-                    executor.shutdown(wait=False, cancel_futures=True)
+                    # Python 3.8 doesn't support cancel_futures=True
+                    executor.shutdown(wait=False)
                     break
                 
                 result = future.result()
@@ -298,6 +302,8 @@ class TaskManager:
         if task_id in self.tasks:
             self.tasks[task_id]["pause_event"].clear()
             self.tasks[task_id]["info"]["status"] = "paused"
+            # 保存状态变更到磁盘，以便前端获取历史时能看到最新状态
+            storage.save_task_status(self.tasks[task_id]["info"]["project_id"], task_id, self.tasks[task_id]["info"])
             return True
         return False
 
@@ -305,6 +311,8 @@ class TaskManager:
         if task_id in self.tasks:
             self.tasks[task_id]["pause_event"].set()
             self.tasks[task_id]["info"]["status"] = "running"
+            # 保存状态变更到磁盘
+            storage.save_task_status(self.tasks[task_id]["info"]["project_id"], task_id, self.tasks[task_id]["info"])
             return True
         else:
             # 尝试从磁盘加载并启动
@@ -346,6 +354,8 @@ class TaskManager:
             self.tasks[task_id]["stop_event"].set()
             self.tasks[task_id]["pause_event"].set() # 确保不被卡在暂停
             self.tasks[task_id]["info"]["status"] = "stopped"
+            # 保存状态变更到磁盘
+            storage.save_task_status(self.tasks[task_id]["info"]["project_id"], task_id, self.tasks[task_id]["info"])
             return True
         else:
             # 尝试从磁盘加载并标记为stopped
