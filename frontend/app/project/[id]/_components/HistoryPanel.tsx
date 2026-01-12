@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy } from "lucide-react";
+
+const API_BASE = "/api";
 
 interface HistoryPanelProps {
     taskStatus: any;
@@ -59,6 +61,17 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
         navigator.clipboard.writeText(currentPrompt);
         // 可以添加一个简单的 toast 提示，但这儿为了简单先省略
     };
+
+    // 监听 ESC 键关闭
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && showPromptModal) {
+                setShowPromptModal(false);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [showPromptModal]);
 
     return (
         <section className="glass rounded-2xl overflow-hidden h-[600px] flex flex-col relative">
@@ -238,17 +251,19 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
             {/* Prompt Modal */}
             {showPromptModal && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-slate-900 border border-white/10 rounded-xl shadow-2xl w-full max-w-sm flex flex-col max-h-[90%]">
+                    <div className="bg-slate-900 border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col h-[500px]">
                         <div className="flex justify-between items-center p-3 border-b border-white/10">
                             <h3 className="text-sm font-medium text-white">完整提示词</h3>
                             <button onClick={() => setShowPromptModal(false)} className="text-slate-400 hover:text-white transition-colors">
                                 <X size={16} />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
-                            <pre className="text-xs text-slate-300 whitespace-pre-wrap font-mono bg-black/20 p-2 rounded-lg border border-white/5">
-                                {currentPrompt}
-                            </pre>
+                        <div className="flex-1 p-3 overflow-hidden">
+                            <textarea
+                                readOnly
+                                className="w-full h-full bg-black/20 border border-white/5 rounded-lg p-2 text-xs text-slate-300 font-mono resize-none focus:outline-none focus:border-blue-500/50 custom-scrollbar"
+                                value={currentPrompt}
+                            />
                         </div>
                         <div className="p-3 border-t border-white/10 flex justify-end">
                             <button
