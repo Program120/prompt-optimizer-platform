@@ -38,7 +38,9 @@ async def test_config(
     model_name: str = Form("gpt-3.5-turbo"),
     temperature: float = Form(0.0),
     validation_mode: str = Form("llm"),
-    interface_code: str = Form("")
+    interface_code: str = Form(""),
+    extra_body: str = Form(None),
+    default_headers: str = Form(None)
 ):
     logger.info("-" * 30)
     logger.info(f"Testing connection to: {base_url} | Mode: {validation_mode}")
@@ -89,6 +91,7 @@ async def test_config(
             # LLM 模式测试
             from openai import AsyncOpenAI
             import os
+            import json as json_lib
             
             logger.info(f"Model: {model_name}")
             logger.info(f"API Key: {api_key[:8]}******{api_key[-4:] if len(api_key) > 12 else ''}")
@@ -97,7 +100,30 @@ async def test_config(
             logger.info(f"Current HTTP_PROXY: {os.environ.get('HTTP_PROXY')}")
             logger.info(f"Current HTTPS_PROXY: {os.environ.get('HTTPS_PROXY')}")
             
-            client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+            # 解析 extra_body 和 default_headers
+            extra_body_dict = None
+            if extra_body:
+                try:
+                    extra_body_dict = json_lib.loads(extra_body)
+                    logger.info(f"Extra Body: {extra_body_dict}")
+                except Exception as e:
+                    logger.warning(f"Failed to parse extra_body: {e}")
+
+            default_headers_dict = {"Content-Type": "application/json; charset=utf-8"}
+            if default_headers:
+                try:
+                    user_headers = json_lib.loads(default_headers)
+                    if isinstance(user_headers, dict):
+                        default_headers_dict.update(user_headers)
+                    logger.info(f"Default Headers: {default_headers_dict}")
+                except Exception as e:
+                    logger.warning(f"Failed to parse default_headers: {e}")
+            
+            client = AsyncOpenAI(
+                api_key=api_key, 
+                base_url=base_url,
+                default_headers=default_headers_dict
+            )
             
             logger.info("Sending chat completion request...")
             await client.chat.completions.create(
@@ -105,7 +131,8 @@ async def test_config(
                 messages=[{"role": "user", "content": "Hi"}],
                 max_tokens=5,
                 timeout=10,
-                temperature=temperature
+                temperature=temperature,
+                extra_body=extra_body_dict
             )
             logger.info("Connection test successful!")
             return {"status": "success", "message": "连接成功！"}

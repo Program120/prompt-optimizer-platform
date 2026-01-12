@@ -1,4 +1,5 @@
 from openai import OpenAI
+import re
 import storage
 from prompts import DEFAULT_OPTIMIZATION_PROMPT
 
@@ -77,10 +78,16 @@ def optimize_prompt(
     if not model_config:
         model_config = storage.get_model_config()
     
+    # 构造默认 headers
+    headers = {"Content-Type": "application/json; charset=utf-8"}
+    if model_config.get("default_headers"):
+        headers.update(model_config.get("default_headers"))
+
     # 初始化 OpenAI 客户端
     client: OpenAI = OpenAI(
         api_key=model_config.get("api_key", ""),
-        base_url=model_config.get("base_url", "https://api.openai.com/v1")
+        base_url=model_config.get("base_url", "https://api.openai.com/v1"),
+        default_headers=headers
     )
     
     # 复用 generate_optimize_context 生成用户消息内容
@@ -102,7 +109,13 @@ def optimize_prompt(
         messages=messages,
         temperature=float(model_config.get("temperature", 0.7)),
         max_tokens=int(model_config.get("max_tokens", 2000)),
-        timeout=int(model_config.get("timeout", 60))
+        timeout=int(model_config.get("timeout", 60)),
+        extra_body=model_config.get("extra_body")
     )
     
-    return response.choices[0].message.content.strip()
+    response_content = response.choices[0].message.content.strip()
+    
+    # Process <think> tags for reasoning models
+    response_content = re.sub(r'<think>.*?</think>', '', response_content, flags=re.DOTALL).strip()
+    
+    return response_content

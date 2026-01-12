@@ -36,6 +36,16 @@ const DEFAULT_OPTIMIZATION_PROMPT: string = `你是一个专业的AI提示词工
 ## 任务：
 请输出优化后的【完整系统提示词】（直接输出提示词内容，不要添加任何其他说明）：`;
 
+// Helper to format JSON for display
+const formatJSON = (obj: any): string => {
+    if (!obj) return "";
+    try {
+        return JSON.stringify(obj, null, 2);
+    } catch (e) {
+        return "";
+    }
+};
+
 export default function ModelConfig({ onClose, projectId, onSave }: { onClose: () => void; projectId?: string; onSave?: () => void }) {
     const { success, error, toast } = useToast();
     const [activeTab, setActiveTab] = useState<"verification" | "optimization">("verification");
@@ -52,7 +62,9 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
         timeout: 60,
         model_name: "gpt-3.5-turbo",
         concurrency: 5,
-        temperature: 0.0
+        temperature: 0.0,
+        extra_body: "",
+        default_headers: ""
     });
     const [optConfig, setOptConfig] = useState({
         base_url: "",
@@ -60,7 +72,9 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
         max_tokens: 2000,
         timeout: 60,
         model_name: "gpt-3.5-turbo",
-        temperature: 0.7
+        temperature: 0.7,
+        extra_body: "",
+        default_headers: ""
     });
     const [optPrompt, setOptPrompt] = useState("");
 
@@ -76,10 +90,26 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
         try {
             const res = await axios.get(`${API_BASE}/projects/${projectId}`);
             if (res.data.model_config) {
-                setConfig(prev => ({ ...prev, ...res.data.model_config }));
+                const loadedConfig = { ...res.data.model_config };
+                // Convert objects to string for textarea
+                if (loadedConfig.extra_body && typeof loadedConfig.extra_body === 'object') {
+                    loadedConfig.extra_body = formatJSON(loadedConfig.extra_body);
+                }
+                if (loadedConfig.default_headers && typeof loadedConfig.default_headers === 'object') {
+                    loadedConfig.default_headers = formatJSON(loadedConfig.default_headers);
+                }
+                setConfig(prev => ({ ...prev, ...loadedConfig }));
             }
             if (res.data.optimization_model_config) {
-                setOptConfig(prev => ({ ...prev, ...res.data.optimization_model_config }));
+                const loadedOptConfig = { ...res.data.optimization_model_config };
+                // Convert objects to string for textarea
+                if (loadedOptConfig.extra_body && typeof loadedOptConfig.extra_body === 'object') {
+                    loadedOptConfig.extra_body = formatJSON(loadedOptConfig.extra_body);
+                }
+                if (loadedOptConfig.default_headers && typeof loadedOptConfig.default_headers === 'object') {
+                    loadedOptConfig.default_headers = formatJSON(loadedOptConfig.default_headers);
+                }
+                setOptConfig(prev => ({ ...prev, ...loadedOptConfig }));
             }
             if (res.data.optimization_prompt) {
                 setOptPrompt(res.data.optimization_prompt);
@@ -119,12 +149,40 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
         if (projectId) {
             // 保存到项目
             const formData: FormData = new FormData();
-            formData.append("model_cfg", JSON.stringify(config));
-            formData.append("optimization_model_config", JSON.stringify(optConfig));
-            formData.append("optimization_prompt", optPrompt);
-            formData.append("current_prompt", "");
+
+            // Process extra_body and default_headers
+            const processConfig = (cfg: any) => {
+                const newCfg = { ...cfg };
+                if (newCfg.extra_body) {
+                    try {
+                        newCfg.extra_body = JSON.parse(newCfg.extra_body);
+                    } catch (e) {
+                        throw new Error("Extra Body 必须是合法的 JSON");
+                    }
+                } else {
+                    delete newCfg.extra_body;
+                }
+                if (newCfg.default_headers) {
+                    try {
+                        newCfg.default_headers = JSON.parse(newCfg.default_headers);
+                    } catch (e) {
+                        throw new Error("Default Headers 必须是合法的 JSON");
+                    }
+                } else {
+                    delete newCfg.default_headers;
+                }
+                return newCfg;
+            };
 
             try {
+                const finalConfig = processConfig(config);
+                const finalOptConfig = processConfig(optConfig);
+
+                formData.append("model_cfg", JSON.stringify(finalConfig));
+                formData.append("optimization_model_config", JSON.stringify(finalOptConfig));
+                formData.append("optimization_prompt", optPrompt);
+                formData.append("current_prompt", "");
+
                 // 获取当前项目的 prompt
                 const projectRes = await axios.get(`${API_BASE}/projects/${projectId}`);
                 formData.set("current_prompt", projectRes.data.current_prompt);
@@ -133,8 +191,8 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
                 success("项目配置已保存");
                 if (onSave) onSave(); // Call callback
                 onClose();
-            } catch (e) {
-                error("保存失败");
+            } catch (e: any) {
+                error(e.message || "保存失败");
             } finally {
                 setIsSaving(false);
             }
@@ -180,6 +238,28 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
         formData.append("base_url", targetConfig.base_url);
         formData.append("api_key", targetConfig.api_key);
         formData.append("model_name", targetConfig.model_name);
+
+        // Add extra params
+        if (targetConfig.extra_body) {
+            try {
+                JSON.parse(targetConfig.extra_body); // validate
+                formData.append("extra_body", targetConfig.extra_body); // send as string
+            } catch (e) {
+                error("Extra Body 格式错误");
+                setIsTesting(false);
+                return;
+            }
+        }
+        if (targetConfig.default_headers) {
+            try {
+                JSON.parse(targetConfig.default_headers); // validate
+                formData.append("default_headers", targetConfig.default_headers); // send as string
+            } catch (e) {
+                error("Default Headers 格式错误");
+                setIsTesting(false);
+                return;
+            }
+        }
 
         if (activeTab === "verification") {
             // @ts-ignore
@@ -314,29 +394,54 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
             )}
 
             {(!cfg.validation_mode || cfg.validation_mode === "llm") && (
-                <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-2">温度 (Temperature) - {cfg.temperature}</label>
-                    <div className="flex items-center gap-4">
-                        <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.1"
-                            value={cfg.temperature}
-                            onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) })}
-                            className="flex-1 accent-blue-500 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                        />
-                        <input
-                            type="number"
-                            min="0"
-                            max="1"
-                            step="0.1"
-                            value={cfg.temperature}
-                            onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) || 0 })}
-                            className="w-16 bg-white/5 border border-white/10 rounded-xl px-2 py-1 text-center text-sm focus:outline-none focus:border-blue-500"
-                        />
+                <>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-2">温度 (Temperature) - {cfg.temperature}</label>
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.1"
+                                    value={cfg.temperature}
+                                    onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) })}
+                                    className="flex-1 accent-blue-500 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="1"
+                                    step="0.1"
+                                    value={cfg.temperature}
+                                    onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) || 0 })}
+                                    className="w-16 bg-white/5 border border-white/10 rounded-xl px-2 py-1 text-center text-sm focus:outline-none focus:border-blue-500"
+                                />
+                            </div>
+                        </div>
                     </div>
-                </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-2">Extra Body (JSON)</label>
+                            <textarea
+                                value={cfg.extra_body || ""}
+                                onChange={e => setCfg({ ...cfg, extra_body: e.target.value })}
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm font-mono h-[100px]"
+                                placeholder={`{\n  "top_k": 40,\n  "force_json": true\n}`}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-2">Default Headers (JSON)</label>
+                            <textarea
+                                value={cfg.default_headers || ""}
+                                onChange={e => setCfg({ ...cfg, default_headers: e.target.value })}
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm font-mono h-[100px]"
+                                placeholder={`{\n  "X-Custom-Header": "value"\n}`}
+                            />
+                        </div>
+                    </div>
+                </>
             )}
         </div>
     );
