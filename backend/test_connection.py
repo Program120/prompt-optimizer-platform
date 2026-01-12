@@ -1,18 +1,25 @@
 import os
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
+
 try:
     from openai import OpenAI
 except ImportError:
     print("Please install openai: pip install openai")
     exit(1)
 
-# 请在此处替换为您的真实 API Key
-API_KEY = "sk-356ce0e3bcf542ff9b3392346b555d46"
-BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-MODEL = "qwen-flash"
+# 从环境变量获取配置
+API_KEY = os.getenv("API_KEY")
+BASE_URL = os.getenv("BASE_URL")
+MODEL = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
 
-# 设置代理 (根据用户提供的信息)
-os.environ["HTTP_PROXY"] = "http://192.168.91.1:7890"
-os.environ["HTTPS_PROXY"] = "http://192.168.91.1:7890"
+# 设置代理 (如果环境变量中存在)
+if os.getenv("HTTP_PROXY"):
+    os.environ["HTTP_PROXY"] = os.getenv("HTTP_PROXY")
+if os.getenv("HTTPS_PROXY"):
+    os.environ["HTTPS_PROXY"] = os.getenv("HTTPS_PROXY")
 
 print("-" * 50)
 print(f"开始测试模型连接性...")

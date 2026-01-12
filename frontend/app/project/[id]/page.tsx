@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import axios from "axios";
 import { motion } from "framer-motion";
 import ModelConfig from "@/app/components/ModelConfig";
@@ -75,9 +75,16 @@ export default function ProjectDetail() {
         return () => clearTimeout(timer);
     }, [config, fileInfo, extractField, project?.current_prompt]);
 
+    const router = useRouter();
+
     const fetchProject = async () => {
         try {
             const res = await axios.get(`${API_BASE}/projects/${id}`);
+            if (!res.data) {
+                // 如果返回数据为空，视为不存在
+                router.push("/");
+                return;
+            }
             setProject(res.data);
 
             // 恢复项目配置
@@ -111,7 +118,11 @@ export default function ProjectDetail() {
                     setTaskStatus(taskRes.data);
                 } catch (e) { console.log("无法恢复任务状态"); }
             }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            // 发生错误（如 404），跳转回主页
+            router.push("/");
+        }
     };
 
     const isAutoIterating = autoIterateStatus?.status === "running";

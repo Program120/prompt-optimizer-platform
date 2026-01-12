@@ -5,3 +5,4 @@ openpyxl
 pydantic
 openai
 python-multipart
+python-dotenv

@@ -16,9 +16,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 设置代理 (根据用户提供的信息)
-os.environ["HTTP_PROXY"] = "http://192.168.91.1:7890"
-os.environ["HTTPS_PROXY"] = "http://192.168.91.1:7890"
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
+
+# 设置代理 (如果环境变量中存在)
+if os.getenv("HTTP_PROXY"):
+    os.environ["HTTP_PROXY"] = os.getenv("HTTP_PROXY")
+if os.getenv("HTTPS_PROXY"):
+    os.environ["HTTPS_PROXY"] = os.getenv("HTTPS_PROXY")
 
 app = FastAPI(title="Prompt Optimizer API")
 

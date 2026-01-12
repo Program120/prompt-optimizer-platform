@@ -1,14 +1,22 @@
 "use client";
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Settings, Save } from "lucide-react";
+import { Settings, Save, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useToast } from "./ui/Toast";
 
 // 统一使用相对路径
-const API_BASE = "/api";
+const API_BASE: string = "/api";
 
 export default function ModelConfig({ onClose, projectId }: { onClose: () => void; projectId?: string }) {
+    const { success, error, toast } = useToast();
     const [activeTab, setActiveTab] = useState<"verification" | "optimization">("verification");
+
+    // 测试连接状态（不阻塞保存操作）
+    const [isTesting, setIsTesting] = useState<boolean>(false);
+    // 保存配置状态
+    const [isSaving, setIsSaving] = useState<boolean>(false);
+
     const [config, setConfig] = useState({
         base_url: "",
         api_key: "",
@@ -60,36 +68,50 @@ export default function ModelConfig({ onClose, projectId }: { onClose: () => voi
         } catch (e) { console.error(e); }
     };
 
-    const handleSave = async () => {
+    /**
+     * 保存配置处理函数
+     * 此函数独立于测试连接，不会被测试阻塞
+     */
+    const handleSave = async (): Promise<void> => {
+        // 如果正在保存，防止重复点击
+        if (isSaving) {
+            return;
+        }
+
         // 验证优化提示词
         if (activeTab === "optimization" && optPrompt) {
             if (!optPrompt.includes("{old_prompt}") || !optPrompt.includes("{error_samples}")) {
-                alert("提示词优化模板必须包含 {old_prompt} 和 {error_samples} 占位符");
+                error("提示词优化模板必须包含 {old_prompt} 和 {error_samples} 占位符");
                 return;
             }
         }
 
+        setIsSaving(true);
+
         if (projectId) {
             // 保存到项目
-            const formData = new FormData();
+            const formData: FormData = new FormData();
             formData.append("model_cfg", JSON.stringify(config));
             formData.append("optimization_model_config", JSON.stringify(optConfig));
             formData.append("optimization_prompt", optPrompt);
-            formData.append("current_prompt", ""); // 此时不修改当前提示词，但后端接口定义了必传，发空字符串或获取当前的
+            formData.append("current_prompt", "");
 
-            // 为了安全，我们通常还是获取一下当前 prompt 或者让后端接口兼容
-            // 由于后端 router 定义了 current_prompt = Form(...)，我们需要传一下
             try {
+                // 获取当前项目的 prompt
                 const projectRes = await axios.get(`${API_BASE}/projects/${projectId}`);
                 formData.set("current_prompt", projectRes.data.current_prompt);
 
                 await axios.put(`${API_BASE}/projects/${projectId}`, formData);
-                alert("项目配置已保存");
+                success("项目配置已保存");
                 onClose();
-            } catch (e) { alert("保存失败"); }
+            } catch (e) {
+                error("保存失败");
+            } finally {
+                setIsSaving(false);
+            }
         } else {
-            // 保存全局 (保留后备逻辑)
-            const formData = new FormData();
+            // 保存全局配置
+            const formData: FormData = new FormData();
             formData.append("base_url", config.base_url);
             formData.append("api_key", config.api_key);
             formData.append("max_tokens", String(config.max_tokens));
@@ -99,23 +121,46 @@ export default function ModelConfig({ onClose, projectId }: { onClose: () => voi
             formData.append("temperature", String(config.temperature));
             try {
                 await axios.post(`${API_BASE}/config`, formData);
-                alert("全局配置已保存");
+                success("全局配置已保存");
                 onClose();
-            } catch (e) { alert("保存失败"); }
+            } catch (e) {
+                error("保存失败");
+            } finally {
+                setIsSaving(false);
+            }
         }
     };
 
-    const handleTest = async () => {
+    /**
+     * 测试连接处理函数
+     * 此函数独立于保存操作，在测试期间不会阻塞保存按钮
+     */
+    const handleTest = async (): Promise<void> => {
+        // 如果正在测试，防止重复点击
+        if (isTesting) {
+            return;
+        }
+
+        setIsTesting(true);
+
         const targetConfig = activeTab === "verification" ? config : optConfig;
-        const formData = new FormData();
+        const formData: FormData = new FormData();
         formData.append("base_url", targetConfig.base_url);
         formData.append("api_key", targetConfig.api_key);
         formData.append("model_name", targetConfig.model_name);
 
         try {
             const res = await axios.post(`${API_BASE}/config/test`, formData);
-            alert(res.data.message);
-        } catch (e) { alert("测试请求失败"); }
+            if (res.data.success !== false) {
+                success(res.data.message || "测试连接成功");
+            } else {
+                error(res.data.message || "测试连接失败");
+            }
+        } catch (e) {
+            error("测试请求失败");
+        } finally {
+            setIsTesting(false);
+        }
     };
 
     const renderConfigForm = (cfg: any, setCfg: any, isVerification: boolean) => (
@@ -271,9 +316,14 @@ export default function ModelConfig({ onClose, projectId }: { onClose: () => voi
                 <div className="flex gap-4">
                     <button
                         onClick={handleTest}
-                        className="px-6 py-3 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 transition-colors font-medium border border-purple-500/20"
+                        disabled={isTesting}
+                        className={`px-6 py-3 rounded-xl transition-colors font-medium border border-purple-500/20 flex items-center gap-2 ${isTesting
+                            ? "bg-purple-500/5 text-purple-400/50 cursor-not-allowed"
+                            : "bg-purple-500/10 hover:bg-purple-500/20 text-purple-400"
+                            }`}
                     >
-                        测试连接
+                        {isTesting && <Loader2 size={16} className="animate-spin" />}
+                        {isTesting ? "测试中..." : "测试连接"}
                     </button>
                     <div className="flex-1" />
                     <button
@@ -284,10 +334,14 @@ export default function ModelConfig({ onClose, projectId }: { onClose: () => voi
                     </button>
                     <button
                         onClick={handleSave}
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-10 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20"
+                        disabled={isSaving}
+                        className={`flex items-center gap-2 px-10 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20 ${isSaving
+                            ? "bg-blue-600/50 cursor-not-allowed"
+                            : "bg-blue-600 hover:bg-blue-500"
+                            }`}
                     >
-                        <Save size={18} />
-                        保存配置
+                        {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                        {isSaving ? "保存中..." : "保存配置"}
                     </button>
                 </div>
             </motion.div>

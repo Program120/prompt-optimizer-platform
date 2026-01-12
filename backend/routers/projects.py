@@ -14,7 +14,8 @@ async def list_projects():
 
 @router.post("")
 async def create_project(name: str = Form(...), prompt: str = Form(...)):
-    return storage.create_project(name, prompt)
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(storage.create_project, name, prompt)
 
 @router.get("/{project_id}")
 async def get_project(project_id: str):
@@ -94,7 +95,8 @@ async def update_project(
     if name:
         updates["name"] = name
     
-    result = storage.update_project(project_id, updates)
+    from starlette.concurrency import run_in_threadpool
+    result = await run_in_threadpool(storage.update_project, project_id, updates)
     if not result:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"status": "success", "project": result}
@@ -130,7 +132,9 @@ async def optimize_project_prompt(project_id: str, task_id: str):
 
     # 调用优化函数（可能抛出异常）
     try:
-        new_prompt = optimize_prompt(
+        from starlette.concurrency import run_in_threadpool
+        new_prompt = await run_in_threadpool(
+            optimize_prompt,
             project["current_prompt"], 
             task_status["errors"], 
             model_config,

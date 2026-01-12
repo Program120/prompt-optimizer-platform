@@ -18,7 +18,8 @@ async def save_config(
     concurrency: int = Form(5),
     temperature: float = Form(0.0)
 ):
-    storage.save_model_config({
+    from starlette.concurrency import run_in_threadpool
+    await run_in_threadpool(storage.save_model_config, {
         "base_url": base_url, 
         "api_key": api_key,
         "max_tokens": max_tokens,
@@ -37,9 +38,9 @@ async def test_config(
     temperature: float = Form(0.0)
 ):
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        client.chat.completions.create(
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        await client.chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": "Hi"}],
             max_tokens=5,
