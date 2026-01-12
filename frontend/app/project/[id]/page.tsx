@@ -271,7 +271,7 @@ export default function ProjectDetail() {
 
         setIsOptimizing(true);
         try {
-            const res = await axios.post(`${API_BASE}/projects/${id}/optimize?task_id=${taskStatus.id}`);
+            const res = await axios.post(`${API_BASE}/projects/${id}/optimize?task_id=${taskStatus.id}`, {}, { timeout: 300000 });
             showToast("提示词优化成功！", "success");
             fetchProject();
         } catch (e) { showToast("优化失败", "error"); }

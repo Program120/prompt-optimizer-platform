@@ -31,6 +31,8 @@ Thumbs.db
 # Project specific
 backend/data/*.json
 !backend/data/projects.json
+
+**/logs/
 *.log
 
 # data

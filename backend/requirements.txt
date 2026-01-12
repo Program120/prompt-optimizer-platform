@@ -7,3 +7,7 @@ openai
 python-multipart
 python-dotenv
 loguru
+
+scikit-learn
+numpy
+networkx

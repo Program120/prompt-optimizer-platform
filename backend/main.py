@@ -15,15 +15,18 @@ if not os.path.exists("logs"):
 # 移除默认 handler
 loguru_logger.remove()
 
+# 统一日志格式
+LOG_FORMAT = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
+
 # 添加控制台输出 (默认为 INFO)
-console_handler_id = loguru_logger.add(sys.stderr, level="INFO")
+console_handler_id = loguru_logger.add(sys.stderr, level="INFO", format=LOG_FORMAT)
 
 # 统一配置参数
 LOG_CONFIG = {
     "rotation": "100 MB",
     "retention": "3 days",
     "encoding": "utf-8",
-    "format": "{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
+    "format": LOG_FORMAT
 }
 
 # 添加文件 Handler (按级别分文件)
@@ -156,7 +159,7 @@ if __name__ == "__main__":
     # 如果指定了非 INFO 级别，更新控制台日志配置
     if args.log_level.upper() != "INFO":
         loguru_logger.remove(console_handler_id)
-        loguru_logger.add(sys.stderr, level=args.log_level.upper())
+        loguru_logger.add(sys.stderr, level=args.log_level.upper(), format=LOG_FORMAT)
         loguru_logger.info(f"Console log level set to: {args.log_level.upper()}")
     
     uvicorn.run(app, host="0.0.0.0", port=args.port, log_level=args.log_level.lower())

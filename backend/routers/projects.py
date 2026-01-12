@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime
 import storage
 from task_manager import TaskManager
-from optimizer import optimize_prompt, generate_optimize_context
+from optimizer import optimize_prompt, generate_optimize_context, multi_strategy_optimize
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 tm = TaskManager()
@@ -168,20 +168,26 @@ async def optimize_project_prompt(project_id: str, task_id: str):
     if not model_config or not model_config.get("api_key"):
         raise HTTPException(status_code=400, detail="请先在项目设置中配置提示词优化模型参数(API Key)")
     
-    # 获取优化提示词
-    # 优先使用项目自定义的 optimization_prompt，否则使用 None (optimizer.py 会使用默认值)
-    optimization_prompt = project.get("optimization_prompt")
+    # 计算总样本数和准确率
+    total_count = len(task_status.get("results", []))
+    errors = task_status.get("errors", [])
 
-    # 调用优化函数（可能抛出异常）
+    # 调用多策略优化函数
     try:
-        from starlette.concurrency import run_in_threadpool
-        new_prompt = await run_in_threadpool(
-            optimize_prompt,
+        # 传递 dataset (task results)
+        dataset = task_status.get("results", [])
+        result = await multi_strategy_optimize(
             project["current_prompt"], 
-            task_status["errors"], 
+            errors, 
             model_config,
-            system_prompt_template=optimization_prompt
+            dataset=dataset,
+            total_count=total_count,
+            strategy_mode="auto",
+            max_strategies=1
         )
+        new_prompt = result.get("optimized_prompt", project["current_prompt"])
+        applied_strategies = result.get("applied_strategies", [])
+        diagnosis = result.get("diagnosis")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"优化失败: {str(e)}")
     
@@ -199,6 +205,7 @@ async def optimize_project_prompt(project_id: str, task_id: str):
         "dataset_path": dataset_path,
         "dataset_name": dataset_name,
         "accuracy": (len(task_status["results"]) - len(task_status["errors"])) / len(task_status["results"]) if task_status["results"] else 0,
+        "applied_strategies": [s.get("name") for s in applied_strategies if s.get("success")],
         "created_at": datetime.now().isoformat()
     })
     project["current_prompt"] = new_prompt
@@ -210,7 +217,11 @@ async def optimize_project_prompt(project_id: str, task_id: str):
             break
     storage.save_projects(projects)
     
-    return {"new_prompt": new_prompt}
+    return {
+        "new_prompt": new_prompt,
+        "applied_strategies": applied_strategies,
+        "diagnosis": diagnosis
+    }
 
 
 @router.get("/tasks/{task_id}/dataset")

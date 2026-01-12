@@ -5,10 +5,11 @@ import threading
 import os
 import logging
 import time
+import asyncio
 
 import storage
 from task_manager import TaskManager
-from optimizer import optimize_prompt
+from optimizer import optimize_prompt, multi_strategy_optimize
 
 router = APIRouter(prefix="/projects", tags=["auto-iterate"])
 tm = TaskManager()
@@ -86,7 +87,12 @@ async def start_auto_iterate(
                 logging.info(f"[AutoIterate {project_id}] Starting round {round_num}/{max_rounds}")
                 
                 # 启动任务
-                model_config = storage.get_model_config()
+                # 获取模型配置 (优先使用项目配置)
+                project = storage.get_project(project_id)
+                model_config = project.get("model_config") if project else None
+                if not model_config:
+                    model_config = storage.get_model_config()
+                    
                 task_id = tm.create_task(project_id, path, query_col, target_col, current_prompt, model_config, extract_field)
                 
                 status["task_id"] = task_id
@@ -150,8 +156,22 @@ async def start_auto_iterate(
                     logging.info(f"[AutoIterate {project_id}] Optimizing prompt with {len(task_status['errors'])} errors...")
                     
                     try:
-                        new_prompt = optimize_prompt(current_prompt, task_status["errors"], model_config)
-                        logging.info(f"[AutoIterate {project_id}] Prompt optimized successfully")
+                        # 使用多策略优化器
+                        total_count = len(task_status.get("results", []))
+                        dataset = task_status.get("results", [])
+                        
+                        result = asyncio.run(multi_strategy_optimize(
+                            current_prompt, 
+                            task_status["errors"], 
+                            model_config,
+                            dataset=dataset,
+                            total_count=total_count,
+                            strategy_mode="auto",
+                            max_strategies=1
+                        ))
+                        new_prompt = result.get("optimized_prompt", current_prompt)
+                        applied_strategies = result.get("applied_strategies", [])
+                        logging.info(f"[AutoIterate {project_id}] Prompt optimized successfully, strategies: {[s.get('name') for s in applied_strategies if s.get('success')]}")
                         
                         # 保存迭代记录
                         project = storage.get_project(project_id)
