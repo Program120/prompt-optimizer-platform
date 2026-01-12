@@ -489,7 +489,7 @@ export default function ProjectDetail() {
                 </div>
             </div>
 
-            {showConfig && <ModelConfig onClose={() => setShowConfig(false)} projectId={id as string} />}
+            {showConfig && <ModelConfig onClose={() => setShowConfig(false)} projectId={id as string} onSave={fetchProject} />}
 
             <LogDetailModal
                 selectedLog={selectedLog}

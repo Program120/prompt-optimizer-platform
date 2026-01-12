@@ -38,7 +38,7 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
                     {/* Diff View */}
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-2">提示词变更对比</label>
-                        <div className="bg-black/30 rounded-xl p-4 font-mono text-sm overflow-x-auto border border-white/10">
+                        <div className="bg-black/30 rounded-xl p-4 font-mono text-sm overflow-x-auto border border-white/10 whitespace-pre-wrap">
                             {Diff.diffWords(selectedIteration.old_prompt || "", selectedIteration.new_prompt || "").map((part: any, i: number) => (
                                 <span
                                     key={i}

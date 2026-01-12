@@ -36,7 +36,7 @@ const DEFAULT_OPTIMIZATION_PROMPT: string = `你是一个专业的AI提示词工
 ## 任务：
 请输出优化后的【完整系统提示词】（直接输出提示词内容，不要添加任何其他说明）：`;
 
-export default function ModelConfig({ onClose, projectId }: { onClose: () => void; projectId?: string }) {
+export default function ModelConfig({ onClose, projectId, onSave }: { onClose: () => void; projectId?: string; onSave?: () => void }) {
     const { success, error, toast } = useToast();
     const [activeTab, setActiveTab] = useState<"verification" | "optimization">("verification");
 
@@ -131,6 +131,7 @@ export default function ModelConfig({ onClose, projectId }: { onClose: () => voi
 
                 await axios.put(`${API_BASE}/projects/${projectId}`, formData);
                 success("项目配置已保存");
+                if (onSave) onSave(); // Call callback
                 onClose();
             } catch (e) {
                 error("保存失败");
@@ -138,7 +139,9 @@ export default function ModelConfig({ onClose, projectId }: { onClose: () => voi
                 setIsSaving(false);
             }
         } else {
-            // 保存全局配置
+            // ... (global save logic, maybe call onSave there too? User asked for project context mainly but consistent is better)
+            // The user scenario is specific to project config validation.
+            // Let's add it to global too for completeness.
             const formData: FormData = new FormData();
             formData.append("base_url", config.base_url);
             formData.append("api_key", config.api_key);
@@ -150,6 +153,7 @@ export default function ModelConfig({ onClose, projectId }: { onClose: () => voi
             try {
                 await axios.post(`${API_BASE}/config`, formData);
                 success("全局配置已保存");
+                if (onSave) onSave();
                 onClose();
             } catch (e) {
                 error("保存失败");
