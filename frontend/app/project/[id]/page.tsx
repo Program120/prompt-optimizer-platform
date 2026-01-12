@@ -13,7 +13,10 @@ import HistoryPanel from "./_components/HistoryPanel";
 import LogDetailModal from "./_components/LogDetailModal";
 import IterationDetailModal from "./_components/IterationDetailModal";
 
-const API_BASE = "http://127.0.0.1:8000";
+// 动态获取 API 基础路径
+const API_BASE = typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : "http://127.0.0.1:8000";
 
 export default function ProjectDetail() {
     const { id } = useParams();
