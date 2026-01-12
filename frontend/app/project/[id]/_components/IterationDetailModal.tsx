@@ -6,7 +6,7 @@ import { useEffect } from "react";
 interface IterationDetailModalProps {
     selectedIteration: any;
     onClose: () => void;
-    onApply: (newPrompt: string) => void;
+    onApply: (newPrompt: string, message?: string) => void;
 }
 
 export default function IterationDetailModal({ selectedIteration, onClose, onApply }: IterationDetailModalProps) {
@@ -49,7 +49,7 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
                     {/* Diff View */}
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-2">提示词变更对比</label>
-                        <div className="bg-black/30 rounded-xl p-4 font-mono text-sm overflow-x-auto border border-white/10 whitespace-pre-wrap">
+                        <div className="bg-black/30 rounded-xl p-4 font-mono text-sm overflow-x-auto border border-white/10 whitespace-pre-wrap max-h-[300px] overflow-y-auto custom-scrollbar">
                             {Diff.diffWords(selectedIteration.old_prompt || "", selectedIteration.new_prompt || "").map((part: any, i: number) => (
                                 <span
                                     key={i}
@@ -69,28 +69,39 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-red-400 mb-2">旧提示词</label>
-                            <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4 text-sm whitespace-pre-wrap max-h-48 overflow-y-auto">
+                            <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4 text-sm whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar">
                                 {selectedIteration.old_prompt || "(无)"}
                             </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-emerald-400 mb-2">新提示词</label>
-                            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 text-sm whitespace-pre-wrap max-h-48 overflow-y-auto">
+                            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 text-sm whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar">
                                 {selectedIteration.new_prompt || "(无)"}
                             </div>
                         </div>
                     </div>
 
-                    {/* Apply button */}
-                    <button
-                        onClick={() => {
-                            onApply(selectedIteration.new_prompt);
-                            onClose();
-                        }}
-                        className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-medium transition-colors"
-                    >
-                        应用此版本提示词
-                    </button>
+                    {/* Action buttons */}
+                    <div className="flex gap-4">
+                        <button
+                            onClick={() => {
+                                onApply(selectedIteration.old_prompt, "提示词已回退");
+                                onClose();
+                            }}
+                            className="flex-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/50 text-red-400 py-3 rounded-xl font-medium transition-colors"
+                        >
+                            回退提示词 (应用旧版本)
+                        </button>
+                        <button
+                            onClick={() => {
+                                onApply(selectedIteration.new_prompt, "此版本提示词已应用");
+                                onClose();
+                            }}
+                            className="flex-1 bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-medium transition-colors text-white"
+                        >
+                            应用此版本提示词
+                        </button>
+                    </div>
                 </div>
             </motion.div>
         </div>

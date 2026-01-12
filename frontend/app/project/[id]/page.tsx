@@ -507,7 +507,10 @@ export default function ProjectDetail() {
             <IterationDetailModal
                 selectedIteration={selectedIteration}
                 onClose={() => setSelectedIteration(null)}
-                onApply={(newPrompt) => setProject({ ...project, current_prompt: newPrompt })}
+                onApply={(newPrompt, msg) => {
+                    setProject({ ...project, current_prompt: newPrompt });
+                    if (msg) showToast(msg, "success");
+                }}
             />
         </div>
     );

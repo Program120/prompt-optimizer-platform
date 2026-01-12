@@ -120,6 +120,18 @@ class TaskManager:
                 )
                 output = response.choices[0].message.content
                 
+                # 自动去除 markdown 代码块标记 (```json ... ```)
+                if "```" in output:
+                    import re
+                    # 匹配 ```json ... ``` 或 ``` ... ```，提取中间内容
+                    # capturing group 1 is the content
+                    match = re.search(r"```(?:\w+)?\s*(.*?)\s*```", output, re.DOTALL)
+                    if match:
+                        output = match.group(1).strip()
+                    else:
+                        # 如果是单个 ``` (不完整成对)，尝试简单去除
+                        output = output.replace("```json", "").replace("```", "").strip()
+                
                 return {
                     "index": i,
                     "query": query,
