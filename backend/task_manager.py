@@ -190,16 +190,27 @@ class TaskManager:
                         expression = extract_field[3:].strip()
                         try:
                             # 允许在表达式中使用 data 变量
-                            # 注意：eval 有安全风险，但在内部工具场景下通常可接受
-                            val = eval(expression, {"__builtins__": None}, {"data": data})
-                            
+                            # 1. 尝试直接 eval (单行表达式)
+                            try:
+                                val = eval(expression, {"__builtins__": None}, {"data": data})
+                            except SyntaxError:
+                                # 2. 如果是多行语句 (Sentence)，尝试 exec
+                                # 要求用户在代码中赋值给 result 变量
+                                local_scope = {"data": data}
+                                exec(expression, {"__builtins__": None}, local_scope)
+                                val = local_scope.get("result")
+                                if val is None:
+                                    # 如果没找到 result，警告一下
+                                    logging.warning("Multi-line script must assign to 'result' variable.")
+                                    return False
+
                             # 如果表达式返回 True (比如也可以直接由表达式做判断)
                             if isinstance(val, bool):
                                 return val
                                 
                             return str(val).lower() == target
                         except Exception as e:
-                            logging.warning(f"Expression eval failed: {e}")
+                            logging.warning(f"Expression eval/exec failed: {e}")
                             return False
 
                     if extract_field in data:

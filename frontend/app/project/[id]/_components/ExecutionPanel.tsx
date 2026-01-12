@@ -140,14 +140,17 @@ export default function ExecutionPanel({
 
                 <div className="space-y-2">
                     <label className="block text-sm font-medium text-slate-400">JSON 字段提取 (可选)</label>
-                    <input
-                        type="text"
+                    <textarea
                         value={extractField}
                         onChange={e => setExtractField(e.target.value)}
-                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                        className="w-full h-24 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono resize-none"
                         placeholder="例如: intent (如果模型输出是 JSON)"
                     />
-                    <p className="text-xs text-slate-500">若模型输出为 {`{"intent": "咨询"}`}, 请填写 intent。支持高级模式: py: data['intent']</p>
+                    <p className="text-xs text-slate-500">
+                        若模型输出为 {`{"intent": "咨询"}`}, 请填写 intent。<br />
+                        支持高级模式: py: data['intent']<br />
+                        多行模式: 使用 py: 开头，支持 if-else 等逻辑，最终需赋值给 <b>result</b> 变量。
+                    </p>
                 </div>
 
                 {/* 自动迭代配置 */}
