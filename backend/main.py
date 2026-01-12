@@ -44,4 +44,13 @@ app.mount("/data", StaticFiles(directory=storage.DATA_DIR), name="data")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import argparse
+    
+    # 创建参数解析器
+    parser = argparse.ArgumentParser(description="运行 Prompt Optimizer API 服务")
+    # 添加端口参数，默认 8000
+    parser.add_argument("--port", type=int, default=8000, help="服务监听端口 (默认: 8000)")
+    # 解析参数
+    args = parser.parse_args()
+    
+    uvicorn.run(app, host="0.0.0.0", port=args.port)
