@@ -313,7 +313,8 @@ class HardCaseDetector:
                  
                  response = self.llm_client.embeddings.create(
                      input=texts,
-                     model=model_name
+                     model=model_name,
+                     timeout=int(self.model_config.get("timeout", 180))
                  )
                  return [data.embedding for data in response.data]
         except Exception as e:
