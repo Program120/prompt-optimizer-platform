@@ -43,6 +43,17 @@ def create_project(name: str, prompt: str) -> Dict[str, Any]:
     save_projects(projects)
     return new_project
 
+def delete_project(project_id: str) -> bool:
+    """删除项目"""
+    projects = get_projects()
+    initial_len = len(projects)
+    projects = [p for p in projects if p["id"] != project_id]
+    
+    if len(projects) < initial_len:
+        save_projects(projects)
+        return True
+    return False
+
 def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]):
     task_file = os.path.join(DATA_DIR, f"task_{task_id}.json")
     with open(task_file, "w", encoding="utf-8") as f:

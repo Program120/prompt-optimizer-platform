@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, AlertCircle, X } from "lucide-react";
+import { useEffect } from "react";
 
 interface LogDetailModalProps {
     selectedLog: any;
@@ -8,6 +9,16 @@ interface LogDetailModalProps {
 
 export default function LogDetailModal({ selectedLog, onClose }: LogDetailModalProps) {
     if (!selectedLog) return null;
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                onClose();
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onClose]);
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">

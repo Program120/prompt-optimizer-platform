@@ -66,18 +66,40 @@ async def stop_task(task_id: str):
     raise HTTPException(status_code=404, detail="Task not found")
 
 @router.get("/{task_id}/export")
-async def export_task_errors(task_id: str):
+async def export_task_results(task_id: str):
     status = tm.get_task_status(task_id)
-    if not status or not status.get("errors"):
-        raise HTTPException(status_code=404, detail="Errors not found")
+    if not status:
+        raise HTTPException(status_code=404, detail="Task not found")
     
-    df = pd.DataFrame(status["errors"])
-    export_path = os.path.join(storage.DATA_DIR, f"errors_{task_id}.xlsx")
-    df.to_excel(export_path, index=False)
+    # 获取所有结果
+    results = status.get("results", [])
+    if not results:
+        raise HTTPException(status_code=404, detail="No results found to export")
+    
+    # 分离成功和失败的数据
+    success_data = [r for r in results if r.get("is_correct")]
+    failed_data = [r for r in results if not r.get("is_correct")]
+    
+    export_path = os.path.join(storage.DATA_DIR, f"results_{task_id}.xlsx")
+    
+    # 使用 ExcelWriter 写入多个 sheet
+    with pd.ExcelWriter(export_path, engine='openpyxl') as writer:
+        if success_data:
+            df_success = pd.DataFrame(success_data)
+            df_success.to_excel(writer, sheet_name='Success', index=False)
+        else:
+            # 如果没有成功数据，创建一个空的 DataFrame 并带有列头（如果有之前的结果作为参考，否则只有空sheet）
+            pd.DataFrame(columns=["index", "query", "target", "output", "is_correct"]).to_excel(writer, sheet_name='Success', index=False)
+            
+        if failed_data:
+            df_failed = pd.DataFrame(failed_data)
+            df_failed.to_excel(writer, sheet_name='Failed', index=False)
+        else:
+            pd.DataFrame(columns=["index", "query", "target", "output", "is_correct"]).to_excel(writer, sheet_name='Failed', index=False)
     
     # 直接返回文件下载
     return FileResponse(
         export_path,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=f"errors_{task_id}.xlsx"
+        filename=f"results_{task_id}.xlsx"
     )

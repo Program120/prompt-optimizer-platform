@@ -14,9 +14,34 @@ async def list_projects():
     return storage.get_projects()
 
 @router.post("")
-async def create_project(name: str = Form(...), prompt: str = Form(...)):
+async def create_project(name: str = Form(...), prompt: str = Form("...")):
     from starlette.concurrency import run_in_threadpool
     return await run_in_threadpool(storage.create_project, name, prompt)
+
+@router.delete("/{project_id}")
+async def delete_project(project_id: str, password: str = Form(...)):
+    """
+    删除项目
+    需要校验密码
+    """
+    import os
+    from dotenv import load_dotenv
+    
+    # 重新加载环境变量以确保获取最新值
+    load_dotenv(override=True)
+    expected_password = os.getenv("PROJECT_DELETE_PASSWORD")
+    
+    if not expected_password:
+        raise HTTPException(status_code=500, detail="Server configuration error: Delete password not set")
+        
+    if password != expected_password:
+        raise HTTPException(status_code=403, detail="Invalid password")
+        
+    success = storage.delete_project(project_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    return {"success": True, "message": "Project deleted"}
 
 @router.get("/{project_id}")
 async def get_project(project_id: str):

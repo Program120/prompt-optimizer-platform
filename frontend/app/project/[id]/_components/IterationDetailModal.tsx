@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { History, X } from "lucide-react";
 import * as Diff from "diff";
+import { useEffect } from "react";
 
 interface IterationDetailModalProps {
     selectedIteration: any;
@@ -10,6 +11,16 @@ interface IterationDetailModalProps {
 
 export default function IterationDetailModal({ selectedIteration, onClose, onApply }: IterationDetailModalProps) {
     if (!selectedIteration) return null;
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                onClose();
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onClose]);
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">

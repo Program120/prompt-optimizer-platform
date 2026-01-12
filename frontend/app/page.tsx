@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Plus, Rocket, FileText, ChevronRight, Activity, Settings } from "lucide-react";
+import { Plus, Rocket, FileText, ChevronRight, Activity, Settings, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // 统一使用相对路径，由 Next.js rewrites 转发到后端
@@ -13,6 +13,9 @@ export default function Home() {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [newProject, setNewProject] = useState({ name: "", prompt: "" });
+
+  const [deleteModal, setDeleteModal] = useState<{ show: boolean; projectId: string | null }>({ show: false, projectId: null });
+  const [password, setPassword] = useState("");
 
   useEffect(() => {
     fetchProjects();
@@ -42,6 +45,20 @@ export default function Home() {
       fetchProjects();
     } catch (e) {
       alert("创建失败");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteModal.projectId || !password) return;
+    const formData = new FormData();
+    formData.append("password", password);
+    try {
+      await axios.delete(`${API_BASE}/projects/${deleteModal.projectId}`, { data: formData, headers: { "Content-Type": "multipart/form-data" } });
+      setDeleteModal({ show: false, projectId: null });
+      setPassword("");
+      fetchProjects();
+    } catch (e: any) {
+      alert(e.response?.data?.detail || "删除失败，请检查密码");
     }
   };
 
@@ -75,14 +92,26 @@ export default function Home() {
                 key={p.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="glass p-6 rounded-2xl group hover:border-white/20 transition-all cursor-pointer"
+                className="glass p-6 rounded-2xl group hover:border-white/20 transition-all cursor-pointer relative"
                 onClick={() => window.location.href = `/project/${p.id}`}
               >
                 <div className="flex justify-between items-start mb-4">
                   <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400">
                     <Rocket size={24} />
                   </div>
-                  <ChevronRight size={20} className="text-slate-600 group-hover:text-slate-400 group-hover:translate-x-1 transition-all" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteModal({ show: true, projectId: p.id });
+                      }}
+                      className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                      title="删除项目"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                    <ChevronRight size={20} className="text-slate-600 group-hover:text-slate-400 group-hover:translate-x-1 transition-all" />
+                  </div>
                 </div>
                 <h3 className="text-xl font-semibold mb-2 group-hover:text-blue-400 transition-colors">{p.name}</h3>
                 <p className="text-slate-400 text-sm line-clamp-2 mb-4">
@@ -142,6 +171,49 @@ export default function Home() {
                   className="flex-1 bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20"
                 >
                   创建
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {deleteModal.show && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="glass w-full max-w-md p-8 rounded-3xl"
+          >
+            <h2 className="text-2xl font-bold mb-2 text-red-500">删除项目</h2>
+            <p className="text-slate-400 mb-6 text-sm">此操作不可恢复。请输入管理密码以确认删除。</p>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">管理密码</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-red-500 transition-colors"
+                  placeholder="请输入密码..."
+                />
+              </div>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    setDeleteModal({ show: false, projectId: null });
+                    setPassword("");
+                  }}
+                  className="flex-1 px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium border border-white/10"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="flex-1 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-red-900/20"
+                >
+                  确认删除
                 </button>
               </div>
             </div>

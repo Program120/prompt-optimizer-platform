@@ -184,9 +184,27 @@ class TaskManager:
                 data = json.loads(json_str)
                 
                 # 如果指定了提取字段
-                if extract_field and extract_field in data:
-                   val = str(data[extract_field]).lower()
-                   return val == target
+                if extract_field:
+                    # 支持 Python 表达式 extraction (以 py: 开头)
+                    if extract_field.startswith("py:"):
+                        expression = extract_field[3:].strip()
+                        try:
+                            # 允许在表达式中使用 data 变量
+                            # 注意：eval 有安全风险，但在内部工具场景下通常可接受
+                            val = eval(expression, {"__builtins__": None}, {"data": data})
+                            
+                            # 如果表达式返回 True (比如也可以直接由表达式做判断)
+                            if isinstance(val, bool):
+                                return val
+                                
+                            return str(val).lower() == target
+                        except Exception as e:
+                            logging.warning(f"Expression eval failed: {e}")
+                            return False
+
+                    if extract_field in data:
+                       val = str(data[extract_field]).lower()
+                       return val == target
                 
                 # 未指定字段，遍历所有值
                 for val in data.values():

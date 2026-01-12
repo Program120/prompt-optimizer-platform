@@ -147,7 +147,7 @@ export default function ExecutionPanel({
                         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                         placeholder="例如: intent (如果模型输出是 JSON)"
                     />
-                    <p className="text-xs text-slate-500">若模型输出为 {`{"intent": "咨询"}`}, 请填写 intent。留空则进行全文匹配。</p>
+                    <p className="text-xs text-slate-500">若模型输出为 {`{"intent": "咨询"}`}, 请填写 intent。支持高级模式: py: data['intent']</p>
                 </div>
 
                 {/* 自动迭代配置 */}

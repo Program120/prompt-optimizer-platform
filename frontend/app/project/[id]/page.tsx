@@ -199,6 +199,7 @@ export default function ProjectDetail() {
         // 校验模型配置
         if (!project.model_config || !project.model_config.api_key) {
             showToast("请先在右上角【模型配置】中设置 API Key", "error");
+            setShowConfig(true);
             return;
         }
 
@@ -266,6 +267,13 @@ export default function ProjectDetail() {
     const startAutoIterate = async () => {
         if (!fileInfo || !config.query_col || !config.target_col) {
             alert("请先上传文件并配置列映射");
+            return;
+        }
+
+        // 校验优化模型配置
+        if (!project.optimization_model_config || !project.optimization_model_config.api_key) {
+            showToast("请先在【模型配置】-【优化配置】中配置模型参数(API Key)", "error");
+            setShowConfig(true);
             return;
         }
 
@@ -425,7 +433,7 @@ export default function ProjectDetail() {
                     initial={{ opacity: 0, y: -50, x: "-50%" }}
                     animate={{ opacity: 1, y: 0, x: "-50%" }}
                     exit={{ opacity: 0, y: -50 }}
-                    className={`fixed top-6 left-1/2 z-50 px-6 py-3 rounded-xl shadow-lg ${toast.type === "success"
+                    className={`fixed top-6 left-1/2 z-[100] px-6 py-3 rounded-xl shadow-lg ${toast.type === "success"
                         ? "bg-emerald-600 text-white"
                         : "bg-red-600 text-white"
                         }`}
