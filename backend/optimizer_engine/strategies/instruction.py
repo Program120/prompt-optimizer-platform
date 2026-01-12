@@ -114,7 +114,7 @@ class InstructionRefinementStrategy(BaseStrategy):
             ],
             temperature=float(self.model_config.get("temperature", 0.7)),
             max_tokens=int(self.model_config.get("max_tokens", 2000)),
-            timeout=int(self.model_config.get("timeout", 120)),
+            timeout=int(self.model_config.get("timeout", 180)),
             extra_body=self.model_config.get("extra_body")
         )
         

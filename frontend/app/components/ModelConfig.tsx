@@ -70,7 +70,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         base_url: "",
         api_key: "",
         max_tokens: 2000,
-        timeout: 60,
+        timeout: 180,  // 优化任务需要更长的超时时间
         model_name: "gpt-3.5-turbo",
         temperature: 0.7,
         extra_body: "",
