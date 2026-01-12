@@ -67,6 +67,10 @@ async def update_project(
 ):
     """保存/更新项目配置"""
     import json as json_lib
+    from loguru import logger
+    
+    logger.info(f"Update project {project_id} - Prompt len: {len(current_prompt) if current_prompt else 0}")
+    
     config = {
         "query_col": query_col,
         "target_col": target_col,

@@ -77,13 +77,13 @@ export default function HistoryPanel({ taskStatus, project, onSelectLog, onSelec
 
                                     <div className="flex justify-end pt-2 border-t border-white/5">
                                         <a
-                                            href={`/api/projects/tasks/${it.task_id}/dataset`}
+                                            href={`/api/tasks/${it.task_id}/export`}
                                             target="_blank"
                                             rel="noreferrer"
                                             onClick={(e) => e.stopPropagation()}
                                             className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
                                         >
-                                            <Download size={12} /> 下载数据集
+                                            <Download size={12} /> 下载验证结果
                                         </a>
                                     </div>
                                 </div>
