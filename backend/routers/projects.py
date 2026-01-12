@@ -145,10 +145,18 @@ async def optimize_project_prompt(project_id: str, task_id: str):
         raise HTTPException(status_code=500, detail=f"优化失败: {str(e)}")
     
     # 保存一轮迭代
+    dataset_path = task_status.get("file_path")
+    dataset_name = None
+    if dataset_path:
+        import os
+        dataset_name = os.path.basename(dataset_path)
+
     project["iterations"].append({
         "old_prompt": project["current_prompt"],
         "new_prompt": new_prompt,
         "task_id": task_id,
+        "dataset_path": dataset_path,
+        "dataset_name": dataset_name,
         "accuracy": (len(task_status["results"]) - len(task_status["errors"])) / len(task_status["results"]) if task_status["results"] else 0,
         "created_at": datetime.now().isoformat()
     })
@@ -162,6 +170,31 @@ async def optimize_project_prompt(project_id: str, task_id: str):
     storage.save_projects(projects)
     
     return {"new_prompt": new_prompt}
+
+
+@router.get("/tasks/{task_id}/dataset")
+async def download_task_dataset(task_id: str):
+    """
+    下载任务使用的数据集
+    :param task_id: 任务ID
+    :return: 文件流
+    """
+    from fastapi.responses import FileResponse
+    import os
+    
+    task_status = tm.get_task_status(task_id)
+    if not task_status:
+        # 尝试直接从 storage 获取，防止内存中没有
+        task_status = storage.get_task_status(task_id)
+        
+    if not task_status:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    file_path = task_status.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Dataset file not found")
+        
+    return FileResponse(file_path, filename=os.path.basename(file_path))
 
 
 @router.get("/{project_id}/optimize-context")

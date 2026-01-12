@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Download } from "lucide-react";
 
 interface HistoryPanelProps {
     taskStatus: any;
@@ -65,8 +65,27 @@ export default function HistoryPanel({ taskStatus, project, onSelectLog, onSelec
                                     <span className="text-[10px] text-slate-600">{new Date(it.created_at).toLocaleString()}</span>
                                 </div>
                                 <div className="text-xs bg-white/5 rounded-lg p-3 border border-white/5 hover:bg-white/10 transition-colors">
-                                    <div className="text-emerald-400 font-bold mb-1">准确率: {(it.accuracy * 100).toFixed(1)}%</div>
-                                    <p className="text-slate-500 line-clamp-3 italic">"{it.new_prompt}"</p>
+                                    <div className="flex justify-between items-start mb-1">
+                                        <div className="text-emerald-400 font-bold">准确率: {(it.accuracy * 100).toFixed(1)}%</div>
+                                        {it.dataset_name && (
+                                            <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded-full truncate max-w-[120px]" title={it.dataset_name}>
+                                                {it.dataset_name}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-slate-500 line-clamp-3 italic mb-2">"{it.new_prompt}"</p>
+
+                                    <div className="flex justify-end pt-2 border-t border-white/5">
+                                        <a
+                                            href={`/api/projects/tasks/${it.task_id}/dataset`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                                        >
+                                            <Download size={12} /> 下载数据集
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         ))}
