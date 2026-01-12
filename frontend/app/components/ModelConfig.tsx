@@ -238,6 +238,7 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
         formData.append("base_url", targetConfig.base_url);
         formData.append("api_key", targetConfig.api_key);
         formData.append("model_name", targetConfig.model_name);
+        formData.append("max_tokens", String(targetConfig.max_tokens));
 
         // Add extra params
         if (targetConfig.extra_body) {
@@ -329,7 +330,7 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
             )}
 
             {(!cfg.validation_mode || cfg.validation_mode === "llm") && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-2">模型名称</label>
                         <input
@@ -338,6 +339,15 @@ export default function ModelConfig({ onClose, projectId, onSave }: { onClose: (
                             onChange={e => setCfg({ ...cfg, model_name: e.target.value })}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
                             placeholder="gpt-3.5-turbo"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">最大 Token (Output)</label>
+                        <input
+                            type="number"
+                            value={cfg.max_tokens}
+                            onChange={e => setCfg({ ...cfg, max_tokens: parseInt(e.target.value) || 2000 })}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
                         />
                     </div>
                     <div>

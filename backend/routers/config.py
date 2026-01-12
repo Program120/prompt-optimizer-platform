@@ -36,6 +36,7 @@ async def test_config(
     base_url: str = Form(...), 
     api_key: str = Form(...),
     model_name: str = Form("gpt-3.5-turbo"),
+    max_tokens: int = Form(5),
     temperature: float = Form(0.0),
     validation_mode: str = Form("llm"),
     interface_code: str = Form(""),
@@ -134,7 +135,7 @@ async def test_config(
             await client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "user", "content": "Hi"}],
-                max_tokens=5,
+                max_tokens=max_tokens,
                 timeout=10,
                 temperature=temperature,
                 extra_body=extra_body_dict
