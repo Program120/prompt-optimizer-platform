@@ -8,6 +8,34 @@ import { useToast } from "./ui/Toast";
 // 统一使用相对路径
 const API_BASE: string = "/api";
 
+// 默认优化提示词（与后端 prompts.py 保持一致）
+const DEFAULT_OPTIMIZATION_PROMPT: string = `你是一个专业的AI提示词工程专家。
+
+你的任务是优化用户提供的【系统级提示词】。这个提示词是用来指导AI模型完成特定任务的指令。
+
+## 你需要做的事情：
+1. 分析【当前提示词】中可能导致错误的问题
+2. 根据【错误样例】理解模型输出的问题所在
+3. 输出一个【完整的、优化后的系统级提示词】
+
+## 重要规则：
+- 你输出的必须是完整的、可以直接使用的【系统提示词】
+- 不要输出示例输出、不要输出解释
+- 保持原有提示词的核心意图和输出格式要求
+- 让指令更加清晰明确，避免歧义
+- 可以添加更多限制条件和边界情况的处理说明
+
+## 当前使用的系统提示词：
+\`\`\`
+{old_prompt}
+\`\`\`
+
+## 模型执行时出现的错误样例：
+{error_samples}
+
+## 任务：
+请输出优化后的【完整系统提示词】（直接输出提示词内容，不要添加任何其他说明）：`;
+
 export default function ModelConfig({ onClose, projectId }: { onClose: () => void; projectId?: string }) {
     const { success, error, toast } = useToast();
     const [activeTab, setActiveTab] = useState<"verification" | "optimization">("verification");
@@ -289,16 +317,26 @@ export default function ModelConfig({ onClose, projectId }: { onClose: () => voi
 
                     {activeTab === "optimization" && (
                         <div className="flex flex-col h-full">
-                            <label className="block text-sm font-medium text-slate-400 mb-2">优化提示词模板 (System Prompt)</label>
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="block text-sm font-medium text-slate-400">优化提示词模板 (System Prompt)</label>
+                                {optPrompt && (
+                                    <button
+                                        onClick={() => setOptPrompt("")}
+                                        className="text-xs text-slate-500 hover:text-blue-400 transition-colors"
+                                    >
+                                        恢复默认
+                                    </button>
+                                )}
+                            </div>
                             <textarea
-                                value={optPrompt}
+                                value={optPrompt || DEFAULT_OPTIMIZATION_PROMPT}
                                 onChange={e => setOptPrompt(e.target.value)}
-                                className="flex-1 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm font-mono"
+                                className="flex-1 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm font-mono min-h-[200px]"
                                 placeholder="输入优化提示词模板..."
                             />
                             <div className="mt-2 text-xs text-slate-500 space-y-1">
                                 <p>必须包含：<code className="text-blue-400">{`{old_prompt}`}</code> 和 <code className="text-blue-400">{`{error_samples}`}</code></p>
-                                <p>提示：系统会默认提供一份，留空则使用默认值。</p>
+                                <p className="text-emerald-400/60">当前显示的是{optPrompt ? "自定义" : "默认"}提示词</p>
                             </div>
                         </div>
                     )}

@@ -250,7 +250,11 @@ export default function ExecutionPanel({
                                     一键智能优化
                                 </button>
                                 <button
-                                    onClick={() => setShowExternalOptimize(true)}
+                                    onClick={() => {
+                                        // 同时打开面板和复制上下文
+                                        setShowExternalOptimize(true);
+                                        onCopyOptimizeContext();
+                                    }}
                                     disabled={taskStatus.errors.length === 0}
                                     className="flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 px-4 rounded-xl font-medium transition-colors"
                                 >

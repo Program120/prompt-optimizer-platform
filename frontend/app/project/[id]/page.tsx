@@ -43,6 +43,8 @@ export default function ProjectDetail() {
 
     const [showExternalOptimize, setShowExternalOptimize] = useState(false);
     const [externalPrompt, setExternalPrompt] = useState("");
+    // 存储从后端获取的优化上下文
+    const [optimizeContext, setOptimizeContext] = useState<string>("");
     const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
     const showToast = (message: string, type: "success" | "error" = "success") => {
@@ -294,39 +296,47 @@ export default function ProjectDetail() {
         } catch (e) { console.error(e); }
     };
 
-    const generateOptimizeContext = () => {
-        if (!taskStatus?.errors?.length) return "";
-
-        let errorSamples = "| 用户输入 | 预期输出 | 模型实际输出 |\n| :--- | :--- | :--- |\n";
-        taskStatus.errors.slice(0, 10).forEach((err: any) => {
-            const query = (err.query || "").toString().replace(/\n/g, " ").replace(/\|/g, "\\|");
-            const target = (err.target || "").toString().replace(/\n/g, " ").replace(/\|/g, "\\|");
-            const output = (err.output || "").toString().replace(/\n/g, " ").replace(/\|/g, "\\|");
-            errorSamples += `| ${query} | ${target} | ${output} |\n`;
-        });
-
-        return `你是一个专业的AI提示词工程专家。请优化以下系统提示词。
-
-        ## 当前使用的系统提示词：
-        \`\`\`
-        ${project.current_prompt}
-        \`\`\`
-
-        ## 模型执行时出现的错误样例（共${taskStatus.errors.length}个错误）：
-        ${errorSamples}
-
-        ## 任务：
-        请输出优化后的【完整系统提示词】（直接输出提示词内容，不要添加任何其他说明）：`;
+    /**
+     * 从后端获取优化上下文
+     * @returns 优化上下文字符串
+     */
+    const fetchOptimizeContext = async (): Promise<string> => {
+        if (!taskStatus?.id || !taskStatus?.errors?.length) {
+            return "";
+        }
+        try {
+            const res = await axios.get(
+                `${API_BASE}/projects/${id}/optimize-context?task_id=${taskStatus.id}`
+            );
+            return res.data.context || "";
+        } catch (e: any) {
+            console.error("Failed to fetch optimize context:", e);
+            throw new Error(e.response?.data?.detail || "获取优化上下文失败");
+        }
     };
 
+    /**
+     * 复制优化上下文到剪贴板
+     */
     const copyOptimizeContext = async () => {
-        const context = generateOptimizeContext();
         try {
+            const context: string = await fetchOptimizeContext();
+            if (!context) {
+                showToast("没有可用的优化上下文", "error");
+                return;
+            }
+            // 更新状态，方便在面板中显示供手动复制
+            setOptimizeContext(context);
             await navigator.clipboard.writeText(context);
             showToast("优化上下文已复制到剪贴板！", "success");
         } catch (e: any) {
             console.error("Clipboard write failed:", e);
-            showToast(`复制失败: ${e.message || "请手动复制"}`, "error");
+            // 即使复制失败，也尝试更新状态以便手动复制
+            try {
+                const context: string = await fetchOptimizeContext();
+                setOptimizeContext(context);
+            } catch { }
+            showToast(`复制失败, 请手动复制, 原因: ${e.message}`, "error");
         }
     };
 
@@ -464,7 +474,7 @@ export default function ProjectDetail() {
                         setExternalPrompt={setExternalPrompt}
                         onCopyOptimizeContext={copyOptimizeContext}
                         onApplyExternalOptimize={applyExternalOptimize}
-                        optimizeContext={generateOptimizeContext()}
+                        optimizeContext={optimizeContext}
                     />
                 </div>
 

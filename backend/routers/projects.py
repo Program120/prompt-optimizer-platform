@@ -3,10 +3,11 @@ from typing import Optional
 from datetime import datetime
 import storage
 from task_manager import TaskManager
-from optimizer import optimize_prompt
+from optimizer import optimize_prompt, generate_optimize_context
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 tm = TaskManager()
+
 
 @router.get("")
 async def list_projects():
@@ -161,3 +162,36 @@ async def optimize_project_prompt(project_id: str, task_id: str):
     storage.save_projects(projects)
     
     return {"new_prompt": new_prompt}
+
+
+@router.get("/{project_id}/optimize-context")
+async def get_optimize_context(project_id: str, task_id: str):
+    """
+    获取优化上下文，用于外部优化功能
+    :param project_id: 项目ID
+    :param task_id: 任务ID
+    :return: 格式化后的优化上下文
+    """
+    project = storage.get_project(project_id)
+    task_status = tm.get_task_status(task_id)
+    
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not task_status:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    errors: list = task_status.get("errors", [])
+    if not errors:
+        raise HTTPException(status_code=400, detail="没有错误样例，无法生成优化上下文")
+    
+    # 获取优化提示词模板
+    optimization_prompt: str = project.get("optimization_prompt", "")
+    
+    # 生成优化上下文
+    context: str = generate_optimize_context(
+        old_prompt=project["current_prompt"],
+        errors=errors,
+        system_prompt_template=optimization_prompt if optimization_prompt else None
+    )
+    
+    return {"context": context, "error_count": len(errors)}
