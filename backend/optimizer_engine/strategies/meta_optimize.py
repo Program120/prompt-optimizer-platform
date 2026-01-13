@@ -138,32 +138,7 @@ class MetaOptimizationStrategy(BaseStrategy):
             lines.append(f"  预期: {e.get('target', '')} | 实际: {e.get('output', '')}")
         return "\n".join(lines)
     
-    def _call_llm(self, prompt: str) -> str:
-        """
-        调用 LLM
-        
-        :param prompt: 提示词
-        :return: LLM 响应内容
-        """
-        if not self.llm_client:
-            raise ValueError("LLM client not configured")
-        
-        response = self.llm_client.chat.completions.create(
-            model=self.model_config.get("model_name", "gpt-3.5-turbo"),
-            messages=[
-                {"role": "system", "content": "You are a prompt optimization expert."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=float(self.model_config.get("temperature", 0.7)),
-            max_tokens=int(self.model_config.get("max_tokens", 4000)),
-            timeout=int(self.model_config.get("timeout", 180)),
-            extra_body=self.model_config.get("extra_body")
-        )
 
-        
-        content = response.choices[0].message.content.strip()
-        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
-        return content
         
     def _build_intent_analysis(
         self, 
