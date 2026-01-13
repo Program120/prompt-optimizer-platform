@@ -4,6 +4,8 @@ from .strategy_matcher import StrategyMatcher, STRATEGY_PRESETS, STRATEGY_CLASSE
 from .multi_strategy import MultiStrategyOptimizer
 from .prompt_rewriter import PromptRewriter
 from .fewshot_selector import FewShotSelector
+from .knowledge_base import OptimizationKnowledgeBase
+from .intent_analyzer import IntentAnalyzer
 from .strategies import (
     BaseStrategy,
     BoundaryClarificationStrategy,
@@ -18,6 +20,8 @@ __all__ = [
     "StrategyMatcher",
     "PromptRewriter",
     "FewShotSelector",
+    "OptimizationKnowledgeBase",
+    "IntentAnalyzer",
     
     # 诊断
     "diagnose_prompt_performance",
@@ -33,3 +37,4 @@ __all__ = [
     "STRATEGY_PRESETS",
     "STRATEGY_CLASSES"
 ]
+

@@ -125,7 +125,8 @@ async def multi_strategy_optimize(
     dataset: list = None,
     total_count: int = None,
     strategy_mode: str = "auto",
-    max_strategies: int = 1
+    max_strategies: int = 1,
+    project_id: str = None
 ) -> dict:
     """
     使用多策略优化引擎优化提示词
@@ -137,6 +138,7 @@ async def multi_strategy_optimize(
     :param total_count: 总样本数（用于计算准确率）
     :param strategy_mode: 策略模式 (auto, initial, precision_focus, recall_focus, advanced)
     :param max_strategies: 最多应用的策略数量
+    :param project_id: 项目ID（用于知识库记录，可选）
     :return: 优化结果字典，包含 optimized_prompt, diagnosis, applied_strategies, message
     """
     if not errors:
@@ -160,14 +162,15 @@ async def multi_strategy_optimize(
         model_config=model_config
     )
     
-    # 执行优化
+    # 执行优化（传入 project_id 以启用知识库功能）
     result = await optimizer.optimize(
         prompt=old_prompt,
         errors=errors,
         dataset=dataset,
         total_count=total_count,
         strategy_mode=strategy_mode,
-        max_strategies=max_strategies
+        max_strategies=max_strategies,
+        project_id=project_id
     )
     
     return result

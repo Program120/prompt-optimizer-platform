@@ -11,5 +11,5 @@ loguru
 scikit-learn
 numpy
 networkx
-starlette==0.50.0
-fastapi==0.120.0
+starlette
+fastapi

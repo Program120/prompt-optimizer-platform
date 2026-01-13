@@ -1,10 +1,10 @@
 """元提示词优化策略 - 使用LLM自我优化提示词"""
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .base import BaseStrategy
 
 
-META_OPTIMIZATION_PROMPT = """你是一个提示词优化专家。请优化以下意图分类提示词：
+META_OPTIMIZATION_PROMPT: str = """你是一个提示词优化专家。请优化以下意图分类提示词：
 
 ## 当前提示词
 {prompt}
@@ -15,6 +15,15 @@ META_OPTIMIZATION_PROMPT = """你是一个提示词优化专家。请优化以�
 3. 指令清晰度评分：{instruction_clarity}/1.0
 4. 困难案例数量：{hard_cases_count}
 
+## 按意图错误率分析
+{intent_error_analysis}
+
+## Top 失败意图深度分析
+{top_failures_analysis}
+
+## 历史优化经验
+{optimization_history}
+
 ## 典型错误案例
 {error_samples}
 
@@ -24,6 +33,8 @@ META_OPTIMIZATION_PROMPT = """你是一个提示词优化专家。请优化以�
 2. 提高指令清晰度和可执行性
 3. 优化示例选择和格式
 4. 添加边界条件说明
+5. 针对高失败率意图进行重点优化
+6. 参考历史优化经验，避免重复错误
 
 ## 重要约束
 - 必须保留原有的 {{}} 模板变量（如 {{input}}, {{context}}）
@@ -60,27 +71,53 @@ class MetaOptimizationStrategy(BaseStrategy):
         errors: List[Dict[str, Any]], 
         diagnosis: Dict[str, Any]
     ) -> str:
-        """应用元优化策略"""
-        overall = diagnosis.get("overall_metrics", {})
-        error_patterns = diagnosis.get("error_patterns", {})
-        prompt_analysis = diagnosis.get("prompt_analysis", {})
+        """
+        应用元优化策略
+        
+        :param prompt: 当前提示词
+        :param errors: 错误样例列表
+        :param diagnosis: 诊断结果（包含意图分析和深度分析数据）
+        :return: 优化后的提示词
+        """
+        overall: Dict[str, Any] = diagnosis.get("overall_metrics", {})
+        error_patterns: Dict[str, Any] = diagnosis.get("error_patterns", {})
+        prompt_analysis: Dict[str, Any] = diagnosis.get("prompt_analysis", {})
+        
+        # 获取新增的分析数据
+        intent_analysis: Optional[Dict[str, Any]] = diagnosis.get("intent_analysis")
+        deep_analysis: Optional[Dict[str, Any]] = diagnosis.get("deep_analysis")
+        optimization_history: Optional[Dict[str, Any]] = diagnosis.get(
+            "optimization_history"
+        )
         
         # 格式化混淆对
-        confusion_pairs = error_patterns.get("confusion_pairs", [])
-        confusion_str = ", ".join([
+        confusion_pairs: List = error_patterns.get("confusion_pairs", [])
+        confusion_str: str = ", ".join([
             f"{p[0]} vs {p[1]}" for p in confusion_pairs[:3]
         ]) if confusion_pairs else "无明显混淆"
         
         # 构建错误样例
-        error_samples = self._build_error_samples(errors[:10])
+        error_samples: str = self._build_error_samples(errors[:10])
+        
+        # 构建意图错误分析文本
+        intent_error_analysis: str = self._build_intent_analysis(intent_analysis)
+        
+        # 构建 Top 失败意图深度分析文本
+        top_failures_analysis: str = self._build_deep_analysis(deep_analysis)
+        
+        # 构建历史优化经验文本
+        history_text: str = self._build_history_text(optimization_history)
         
         # 构建元优化提示
-        optimize_prompt = META_OPTIMIZATION_PROMPT.format(
+        optimize_prompt: str = META_OPTIMIZATION_PROMPT.format(
             prompt=prompt,
             accuracy=overall.get("accuracy", 0),
             confusion_pairs=confusion_str,
             instruction_clarity=prompt_analysis.get("instruction_clarity", 0.5),
             hard_cases_count=len(error_patterns.get("hard_cases", [])),
+            intent_error_analysis=intent_error_analysis,
+            top_failures_analysis=top_failures_analysis,
+            optimization_history=history_text,
             error_samples=error_samples
         )
         
@@ -100,7 +137,12 @@ class MetaOptimizationStrategy(BaseStrategy):
         return "\n".join(lines)
     
     def _call_llm(self, prompt: str) -> str:
-        """调用 LLM"""
+        """
+        调用 LLM
+        
+        :param prompt: 提示词
+        :return: LLM 响应内容
+        """
         if not self.llm_client:
             raise ValueError("LLM client not configured")
         
@@ -119,3 +161,106 @@ class MetaOptimizationStrategy(BaseStrategy):
         content = response.choices[0].message.content.strip()
         content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
         return content
+        
+    def _build_intent_analysis(
+        self, 
+        intent_analysis: Optional[Dict[str, Any]]
+    ) -> str:
+        """
+        构建意图错误分析文本
+        
+        :param intent_analysis: 意图分析数据
+        :return: 格式化的分析文本
+        """
+        if not intent_analysis:
+            return "暂无意图分析数据"
+            
+        top_failures: List[Dict[str, Any]] = intent_analysis.get(
+            "top_failing_intents", []
+        )[:5]
+        
+        if not top_failures:
+            return "无明显失败意图"
+            
+        lines: List[str] = ["| 意图 | 错误数 | 主要混淆目标 |"]
+        lines.append("| :--- | :---: | :--- |")
+        
+        for failure in top_failures:
+            intent: str = failure.get("intent", "")
+            error_count: int = failure.get("error_count", 0)
+            confusion_targets: List[Dict[str, Any]] = failure.get(
+                "confusion_targets", []
+            )
+            confusion_str: str = ", ".join([
+                ct["target"] for ct in confusion_targets[:2]
+            ]) if confusion_targets else "-"
+            
+            lines.append(f"| {intent} | {error_count} | {confusion_str} |")
+            
+        return "\n".join(lines)
+        
+    def _build_deep_analysis(
+        self, 
+        deep_analysis: Optional[Dict[str, Any]]
+    ) -> str:
+        """
+        构建 Top 失败意图深度分析文本
+        
+        :param deep_analysis: 深度分析数据
+        :return: 格式化的分析文本
+        """
+        if not deep_analysis:
+            return "暂无深度分析"
+            
+        analyses: List[Dict[str, Any]] = deep_analysis.get("analyses", [])
+        
+        if not analyses:
+            return "暂无深度分析"
+            
+        lines: List[str] = []
+        for analysis in analyses[:3]:
+            intent: str = analysis.get("intent", "")
+            analysis_text: str = analysis.get("analysis", "")
+            
+            lines.append(f"### {intent}")
+            # 截断过长的分析
+            if len(analysis_text) > 300:
+                analysis_text = analysis_text[:300] + "..."
+            lines.append(analysis_text)
+            lines.append("")
+            
+        return "\n".join(lines) if lines else "暂无深度分析"
+        
+    def _build_history_text(
+        self, 
+        optimization_history: Optional[Dict[str, Any]]
+    ) -> str:
+        """
+        构建历史优化经验文本
+        
+        :param optimization_history: 历史优化数据
+        :return: 格式化的历史文本
+        """
+        if not optimization_history:
+            return "暂无历史优化记录"
+            
+        version: int = optimization_history.get("version", 0)
+        summary: str = optimization_history.get("analysis_summary", "")
+        strategies: List[str] = optimization_history.get("applied_strategies", [])
+        acc_before: float = optimization_history.get("accuracy_before", 0)
+        acc_after: Optional[float] = optimization_history.get("accuracy_after")
+        
+        lines: List[str] = [f"### 上次优化 (版本 {version})"]
+        lines.append(f"- 优化前准确率: {acc_before:.1%}")
+        if acc_after is not None:
+            lines.append(f"- 优化后准确率: {acc_after:.1%}")
+        lines.append(f"- 应用策略: {', '.join(strategies)}")
+        
+        if summary:
+            # 截断过长的总结
+            if len(summary) > 200:
+                summary = summary[:200] + "..."
+            lines.append(f"- 优化总结: {summary}")
+            
+        return "\n".join(lines)
+

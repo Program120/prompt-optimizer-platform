@@ -6,21 +6,45 @@ from .diagnosis import diagnose_prompt_performance
 from .strategy_matcher import StrategyMatcher
 from .prompt_rewriter import PromptRewriter
 from .fewshot_selector import FewShotSelector
+from .knowledge_base import OptimizationKnowledgeBase
+from .intent_analyzer import IntentAnalyzer
+
 
 class MultiStrategyOptimizer:
-    """多策略优化器 - 协调多种策略进行提示词优化"""
+    """
+    多策略优化器 - 协调多种策略进行提示词优化
+    
+    增强功能：
+    - 集成意图分析器，对失败意图进行深度分析
+    - 集成知识库，记录每次优化的版本信息
+    """
     
     def __init__(
         self, 
         llm_client=None, 
         model_config: Dict[str, Any] = None
     ):
+        """
+        初始化多策略优化器
+        
+        :param llm_client: LLM 客户端实例
+        :param model_config: 模型配置
+        """
         self.llm_client = llm_client
-        self.model_config = model_config or {}
-        self.matcher = StrategyMatcher(llm_client, model_config)
-        self.rewriter = PromptRewriter()
-        self.selector = FewShotSelector()
-        self.logger = logging.getLogger(__name__)
+        self.model_config: Dict[str, Any] = model_config or {}
+        self.matcher: StrategyMatcher = StrategyMatcher(llm_client, model_config)
+        self.rewriter: PromptRewriter = PromptRewriter()
+        self.selector: FewShotSelector = FewShotSelector()
+        self.logger: logging.Logger = logging.getLogger(__name__)
+        
+        # 初始化意图分析器
+        self.intent_analyzer: IntentAnalyzer = IntentAnalyzer(
+            llm_client, 
+            model_config
+        )
+        
+        # 知识库延迟初始化（需要 project_id）
+        self.knowledge_base: Optional[OptimizationKnowledgeBase] = None
     
     async def optimize(
         self,
@@ -29,26 +53,43 @@ class MultiStrategyOptimizer:
         dataset: List[Dict[str, Any]] = None,
         total_count: int = None,
         strategy_mode: str = "auto",
-        max_strategies: int = 3
+        max_strategies: int = 3,
+        project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        执行多策略优化 (五阶段工作流)
+        执行多策略优化（增强版七阶段工作流）
         
-        1. 诊断分析
-        2. 策略匹配
-        3. 并行优化(候选生成)
-        4. 快速筛选
-        5. 精细评估
+        1. 初始化知识库（如有 project_id）
+        2. 诊断分析
+        3. 意图详细分析
+        4. Top 失败意图深度分析
+        5. 策略匹配
+        6. 候选生成与评估
+        7. 记录到知识库
+        
+        :param prompt: 当前提示词
+        :param errors: 错误样例列表
+        :param dataset: 完整数据集（用于 few-shot 选择）
+        :param total_count: 总样本数（用于计算准确率）
+        :param strategy_mode: 策略模式（auto/initial/precision_focus 等）
+        :param max_strategies: 最多应用的策略数量
+        :param project_id: 项目ID（用于知识库）
+        :return: 优化结果字典
         """
         if not errors:
             return {"optimized_prompt": prompt, "message": "无错误样例，无需优化"}
             
-        dataset = dataset or errors  # 如果没有提供数据集，使用错误集作为数据源
+        dataset = dataset or errors
         
-        # 阶段1：诊断分析
+        # 阶段 0：初始化知识库
+        if project_id:
+            self.knowledge_base = OptimizationKnowledgeBase(project_id)
+            self.logger.info(f"Step 0: 初始化知识库 (Project: {project_id})")
+        
+        # 阶段 1：诊断分析
         self.logger.info(f"Step 1: 诊断分析... (Errors: {len(errors)})")
         loop = asyncio.get_running_loop()
-        diagnosis = await loop.run_in_executor(
+        diagnosis: Dict[str, Any] = await loop.run_in_executor(
             None,
             lambda: diagnose_prompt_performance(
                 prompt, 
@@ -59,32 +100,97 @@ class MultiStrategyOptimizer:
             )
         )
         
-        # 阶段2：策略匹配
-        self.logger.info("Step 2: 策略匹配...")
+        # 阶段 2：意图详细分析
+        self.logger.info("Step 2: 意图详细分析...")
+        intent_analysis: Dict[str, Any] = self.intent_analyzer.analyze_errors_by_intent(
+            errors, 
+            total_count
+        )
+        
+        # 阶段 3：Top 失败意图深度分析
+        self.logger.info("Step 3: Top 失败意图深度分析...")
+        deep_analysis: Dict[str, Any] = await self.intent_analyzer.deep_analyze_top_failures(
+            errors, 
+            top_n=3
+        )
+        
+        # 将分析结果注入 diagnosis
+        diagnosis["intent_analysis"] = intent_analysis
+        diagnosis["deep_analysis"] = deep_analysis
+        
+        # 获取历史优化经验（如有知识库）
+        if self.knowledge_base:
+            diagnosis["optimization_history"] = self.knowledge_base.get_latest_analysis()
+            self.logger.info(
+                f"从知识库获取历史优化记录: "
+                f"{'有' if diagnosis['optimization_history'] else '无'}"
+            )
+        
+        # 阶段 4：策略匹配
+        self.logger.info("Step 4: 策略匹配...")
         strategies = self.matcher.match_strategies(diagnosis, max_strategies)
         if hasattr(self.matcher, 'get_preset_strategies') and strategy_mode != 'auto':
              strategies = self.matcher.get_preset_strategies(strategy_mode)[:max_strategies]
              
         if not strategies:
-             return {"optimized_prompt": prompt, "diagnosis": diagnosis, "message": "无匹配策略"}
+             return {
+                 "optimized_prompt": prompt, 
+                 "diagnosis": diagnosis, 
+                 "message": "无匹配策略"
+             }
 
-        # 阶段3：候选生成 (并行优化)
-        self.logger.info(f"Step 3: 候选生成... (Strategies: {len(strategies)})")
-        candidates = await self._generate_candidates(prompt, strategies, errors, diagnosis, dataset)
+        # 阶段 5：候选生成 (并行优化)
+        self.logger.info(f"Step 5: 候选生成... (Strategies: {len(strategies)})")
+        candidates = await self._generate_candidates(
+            prompt, strategies, errors, diagnosis, dataset
+        )
         
-        # 阶段4：快速筛选
-        self.logger.info(f"Step 4: 快速筛选... (Candidates: {len(candidates)})")
-        filtered_candidates = await self._rapid_evaluation(candidates, errors[:5]) # 使用前5个错误做快速验证
+        # 阶段 5.1：快速筛选
+        self.logger.info(f"Step 5.1: 快速筛选... (Candidates: {len(candidates)})")
+        filtered_candidates = await self._rapid_evaluation(candidates, errors[:5])
         
-        # 阶段5：精细评估 (选择最佳)
-        self.logger.info("Step 5: 选择最佳方案...")
-        best_result = self._select_best_candidate(filtered_candidates, prompt)
+        # 阶段 6：选择最佳方案
+        self.logger.info("Step 6: 选择最佳方案...")
+        best_result: Dict[str, Any] = self._select_best_candidate(
+            filtered_candidates, prompt
+        )
+        
+        # 阶段 7：记录到知识库
+        if self.knowledge_base and best_result.get("prompt") != prompt:
+            self.logger.info("Step 7: 记录优化结果到知识库...")
+            accuracy: float = diagnosis.get("overall_metrics", {}).get("accuracy", 0)
+            
+            # 生成优化总结
+            analysis_summary: str = self._generate_optimization_summary(
+                intent_analysis, 
+                deep_analysis,
+                best_result.get("strategy", "unknown")
+            )
+            
+            applied_strategies: List[str] = [
+                c["strategy"] for c in filtered_candidates
+            ]
+            
+            self.knowledge_base.record_optimization(
+                original_prompt=prompt,
+                optimized_prompt=best_result.get("prompt", prompt),
+                analysis_summary=analysis_summary,
+                intent_analysis=intent_analysis,
+                applied_strategies=applied_strategies,
+                accuracy_before=accuracy,
+                deep_analysis=deep_analysis
+            )
         
         return {
             "optimized_prompt": best_result["prompt"],
             "diagnosis": diagnosis,
-            "applied_strategies": [{"name": c["strategy"], "success": True} for c in filtered_candidates],
-            "best_strategy": best_result["strategy"],
+            "intent_analysis": intent_analysis,
+            "deep_analysis": deep_analysis,
+            "applied_strategies": [
+                {"name": c["strategy"], "success": True} 
+                for c in filtered_candidates
+            ],
+            "best_strategy": best_result.get("strategy", "none"),
             "improvement": best_result.get("score", 0),
             "candidates": [
                 {"strategy": c["strategy"], "score": c.get("score", 0)} 
@@ -255,7 +361,14 @@ class MultiStrategyOptimizer:
         errors: List[Dict[str, Any]],
         total_count: int = None
     ) -> Dict[str, Any]:
-        """仅执行诊断分析"""
+        """
+        仅执行诊断分析
+        
+        :param prompt: 当前提示词
+        :param errors: 错误样例列表
+        :param total_count: 总样本数
+        :return: 诊断结果
+        """
         return diagnose_prompt_performance(
             prompt, 
             errors, 
@@ -263,3 +376,42 @@ class MultiStrategyOptimizer:
             llm_client=self.llm_client,
             model_config=self.model_config
         )
+        
+    def _generate_optimization_summary(
+        self,
+        intent_analysis: Dict[str, Any],
+        deep_analysis: Dict[str, Any],
+        best_strategy: str
+    ) -> str:
+        """
+        生成优化总结文本
+        
+        :param intent_analysis: 意图分析结果
+        :param deep_analysis: 深度分析结果
+        :param best_strategy: 最佳策略名称
+        :return: 优化总结文本
+        """
+        lines: List[str] = []
+        
+        # 总错误数
+        total_errors: int = intent_analysis.get("total_errors", 0)
+        lines.append(f"本次优化处理了 {total_errors} 个错误样例。")
+        
+        # Top 失败意图
+        top_failures: List[Dict[str, Any]] = intent_analysis.get(
+            "top_failing_intents", []
+        )[:3]
+        if top_failures:
+            failure_names: List[str] = [f.get("intent", "") for f in top_failures]
+            lines.append(f"主要失败意图: {', '.join(failure_names)}。")
+            
+        # 深度分析结果
+        analyses: List[Dict[str, Any]] = deep_analysis.get("analyses", [])
+        if analyses:
+            lines.append(f"对 {len(analyses)} 个高失败率意图进行了深度分析。")
+            
+        # 应用的策略
+        lines.append(f"采用了 {best_strategy} 策略进行优化。")
+        
+        return " ".join(lines)
+
