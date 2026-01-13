@@ -252,7 +252,7 @@ export default function ProjectDetail() {
         // 如果是接口验证模式，不需要校验 API Key
         const isInterfaceMode = project.model_config?.validation_mode === "interface";
         if (!isInterfaceMode && (!project.model_config || !project.model_config.api_key)) {
-            showToast("请先在右上角【模型配置】中设置 API Key", "error");
+            showToast("请先在右上角【项目配置】中设置 API Key", "error");
             setShowConfig(true);
             return;
         }
@@ -360,14 +360,14 @@ export default function ProjectDetail() {
 
         // 校验模型配置 (验证模型)
         if (!project.model_config || !project.model_config.api_key) {
-            showToast("请先在【模型配置】中设置验证模型的 API Key", "error");
+            showToast("请先在【项目配置】中设置验证模型的 API Key", "error");
             return;
         }
 
         // 校验优化模型配置
         // optimization_model_config 可能为空，或者 api_key 为空
         if (!project.optimization_model_config || !project.optimization_model_config.api_key) {
-            showToast("请先在【模型配置】-【优化配置】中设置 API Key", "error");
+            showToast("请先在【项目配置】-【优化配置】中设置 API Key", "error");
             setConfigTab("optimization");
             setShowConfig(true);
             return;
@@ -404,7 +404,7 @@ export default function ProjectDetail() {
 
         // 校验优化模型配置
         if (!project.optimization_model_config || !project.optimization_model_config.api_key) {
-            showToast("请先在【模型配置】-【优化配置】中配置模型参数(API Key)", "error");
+            showToast("请先在【项目配置】-【优化配置】中配置模型参数(API Key)", "error");
             setConfigTab("optimization");
             setShowConfig(true);
             return;

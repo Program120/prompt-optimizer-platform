@@ -58,7 +58,7 @@ export default function ProjectHeader({
                     className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-xl transition-colors text-sm"
                 >
                     <Settings size={18} />
-                    模型配置
+                    项目配置
                 </button>
             </div>
         </div>

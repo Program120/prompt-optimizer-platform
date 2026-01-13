@@ -95,6 +95,36 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
     }, [projectId]);
 
     /**
+     * 监听 ESC 键关闭弹窗
+     */
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent): void => {
+            if (e.key === "Escape") {
+                onClose();
+            }
+        };
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [onClose]);
+
+    /**
+     * 弹窗打开时锁定 body 滚动，防止滚动穿透
+     */
+    useEffect(() => {
+        // 保存原始的 overflow 样式
+        const originalOverflow: string = document.body.style.overflow;
+        // 锁定滚动
+        document.body.style.overflow = "hidden";
+
+        return () => {
+            // 恢复原始样式
+            document.body.style.overflow = originalOverflow;
+        };
+    }, []);
+
+    /**
      * 获取公共模型列表
      */
     const fetchGlobalModels = async (): Promise<void> => {
@@ -637,17 +667,33 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
     );
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+            onClick={(e) => {
+                // 点击遮罩层关闭弹窗
+                if (e.target === e.currentTarget) {
+                    onClose();
+                }
+            }}
+            onWheel={(e) => {
+                // 阻止滚动事件穿透到外层
+                e.stopPropagation();
+            }}
+        >
             <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 className="glass w-full max-w-4xl rounded-2xl flex flex-col max-h-[90vh]"
+                onWheel={(e) => {
+                    // 阻止滚动事件穿透到外层
+                    e.stopPropagation();
+                }}
             >
                 {/* 固定头部 */}
                 <div className="flex items-center justify-between p-6 border-b border-white/10 flex-shrink-0">
                     <div className="flex items-center gap-3">
                         <Settings className="text-blue-400" />
-                        <h2 className="text-xl font-bold">{projectId ? "项目设置" : "全局设置"}</h2>
+                        <h2 className="text-xl font-bold">{projectId ? "项目配置" : "全局配置"}</h2>
                     </div>
                     {/* Tab 切换 */}
                     <div className="flex gap-1 bg-white/5 p-1 rounded-lg">
