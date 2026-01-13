@@ -63,7 +63,7 @@ class HardCaseDetector:
             conf_cases = self._confidence_based(predictions)
             self._add_weighted_scores(all_scores, conf_cases, "confidence")
         except Exception as e:
-            self.logger.warning(f"Confidence-based detection failed: {e}")
+            self.logger.warning(f"基于置信度的检测失败: {e}")
 
         # 2. Confusion-based detection
         try:
@@ -72,7 +72,7 @@ class HardCaseDetector:
             conf_net_cases = self._confusion_based(predictions, intents)
             self._add_weighted_scores(all_scores, conf_net_cases, "confusion")
         except Exception as e:
-            self.logger.warning(f"Confusion-based detection failed: {e}")
+            self.logger.warning(f"基于混淆矩阵的检测失败: {e}")
 
         # 3. Embedding-based detection (Boundary & Diversity)
         # Only run if we have an LLM client to generate embeddings
@@ -91,7 +91,7 @@ class HardCaseDetector:
                     diversity_cases = self._diversity_based(predictions, embeddings)
                     self._add_weighted_scores(all_scores, diversity_cases, "diversity")
             except Exception as e:
-                self.logger.warning(f"Embedding-based detection failed: {e}")
+                self.logger.warning(f"基于向量嵌入的检测失败: {e}")
         
         # 4. Ambiguity detection (Simplified for now without external NLP tools)
         # We can implement a basic version or skip if too complex without heavy NLP libs
@@ -320,7 +320,7 @@ class HardCaseDetector:
         except Exception as e:
             # Catch all embedding errors (404, 400, etc) to prevent crashing the whole optimization
             # especially for provider incompatibility (e.g. Aliyun vs OpenAI model names)
-            self.logger.warning(f"Failed to generate embeddings: {e}. Skipping embedding-based hard case detection.")
+            self.logger.warning(f"生成向量嵌入失败: {e}。跳过基于向量的困难案例检测。")
             return []
         
         return []

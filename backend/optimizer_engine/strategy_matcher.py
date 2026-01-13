@@ -9,6 +9,7 @@ from .strategies.context_optimize import ContextEnhancementStrategy
 from .strategies.multi_intent_optimize import MultiIntentStrategy
 from .strategies.domain_optimize import DomainDistinctionStrategy
 from .strategies.clarification_optimize import ClarificationMechanismStrategy
+from .strategies.cot_optimize import CoTReasoningStrategy
 
 
 # 策略组合预设
@@ -35,6 +36,7 @@ STRATEGY_PRESETS = {
         {"type": "multi_intent_optimization", "priority": 1},
         {"type": "domain_distinction", "priority": 1},
         {"type": "clarification_mechanism", "priority": 1},
+        {"type": "cot_reasoning", "priority": 1},
         {"type": "meta_optimization", "priority": 2}
     ]
 }
@@ -48,7 +50,8 @@ STRATEGY_CLASSES: Dict[str, Type[BaseStrategy]] = {
     "context_enhancement": ContextEnhancementStrategy,
     "multi_intent_optimization": MultiIntentStrategy,
     "domain_distinction": DomainDistinctionStrategy,
-    "clarification_mechanism": ClarificationMechanismStrategy
+    "clarification_mechanism": ClarificationMechanismStrategy,
+    "cot_reasoning": CoTReasoningStrategy
 }
 
 

@@ -8,6 +8,7 @@ from .context_optimize import ContextEnhancementStrategy
 from .multi_intent_optimize import MultiIntentStrategy
 from .domain_optimize import DomainDistinctionStrategy
 from .clarification_optimize import ClarificationMechanismStrategy
+from .cot_optimize import CoTReasoningStrategy
 
 __all__ = [
     "BaseStrategy",
@@ -19,5 +20,6 @@ __all__ = [
     "MultiIntentStrategy",
     "DomainDistinctionStrategy",
     "ClarificationMechanismStrategy",
+    "CoTReasoningStrategy",
 ]
 

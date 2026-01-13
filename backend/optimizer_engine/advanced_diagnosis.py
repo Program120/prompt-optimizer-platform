@@ -165,7 +165,7 @@ class AdvancedDiagnoser:
         分析领域级混淆 (需要 LLM 辅助将意图归类为领域)
         """
         if not self.llm_client or not all_intents:
-            return {"message": "Skipped due to missing LLM or intents"}
+            return {"message": "由于缺少 LLM 客户端或意图列表，已跳过领域分析"}
             
         # 1. 意图聚类/领域识别 (使用 Cache 避免重复调用?)
         # 简化版：直接让 LLM 分析错误中的混淆模式并归纳领域
@@ -180,7 +180,7 @@ class AdvancedDiagnoser:
                 
         top_pairs = confusion_pairs.most_common(5)
         if not top_pairs:
-            return {"message": "No obvious confusion pairs"}
+            return {"message": "未发现明显的混淆意图对"}
             
         # 构建 Prompt 让 LLM 分析领域关系
         pairs_text = "\n".join([f"{t} -> {o} ({c}次)" for (t, o), c in top_pairs])
@@ -211,7 +211,7 @@ class AdvancedDiagnoser:
              analysis = json.loads(response.strip())
              return analysis
         except Exception as e:
-            self.logger.warning(f"Domain analysis failed: {e}")
+            self.logger.warning(f"领域混淆分析失败: {e}")
             return {"error": str(e)}
 
     # -------------------------------------------------------------------------

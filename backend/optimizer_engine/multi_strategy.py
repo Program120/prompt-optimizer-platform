@@ -92,10 +92,11 @@ class MultiStrategyOptimizer:
         # 阶段 0：初始化知识库
         if project_id:
             self.knowledge_base = OptimizationKnowledgeBase(project_id)
-            self.logger.info(f"Step 0: 初始化知识库 (Project: {project_id})")
+            self.logger.info(f"步骤 0: 初始化知识库 (项目ID: {project_id})")
         
         # 阶段 1：诊断分析
-        self.logger.info(f"Step 1: 诊断分析... (Errors: {len(errors)})")
+        self.logger.info(f"步骤 1: 诊断分析... (错误样本数: {len(errors)})")
+        self.logger.info(f"提示词上下文: {prompt[:100]}... (总长度: {len(prompt)})")
         loop = asyncio.get_running_loop()
         diagnosis: Dict[str, Any] = await loop.run_in_executor(
             None,
@@ -107,9 +108,10 @@ class MultiStrategyOptimizer:
                 model_config=self.model_config
             )
         )
+        self.logger.info(f"诊断结果: 准确率={diagnosis.get('overall_metrics', {}).get('accuracy')}, 发现问题={list(diagnosis.get('error_patterns', {}).keys())}")
         
         # 阶段 2：意图详细分析 & 高级定向分析
-        self.logger.info("Step 2: 意图详细分析 & 高级定向分析...")
+        self.logger.info("步骤 2: 意图详细分析 & 高级定向分析...")
         intent_analysis: Dict[str, Any] = self.intent_analyzer.analyze_errors_by_intent(
             errors, 
             total_count
@@ -125,7 +127,7 @@ class MultiStrategyOptimizer:
         )
         
         # 阶段 3：Top 失败意图深度分析
-        self.logger.info("Step 3: Top 失败意图深度分析...")
+        self.logger.info("步骤 3: Top 失败意图深度分析...")
         deep_analysis: Dict[str, Any] = await self.intent_analyzer.deep_analyze_top_failures(
             errors, 
             top_n=3
@@ -146,7 +148,7 @@ class MultiStrategyOptimizer:
             )
         
         # 阶段 4：策略匹配
-        self.logger.info("Step 4: 策略匹配...")
+        self.logger.info("步骤 4: 策略匹配...")
         strategies = self.matcher.match_strategies(diagnosis, max_strategies)
         if hasattr(self.matcher, 'get_preset_strategies') and strategy_mode != 'auto':
              strategies = self.matcher.get_preset_strategies(strategy_mode)[:max_strategies]
@@ -159,24 +161,24 @@ class MultiStrategyOptimizer:
              }
 
         # 阶段 5：候选生成 (并行优化)
-        self.logger.info(f"Step 5: 候选生成... (Strategies: {len(strategies)})")
+        self.logger.info(f"步骤 5: 候选生成... (应用策略数: {len(strategies)})")
         candidates = await self._generate_candidates(
             prompt, strategies, errors, diagnosis, dataset
         )
         
         # 阶段 5.1：快速筛选
-        self.logger.info(f"Step 5.1: 快速筛选... (Candidates: {len(candidates)})")
+        self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)})")
         filtered_candidates = await self._rapid_evaluation(candidates, errors[:5])
         
         # 阶段 6：选择最佳方案
-        self.logger.info("Step 6: 选择最佳方案...")
+        self.logger.info("步骤 6: 选择最佳方案...")
         best_result: Dict[str, Any] = self._select_best_candidate(
             filtered_candidates, prompt
         )
         
         # 阶段 7：记录到知识库
         if self.knowledge_base and best_result.get("prompt") != prompt:
-            self.logger.info("Step 7: 记录优化结果到知识库...")
+            self.logger.info("步骤 7: 记录优化结果到知识库...")
             accuracy: float = diagnosis.get("overall_metrics", {}).get("accuracy", 0)
             
             # 生成优化总结
@@ -201,6 +203,9 @@ class MultiStrategyOptimizer:
                 accuracy_before=accuracy,
                 deep_analysis=deep_analysis
             )
+        
+        self.logger.info(f"优化任务结束。最终胜出策略: {best_result.get('strategy')}, 预估提升分数: {best_result.get('score', 0):.4f}")
+        self.logger.info(f"最终提示词摘要: {best_result['prompt'][:100]}... (总长度: {len(best_result['prompt'])})")
         
         return {
             "optimized_prompt": best_result["prompt"],
@@ -242,12 +247,14 @@ class MultiStrategyOptimizer:
             if isinstance(res, dict) and res.get("prompt"):
                 candidates.append(res)
             elif isinstance(res, Exception):
-                self.logger.error(f"Strategy execution failed: {res}")
-                
+                self.logger.error(f"策略执行失败: {res}")
+        
+        self.logger.info(f"成功生成 {len(candidates)} 个候选方案: {[c.get('strategy') for c in candidates]}")
         return candidates
 
     async def _apply_strategy_wrapper(self, strategy, prompt, errors, diagnosis, dataset):
         """包装策略执行逻辑"""
+        self.logger.info(f"正在应用策略: {strategy.name}")
         try:
             # 策略应用可能涉及 LLM 调用，也可能涉及 Rewriter/Selector
             # 为了兼容现有 Strategy 类，我们先尝试调用其 apply 方法
@@ -257,11 +264,6 @@ class MultiStrategyOptimizer:
             if strategy.name == "difficult_example_injection":
                 # 使用 Selector 选择困难案例
                 hard_cases = self.selector.select(dataset, "difficulty", n=3)
-                # 更新 diagnosis 里的 info 以便 strategy 使用，或者直接构造 prompt
-                # 为了保持接口兼容，我们这里还是调用 strategy.apply
-                # 但我们可以通过 modifying diagnosis 这里的 diagnosis 是引用，可能这会影响其他并发的策略？
-                # 最好 copy 一份 diagnosis，但为了简单暂不深究，因为 strategy 通常只读 diagnosis
-                # 或者只为该 strategy 创建特定的 context
                 diagnosis_copy = diagnosis.copy()
                 diagnosis_copy["error_patterns"] = diagnosis.get("error_patterns", {}).copy()
                 diagnosis_copy["error_patterns"]["hard_cases"] = hard_cases
@@ -273,9 +275,11 @@ class MultiStrategyOptimizer:
                 lambda: strategy.apply(prompt, errors, diagnosis)
             )
             
-            # 使用 Rewriter 进行后处理 (可选)
-            # 例如统一添加 CoT
-            # new_prompt = self.rewriter.rewrite(new_prompt, "add_cot") 
+            if new_prompt != prompt:
+                self.logger.info(f"策略 {strategy.name} 成功更新了提示词。长度变化: {len(prompt)} -> {len(new_prompt)}")
+                self.logger.debug(f"Diff 预览: {new_prompt[:50]}... (已应用变更)")
+            else:
+                self.logger.info(f"策略 {strategy.name} 未产生任何实质性变更。")
             
             return {
                 "strategy": strategy.name,
@@ -283,7 +287,7 @@ class MultiStrategyOptimizer:
                 "original_prompt": prompt
             }
         except Exception as e:
-            self.logger.error(f"Error applying strategy {strategy.name}: {e}")
+            self.logger.error(f"应用策略 {strategy.name} 时发生错误: {e}")
             raise e
 
     async def _rapid_evaluation(
@@ -298,6 +302,7 @@ class MultiStrategyOptimizer:
         evaluated = []
         for cand in candidates:
             score = await self._evaluate_prompt(cand["prompt"], validation_set)
+            self.logger.info(f"策略评估完毕 {cand['strategy']}: 得分 = {score:.4f}")
             cand["score"] = score
             evaluated.append(cand)
             
@@ -314,6 +319,7 @@ class MultiStrategyOptimizer:
             
         correct = 0
         total = len(test_cases)
+        self.logger.info(f"正在对提示词进行快速评估 (长度={len(prompt)})，测试案例数: {total}...")
         
         # 限制并发
         sem = asyncio.Semaphore(5)
@@ -350,6 +356,7 @@ class MultiStrategyOptimizer:
             return {"prompt": original_prompt, "strategy": "none", "score": 0}
             
         best = candidates[0]
+        self.logger.info(f"最终选定最佳策略: {best['strategy']} (评估得分: {best.get('score', 0):.4f})")
         # 如果最佳的分数还不如原始的好? (这里没测原始的，假设优化总比不优化好，或者设置阈值)
         return best
 
@@ -371,7 +378,7 @@ class MultiStrategyOptimizer:
                 )
                 return response.choices[0].message.content.strip()
             except Exception as e:
-                self.logger.error(f"LLM call failed: {e}")
+                self.logger.error(f"LLM 异步调用失败: {e}")
                 return ""
                 
         return await loop.run_in_executor(None, run_sync)

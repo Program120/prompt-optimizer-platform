@@ -58,9 +58,7 @@ class BaseStrategy(ABC):
         conservative: bool = True
     ) -> str:
         """
-        基于特定指令进行元优化的通用方法
-        
-        :param conservative: 是否开启保守模式（默认 True，稳步迭代）
+        基于特定指令进行元优化的通用方法 (Git Diff Mode)
         """
         error_text = self._build_error_samples(error_cases)
         
@@ -69,9 +67,8 @@ class BaseStrategy(ABC):
             constraint_text = """
 ## Constraints (Conservative Optimization)
 1. You MUST maintain the original structure, tone, and formatting of the prompt.
-2. Do NOT rewrite the entire prompt. Only modify specific sections to address the issues.
+2. The goal is incremental improvement.
 3. Keep all existing few-shot examples unless explicitly asked to replace them.
-4. The goal is incremental improvement, avoiding radical scale changes that might break existing capabilities.
 """
         
         optimization_prompt = f"""You are a prompt engineering expert.
@@ -86,10 +83,83 @@ Please optimize the following prompt based on the specific instruction and error
 ## Optimization Instruction
 {instruction}
 {constraint_text}
+
 ## Output Format
-Output ONLY the optimized prompt content. Do not include any explanations.
+1. **Analysis**: First, analyze the current prompt and error patterns step-by-step. Identify the root causes and plan specific improvements.
+2. **Optimization**: Then, output the Git Diff blocks to apply the changes.
+
+You MUST use the Search/Replace block format to modify the prompt. 
+Do NOT output the full prompt. Only output the modified sections.
+
+Use this format:
+<<<<<<< SEARCH
+[Exact text to be replaced from the original prompt]
+=======
+[New text to replace with]
+>>>>>>>
+
+Rules for SEARCH/REPLACE:
+1. The SEARCH block must obtain EXACTLY the text from the "Current Prompt", including whitespace and newlines.
+2. If you want to insert text, SEARCH for the adjacent line and include it in REPLACE with your new text.
+3. To delete text, leave the REPLACE block empty (but keep the line structure).
 """
-        return self._call_llm(optimization_prompt)
+        response_content = self._call_llm(optimization_prompt)
+        
+        # 应用 Diff
+        try:
+            new_prompt = self._apply_diff(prompt, response_content)
+            # 如果没有检测到任何 Diff 块但内容很长，可能是模型回退到了全量输出
+            if new_prompt == prompt and len(response_content) > len(prompt) * 0.8:
+                # 简单的启发式检查：如果 Output 也是一个完整 Prompt
+                return response_content
+            return new_prompt
+        except Exception as e:
+            print(f"Diff 应用失败: {e}。回退到原始提示词。")
+            # 可以在这里做 retry logic，请求全量输出
+            # 暂时返回原 Prompt (或者我们可以考虑抛出异常让上层处理)
+            return prompt
+
+    def _apply_diff(self, original_text: str, diff_text: str) -> str:
+        """应用 SEARCH/REPLACE Diff"""
+        import re
+        
+        # 正则匹配 SEARCH/REPLACE 块
+        pattern = re.compile(
+            r'<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>>',
+            re.DOTALL
+        )
+        
+        blocks = pattern.findall(diff_text)
+        if not blocks:
+            # 尝试宽松匹配 (允许 SEARCH 后没有换行等)
+            pattern_loose = re.compile(
+                r'<<<<<<< SEARCH\s*(.*?)\s*=======\s*(.*?)\s*>>>>>>>',
+                re.DOTALL
+            )
+            blocks = pattern_loose.findall(diff_text)
+            
+        current_text = original_text
+        applied_count = 0
+        
+        for search_block, replace_block in blocks:
+            # 尝试定位 search_block
+            # 1. 精确匹配
+            if search_block in current_text:
+                current_text = current_text.replace(search_block, replace_block, 1)
+                applied_count += 1
+                continue
+                
+            # 2. 尝试去除首尾空白匹配
+            s_stripped = search_block.strip()
+            if s_stripped and s_stripped in current_text:
+                 current_text = current_text.replace(s_stripped, replace_block.strip(), 1)
+                 applied_count += 1
+                 continue
+                 
+            # 3. 失败，记录日志 (实际生产中应该更鲁棒，这里简化)
+            print(f"警告：找不到匹配的文本块：{s_stripped[:20]}...")
+            
+        return current_text
 
     def _build_error_samples(self, errors: List[Dict[str, Any]]) -> str:
         """构建错误样例文本"""
@@ -137,6 +207,6 @@ Output ONLY the optimized prompt content. Do not include any explanations.
             return content.strip()
         except Exception as e:
             # Log error separately if possible, here we just return original prompt or re-raise
-            print(f"LLM call failed in strategy: {e}")
+            print(f"策略中的 LLM 调用失败：{e}")
             raise e
 

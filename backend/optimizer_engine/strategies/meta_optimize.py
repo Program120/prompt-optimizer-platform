@@ -35,15 +35,30 @@ META_OPTIMIZATION_PROMPT: str = """你是一个提示词优化专家。请优化
 4. 添加边界条件说明
 5. 针对高失败率意图进行重点优化
 6. 参考历史优化经验，避免重复错误
+7. **强化 CoT (思维链)**: 确保提示词引导模型进行 Step-by-Step 的推理分析
 
 ## 重要约束 (稳步迭代模式)
 - 必须保留原有的 {{}} 模板变量（如 {{input}}, {{context}}）
 - 禁止翻译或修改变量名
 - **严禁重写整个提示词**：仅针对上述问题点进行增量修改
 - **保持结构一致性**：保留原有的格式、语气和示例（除非示例显然错误）
-- 直接输出优化后的完整提示词，不要包含任何解释
+- **Use Diff Format**: Output strictly in Search/Replace block format.
 
-请直接输出优化后的提示词："""
+## Output Format
+1. **Step-by-Step Analysis**:
+   - Analyze the confusion pairs and error patterns.
+   - Identify which sections of the prompt need modification.
+   - Plan the specific text changes.
+
+2. **Git Diff Blocks**:
+<<<<<<< SEARCH
+[Exact text to be replaced]
+=======
+[New text]
+>>>>>>>
+
+Do NOT output the full prompt. Only the modified sections.
+"""
 
 
 class MetaOptimizationStrategy(BaseStrategy):
@@ -124,7 +139,14 @@ class MetaOptimizationStrategy(BaseStrategy):
         )
         
         # 调用 LLM 优化
-        return self._call_llm(optimize_prompt)
+        response_content = self._call_llm(optimize_prompt)
+        
+        # 应用 Diff
+        try:
+            return self._apply_diff(prompt, response_content)
+        except Exception as e:
+            print(f"Meta optimization diff failed: {e}. Return original.")
+            return prompt
     
     def _build_error_samples(self, errors: List[Dict[str, Any]]) -> str:
         """构建错误样例文本"""
