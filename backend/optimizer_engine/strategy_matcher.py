@@ -5,6 +5,10 @@ from .strategies.boundary import BoundaryClarificationStrategy
 from .strategies.instruction import InstructionRefinementStrategy
 from .strategies.example_injection import DifficultExampleInjectionStrategy
 from .strategies.meta_optimize import MetaOptimizationStrategy
+from .strategies.context_optimize import ContextEnhancementStrategy
+from .strategies.multi_intent_optimize import MultiIntentStrategy
+from .strategies.domain_optimize import DomainDistinctionStrategy
+from .strategies.clarification_optimize import ClarificationMechanismStrategy
 
 
 # 策略组合预设
@@ -25,6 +29,13 @@ STRATEGY_PRESETS = {
         {"type": "boundary_clarification", "priority": 1},
         {"type": "difficult_example_injection", "priority": 2},
         {"type": "meta_optimization", "priority": 3}
+    ],
+    "auto_directed": [ # 自动定向优化 (新模式)
+        {"type": "context_enhancement", "priority": 1},
+        {"type": "multi_intent_optimization", "priority": 1},
+        {"type": "domain_distinction", "priority": 1},
+        {"type": "clarification_mechanism", "priority": 1},
+        {"type": "meta_optimization", "priority": 2}
     ]
 }
 
@@ -33,8 +44,13 @@ STRATEGY_CLASSES: Dict[str, Type[BaseStrategy]] = {
     "boundary_clarification": BoundaryClarificationStrategy,
     "instruction_refinement": InstructionRefinementStrategy,
     "difficult_example_injection": DifficultExampleInjectionStrategy,
-    "meta_optimization": MetaOptimizationStrategy
+    "meta_optimization": MetaOptimizationStrategy,
+    "context_enhancement": ContextEnhancementStrategy,
+    "multi_intent_optimization": MultiIntentStrategy,
+    "domain_distinction": DomainDistinctionStrategy,
+    "clarification_mechanism": ClarificationMechanismStrategy
 }
+
 
 
 class StrategyMatcher:

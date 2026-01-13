@@ -8,6 +8,7 @@ from .prompt_rewriter import PromptRewriter
 from .fewshot_selector import FewShotSelector
 from .knowledge_base import OptimizationKnowledgeBase
 from .intent_analyzer import IntentAnalyzer
+from .advanced_diagnosis import AdvancedDiagnoser
 
 
 class MultiStrategyOptimizer:
@@ -17,6 +18,7 @@ class MultiStrategyOptimizer:
     增强功能：
     - 集成意图分析器，对失败意图进行深度分析
     - 集成知识库，记录每次优化的版本信息
+    - 集成高级诊断器，提供定向分析能力
     """
     
     def __init__(
@@ -43,6 +45,12 @@ class MultiStrategyOptimizer:
             model_config
         )
         
+        # 初始化高级诊断器
+        self.advanced_diagnoser: AdvancedDiagnoser = AdvancedDiagnoser(
+            llm_client,
+            model_config
+        )
+        
         # 知识库延迟初始化（需要 project_id）
         self.knowledge_base: Optional[OptimizationKnowledgeBase] = None
     
@@ -61,7 +69,7 @@ class MultiStrategyOptimizer:
         
         1. 初始化知识库（如有 project_id）
         2. 诊断分析
-        3. 意图详细分析
+        3. 意图详细分析 & 高级定向分析 (NEW)
         4. Top 失败意图深度分析
         5. 策略匹配
         6. 候选生成与评估
@@ -100,11 +108,20 @@ class MultiStrategyOptimizer:
             )
         )
         
-        # 阶段 2：意图详细分析
-        self.logger.info("Step 2: 意图详细分析...")
+        # 阶段 2：意图详细分析 & 高级定向分析
+        self.logger.info("Step 2: 意图详细分析 & 高级定向分析...")
         intent_analysis: Dict[str, Any] = self.intent_analyzer.analyze_errors_by_intent(
             errors, 
             total_count
+        )
+        
+        # 执行高级诊断 (并行)
+        all_intents = [
+            i["intent"] for i in intent_analysis.get("top_failing_intents", [])
+        ]
+        advanced_diagnosis: Dict[str, Any] = await self.advanced_diagnoser.run_all_diagnoses(
+            errors,
+            all_intents
         )
         
         # 阶段 3：Top 失败意图深度分析
@@ -117,6 +134,8 @@ class MultiStrategyOptimizer:
         # 将分析结果注入 diagnosis
         diagnosis["intent_analysis"] = intent_analysis
         diagnosis["deep_analysis"] = deep_analysis
+        diagnosis["advanced_diagnosis"] = advanced_diagnosis
+
         
         # 获取历史优化经验（如有知识库）
         if self.knowledge_base:
@@ -164,8 +183,10 @@ class MultiStrategyOptimizer:
             analysis_summary: str = self._generate_optimization_summary(
                 intent_analysis, 
                 deep_analysis,
-                best_result.get("strategy", "unknown")
+                best_result.get("strategy", "unknown"),
+                advanced_diagnosis
             )
+
             
             applied_strategies: List[str] = [
                 c["strategy"] for c in filtered_candidates
@@ -381,7 +402,8 @@ class MultiStrategyOptimizer:
         self,
         intent_analysis: Dict[str, Any],
         deep_analysis: Dict[str, Any],
-        best_strategy: str
+        best_strategy: str,
+        advanced_diagnosis: Dict[str, Any] = None
     ) -> str:
         """
         生成优化总结文本
@@ -389,6 +411,7 @@ class MultiStrategyOptimizer:
         :param intent_analysis: 意图分析结果
         :param deep_analysis: 深度分析结果
         :param best_strategy: 最佳策略名称
+        :param advanced_diagnosis: 高级诊断结果 (NEW)
         :return: 优化总结文本
         """
         lines: List[str] = []
@@ -404,6 +427,21 @@ class MultiStrategyOptimizer:
         if top_failures:
             failure_names: List[str] = [f.get("intent", "") for f in top_failures]
             lines.append(f"主要失败意图: {', '.join(failure_names)}。")
+            
+        # 高级诊断结果
+        if advanced_diagnosis:
+            issues = []
+            if advanced_diagnosis.get("context_analysis", {}).get("has_issue"):
+                issues.append("上下文指代不明")
+            if advanced_diagnosis.get("multi_intent_analysis", {}).get("has_issue"):
+                issues.append("多意图混淆")
+            if advanced_diagnosis.get("domain_analysis", {}).get("domain_confusion"):
+                issues.append("领域界限模糊")
+            if advanced_diagnosis.get("clarification_analysis", {}).get("has_issue"):
+                issues.append("澄清机制异常")
+                
+            if issues:
+                lines.append(f"发现以下定向问题: {', '.join(issues)}。")
             
         # 深度分析结果
         analyses: List[Dict[str, Any]] = deep_analysis.get("analyses", [])

@@ -4,6 +4,10 @@ from .boundary import BoundaryClarificationStrategy
 from .instruction import InstructionRefinementStrategy
 from .example_injection import DifficultExampleInjectionStrategy
 from .meta_optimize import MetaOptimizationStrategy
+from .context_optimize import ContextEnhancementStrategy
+from .multi_intent_optimize import MultiIntentStrategy
+from .domain_optimize import DomainDistinctionStrategy
+from .clarification_optimize import ClarificationMechanismStrategy
 
 __all__ = [
     "BaseStrategy",
@@ -11,4 +15,9 @@ __all__ = [
     "InstructionRefinementStrategy",
     "DifficultExampleInjectionStrategy",
     "MetaOptimizationStrategy",
+    "ContextEnhancementStrategy",
+    "MultiIntentStrategy",
+    "DomainDistinctionStrategy",
+    "ClarificationMechanismStrategy",
 ]
+

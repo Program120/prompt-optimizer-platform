@@ -6,12 +6,17 @@ from .prompt_rewriter import PromptRewriter
 from .fewshot_selector import FewShotSelector
 from .knowledge_base import OptimizationKnowledgeBase
 from .intent_analyzer import IntentAnalyzer
+from .advanced_diagnosis import AdvancedDiagnoser
 from .strategies import (
     BaseStrategy,
     BoundaryClarificationStrategy,
     InstructionRefinementStrategy,
     DifficultExampleInjectionStrategy,
-    MetaOptimizationStrategy
+    MetaOptimizationStrategy,
+    ContextEnhancementStrategy,
+    MultiIntentStrategy,
+    DomainDistinctionStrategy,
+    ClarificationMechanismStrategy
 )
 
 __all__ = [
@@ -22,6 +27,7 @@ __all__ = [
     "FewShotSelector",
     "OptimizationKnowledgeBase",
     "IntentAnalyzer",
+    "AdvancedDiagnoser",
     
     # 诊断
     "diagnose_prompt_performance",
@@ -32,6 +38,10 @@ __all__ = [
     "InstructionRefinementStrategy",
     "DifficultExampleInjectionStrategy",
     "MetaOptimizationStrategy",
+    "ContextEnhancementStrategy",
+    "MultiIntentStrategy",
+    "DomainDistinctionStrategy",
+    "ClarificationMechanismStrategy",
     
     # 常量
     "STRATEGY_PRESETS",
