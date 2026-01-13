@@ -196,9 +196,41 @@ export default function ProjectDetail() {
                     // 完成后刷新项目以获取最新 prompt 和 iterations
                     fetchProject();
                 }
-            } catch (e) {
-                console.error(e);
-                isPollingRef.current = false;
+            } catch (e: any) {
+                console.error("Auto-iterate polling error:", e);
+
+                // 如果是网络错误（后端可能重启），尝试重试几次
+                // 如果持续失败，则标记状态为错误
+                if (e.code === "ERR_NETWORK" || e.message?.includes("Network Error")) {
+                    // 网络错误，等待后重试一次
+                    setTimeout(async () => {
+                        try {
+                            const retryRes = await axios.get(`${API_BASE}/projects/${id}/auto-iterate/status`);
+                            setAutoIterateStatus(retryRes.data);
+                            // 如果重试成功且仍在运行，继续轮询
+                            if (retryRes.data.status === "running") {
+                                isPollingRef.current = false;
+                                pollAutoIterateStatus();
+                            } else {
+                                isPollingRef.current = false;
+                            }
+                        } catch {
+                            // 重试也失败，标记为中断
+                            setAutoIterateStatus({
+                                status: "error",
+                                message: "连接中断，请刷新页面重试"
+                            });
+                            isPollingRef.current = false;
+                        }
+                    }, 2000);
+                } else {
+                    // 其他错误，直接标记为中断
+                    setAutoIterateStatus({
+                        status: "error",
+                        message: "状态获取失败，请刷新页面"
+                    });
+                    isPollingRef.current = false;
+                }
             }
         };
         poll();

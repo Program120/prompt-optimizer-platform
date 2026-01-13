@@ -147,6 +147,16 @@ async def start_auto_iterate(
                 
                 # 如果还有下一轮，优化提示词
                 if round_num < max_rounds:
+                    # 在开始优化之前再次检查停止信号 (重要: 优化过程可能很耗时)
+                    curr_status = auto_iterate_status.get(project_id)
+                    if curr_status and curr_status["should_stop"]:
+                        logging.info(f"[AutoIterate {project_id}] Stop signal received before optimization")
+                        tm.stop_task(task_id)
+                        curr_status["status"] = "stopped"
+                        curr_status["message"] = f"已在第 {round_num} 轮停止 (优化前)"
+                        storage.save_auto_iterate_status(project_id, curr_status)
+                        return
+                    
                     if not task_status.get("errors"):
                          status["message"] = f"第 {round_num} 轮无错误，但未达标？停止优化。"
                          status["status"] = "completed"
@@ -197,6 +207,15 @@ async def start_auto_iterate(
                                 strategy_mode="auto",
                                 max_strategies=1
                             ))
+                        
+                        # 优化完成后再次检查停止信号
+                        curr_status = auto_iterate_status.get(project_id)
+                        if curr_status and curr_status["should_stop"]:
+                            logging.info(f"[AutoIterate {project_id}] Stop signal received after optimization")
+                            curr_status["status"] = "stopped"
+                            curr_status["message"] = f"已在第 {round_num} 轮停止 (优化后)"
+                            storage.save_auto_iterate_status(project_id, curr_status)
+                            return
                         
                         new_prompt = result.get("optimized_prompt", current_prompt)
                         applied_strategies = result.get("applied_strategies", [])
@@ -274,10 +293,38 @@ async def get_auto_iterate_status(project_id: str):
 
 @router.post("/{project_id}/auto-iterate/stop")
 async def stop_auto_iterate(project_id: str):
-    """停止自动迭代"""
+    """
+    停止自动迭代
+    
+    设置停止标志后，迭代会在下一个检查点停止：
+    - 每轮开始前
+    - 任务执行中每秒检查
+    - 优化前后
+    """
+    logging.info(f"[AutoIterate {project_id}] Received STOP request")
+    
     if project_id in auto_iterate_status:
-        auto_iterate_status[project_id]["should_stop"] = True
+        status = auto_iterate_status[project_id]
+        status["should_stop"] = True
         # 立即保存状态
-        storage.save_auto_iterate_status(project_id, auto_iterate_status[project_id])
+        storage.save_auto_iterate_status(project_id, status)
+        
+        # 同时尝试停止当前正在执行的任务
+        task_id = status.get("task_id")
+        if task_id:
+            logging.info(f"[AutoIterate {project_id}] Stopping current task: {task_id}")
+            tm.stop_task(task_id)
+        
         return {"status": "stopping"}
+    
+    # 尝试从磁盘加载状态
+    status = storage.get_auto_iterate_status(project_id)
+    if status:
+        status["should_stop"] = True
+        status["status"] = "stopped"
+        status["message"] = "已手动停止"
+        storage.save_auto_iterate_status(project_id, status)
+        auto_iterate_status[project_id] = status
+        return {"status": "stopping"}
+    
     return {"status": "not_found"}
