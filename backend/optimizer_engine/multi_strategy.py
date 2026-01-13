@@ -1,7 +1,7 @@
 """多策略优化器 - 主逻辑"""
 import logging
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from .diagnosis import diagnose_prompt_performance
 from .strategy_matcher import StrategyMatcher
 from .prompt_rewriter import PromptRewriter
@@ -9,6 +9,7 @@ from .fewshot_selector import FewShotSelector
 from .knowledge_base import OptimizationKnowledgeBase
 from .intent_analyzer import IntentAnalyzer
 from .advanced_diagnosis import AdvancedDiagnoser
+from .cancellation import run_with_cancellation, gather_with_cancellation
 import json
 import re
 from openai import AsyncOpenAI, OpenAI
@@ -66,6 +67,23 @@ class MultiStrategyOptimizer:
         
         # 知识库延迟初始化（需要 project_id）
         self.knowledge_base: Optional[OptimizationKnowledgeBase] = None
+        
+        # 停止回调函数（在 optimize 方法中设置）
+        self._should_stop: Optional[Callable[[], bool]] = None
+    
+    def _is_stopped(self, should_stop: Any, step_name: str = None) -> bool:
+        """
+        检查是否应该停止优化
+        
+        :param should_stop: 停止回调函数
+        :param step_name: 当前步骤名称（用于日志）
+        :return: 是否应停止
+        """
+        if should_stop and should_stop():
+            if step_name:
+                self.logger.info(f"优化在 {step_name} 被中止")
+            return True
+        return False
     
     async def optimize(
         self,
@@ -75,7 +93,8 @@ class MultiStrategyOptimizer:
         total_count: int = None,
         strategy_mode: str = "auto",
         max_strategies: int = 1,
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        should_stop: Any = None
     ) -> Dict[str, Any]:
         """
         执行多策略优化（增强版七阶段工作流）
@@ -102,6 +121,13 @@ class MultiStrategyOptimizer:
             
         dataset = dataset or errors
         
+        # 保存停止回调到实例变量，以便子方法可以访问
+        self._should_stop = should_stop
+        
+        # 检查停止信号
+        if self._is_stopped(should_stop): 
+            return {"optimized_prompt": prompt, "message": "Stopped"}
+
         # 阶段 0：初始化知识库
         if project_id:
             self.knowledge_base = OptimizationKnowledgeBase(project_id)
@@ -133,6 +159,10 @@ class MultiStrategyOptimizer:
         if error_patterns.get('category_distribution'):
              self.logger.info(f"错误分布 Top 3: {dict(list(error_patterns['category_distribution'].items())[:3])}")
         
+        # 检查停止信号
+        if self._is_stopped(should_stop, "步骤 1 完成后"): 
+            return {"optimized_prompt": prompt, "message": "Stopped"}
+
         # 阶段 2：意图详细分析 & 高级定向分析
         self.logger.info("步骤 2: 意图详细分析 & 高级定向分析...")
         intent_analysis: Dict[str, Any] = self.intent_analyzer.analyze_errors_by_intent(
@@ -146,7 +176,8 @@ class MultiStrategyOptimizer:
         ]
         advanced_diagnosis: Dict[str, Any] = await self.advanced_diagnoser.run_all_diagnoses(
             errors,
-            all_intents
+            all_intents,
+            should_stop=should_stop
         )
         
         # 记录高级诊断摘要
@@ -162,11 +193,16 @@ class MultiStrategyOptimizer:
                 if "missing_rate" in res:
                     self.logger.info(f"  - 缺失澄清率: {res['missing_rate']:.2%}")
         
+        # 检查停止信号
+        if self._is_stopped(should_stop, "步骤 2 完成后"): 
+            return {"optimized_prompt": prompt, "message": "Stopped"}
+        
         # 阶段 3：Top 失败意图深度分析
         self.logger.info("步骤 3: Top 失败意图深度分析...")
         deep_analysis: Dict[str, Any] = await self.intent_analyzer.deep_analyze_top_failures(
             errors, 
-            top_n=50
+            top_n=50,
+            should_stop=should_stop
         )
         if deep_analysis.get("analyses"):
             for root_cause in deep_analysis["analyses"]:
@@ -176,6 +212,10 @@ class MultiStrategyOptimizer:
         diagnosis["intent_analysis"] = intent_analysis
         diagnosis["deep_analysis"] = deep_analysis
         diagnosis["advanced_diagnosis"] = advanced_diagnosis
+
+        # 检查停止信号
+        if self._is_stopped(should_stop, "步骤 3 完成后"): 
+            return {"optimized_prompt": prompt, "message": "Stopped"}
 
         # 检查是否触发多意图优化模式
         # 触发条件: 
@@ -212,6 +252,10 @@ class MultiStrategyOptimizer:
         self.logger.info(f"匹配到的策略: {[s.name for s in strategies]}")
         if hasattr(self.matcher, 'get_preset_strategies') and strategy_mode != 'auto':
              strategies = self.matcher.get_preset_strategies(strategy_mode)[:max_strategies]
+        
+        # 检查停止信号
+        if self._is_stopped(should_stop, "步骤 4 完成后"): 
+            return {"optimized_prompt": prompt, "message": "Stopped"}
              
         if not strategies:
              return {
@@ -223,12 +267,12 @@ class MultiStrategyOptimizer:
         # 阶段 5：候选生成 (并行优化)
         self.logger.info(f"步骤 5: 候选生成... (应用策略数: {len(strategies)})")
         candidates = await self._generate_candidates(
-            prompt, strategies, errors, diagnosis, dataset
+            prompt, strategies, errors, diagnosis, dataset, should_stop
         )
         
         # 阶段 5.1：快速筛选
         self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)})")
-        filtered_candidates = await self._rapid_evaluation(candidates, errors[:10])
+        filtered_candidates = await self._rapid_evaluation(candidates, errors[:10], should_stop)
         if filtered_candidates:
             self.logger.info(f"筛选后的候选方案及其评分: {[(c['strategy'], round(c.get('score', 0), 4)) for c in filtered_candidates]}")
         
@@ -292,22 +336,46 @@ class MultiStrategyOptimizer:
         strategies: List[Any], 
         errors: List[Dict], 
         diagnosis: Dict,
-        dataset: List[Dict]
+        dataset: List[Dict],
+        should_stop: Any = None
     ) -> List[Dict[str, Any]]:
-        """生成优化候选集"""
-        candidates = []
+        """
+        生成优化候选集（支持取消）
         
-        # 并行执行策略应用 (这里简化为循环，实际可用 asyncio.gather)
-        # 考虑到某些策略应用主要耗时在 LLM 调用，可以用 asyncio
-        tasks = []
+        :param prompt: 当前提示词
+        :param strategies: 策略列表
+        :param errors: 错误样例
+        :param diagnosis: 诊断结果
+        :param dataset: 数据集
+        :param should_stop: 停止回调函数
+        :return: 候选方案列表
+        """
+        candidates: List[Dict[str, Any]] = []
+        
+        # 检查停止信号
+        if should_stop and should_stop():
+            self.logger.info("候选生成阶段开始前即被手动中止")
+            return candidates
+        
+        # 创建策略应用任务列表
+        tasks: list = []
         for strategy in strategies:
             tasks.append(self._apply_strategy_wrapper(strategy, prompt, errors, diagnosis, dataset))
-            
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 使用可取消的 gather 执行所有策略
+        # 如果收到停止信号，会自动取消所有未完成的任务
+        results = await gather_with_cancellation(
+            *tasks,
+            should_stop=should_stop,
+            check_interval=0.5,
+            return_exceptions=True
+        )
         
         for res in results:
             if isinstance(res, dict) and res.get("prompt"):
                 candidates.append(res)
+            elif isinstance(res, asyncio.CancelledError):
+                self.logger.info("策略执行被取消")
             elif isinstance(res, Exception):
                 self.logger.error(f"策略执行失败: {res}")
         
@@ -355,15 +423,31 @@ class MultiStrategyOptimizer:
     async def _rapid_evaluation(
         self, 
         candidates: List[Dict], 
-        validation_set: List[Dict]
+        validation_set: List[Dict],
+        should_stop: Callable[[], bool] = None
     ) -> List[Dict]:
-        """快速评估候选效果"""
+        """
+        快速评估候选效果（支持取消）
+        
+        :param candidates: 候选方案列表
+        :param validation_set: 验证集
+        :param should_stop: 停止回调函数
+        :return: 评估后的候选方案列表
+        """
         if not validation_set:
             return candidates
+        
+        # 使用实例变量的停止回调
+        stop_func: Callable[[], bool] = should_stop or self._should_stop
             
-        evaluated = []
+        evaluated: List[Dict] = []
         for cand in candidates:
-            score = await self._evaluate_prompt(cand["prompt"], validation_set)
+            # 每次评估前检查停止信号
+            if stop_func and stop_func():
+                self.logger.info("快速评估阶段被手动中止")
+                break
+                
+            score: float = await self._evaluate_prompt(cand["prompt"], validation_set, stop_func)
             self.logger.info(f"策略评估完毕 {cand['strategy']}: 得分 = {score:.4f}")
             cand["score"] = score
             evaluated.append(cand)
@@ -372,45 +456,85 @@ class MultiStrategyOptimizer:
         evaluated.sort(key=lambda x: x["score"], reverse=True)
         return evaluated
         
-    async def _evaluate_prompt(self, prompt: str, test_cases: List[Dict]) -> float:
-        """评估 Prompt 在测试集上的表现 (0-1)"""
-        # 这里需要调用 LLM 运行推理
-        # 简单实现：调用 LLM 对每个 case 预测，比较 output
+    async def _evaluate_prompt(
+        self, 
+        prompt: str, 
+        test_cases: List[Dict],
+        should_stop: Callable[[], bool] = None
+    ) -> float:
+        """
+        评估 Prompt 在测试集上的表现 (0-1)（支持取消）
+        
+        :param prompt: 待评估的提示词
+        :param test_cases: 测试用例列表
+        :param should_stop: 停止回调函数
+        :return: 评估得分 (0-1)
+        """
         if not self.llm_client:
             return 0.5
+        
+        # 检查停止信号
+        if should_stop and should_stop():
+            return 0.0
             
-        correct = 0
-        total = len(test_cases)
+        total: int = len(test_cases)
         self.logger.info(f"正在对提示词进行快速评估 (长度={len(prompt)})，测试案例数: {total}...")
         
         # 限制并发
-        sem = asyncio.Semaphore(3)
+        sem: asyncio.Semaphore = asyncio.Semaphore(3)
         
-        async def run_case(case):
+        async def run_case(case: Dict) -> int:
+            """
+            评估单个测试用例
+            
+            :param case: 测试用例
+            :return: 1 表示正确，0 表示错误
+            """
             async with sem:
+                # 检查停止信号
+                if should_stop and should_stop():
+                    return 0
+                    
                 try:
-                    query = case.get('query', '')
-                    target = case.get('target', '')
+                    query: str = case.get('query', '')
+                    target: str = case.get('target', '')
                     
                     # 构建简单的推理 prompt
-                    eval_input = prompt.replace("{{input}}", query).replace("{{context}}", "")
+                    eval_input: str = prompt.replace("{{input}}", query).replace("{{context}}", "")
                     # 如果没有替换变量，直接拼接
                     if eval_input == prompt:
                         eval_input = f"{prompt}\n\nInput: {query}"
-                        
-                    response = await self._call_llm_async(eval_input)
+                    
+                    # 使用可取消的 LLM 调用
+                    response: str = await self._call_llm_with_cancellation(
+                        eval_input,
+                        should_stop=should_stop,
+                        task_name="快速评估"
+                    )
                     
                     # 简单匹配：只要包含目标值就算对 (模糊匹配)
                     if str(target).lower() in response.lower():
                         return 1
                     return 0
+                except asyncio.CancelledError:
+                    return 0
                 except:
                     return 0
 
-        tasks = [run_case(case) for case in test_cases]
-        results = await asyncio.gather(*tasks)
+        tasks: list = [run_case(case) for case in test_cases]
         
-        return sum(results) / total if total > 0 else 0
+        # 使用可取消的 gather
+        results = await gather_with_cancellation(
+            *tasks,
+            should_stop=should_stop,
+            check_interval=0.5,
+            return_exceptions=True
+        )
+        
+        # 处理结果，忽略异常
+        valid_results: list = [r for r in results if isinstance(r, int)]
+        
+        return sum(valid_results) / total if total > 0 else 0
 
     def _select_best_candidate(self, candidates: List[Dict], original_prompt: str) -> Dict:
         """选择最佳候选"""
@@ -487,6 +611,47 @@ class MultiStrategyOptimizer:
                 if "timeout" in str(e).lower():
                      self.logger.error(f"LLM 请求超时 ({timeout}s). 请考虑在模型配置中增加 timeout 值或检查网络。")
                 return ""
+
+    async def _call_llm_with_cancellation(
+        self, 
+        prompt: str,
+        should_stop: Callable[[], bool] = None,
+        check_interval: float = 0.5,
+        task_name: str = "LLM调用"
+    ) -> str:
+        """
+        可取消的 LLM 调用
+        
+        使用 run_with_cancellation 包装 LLM 调用，使其能够在收到停止信号后立即响应
+        
+        :param prompt: 输入提示词
+        :param should_stop: 停止回调函数
+        :param check_interval: 检查停止信号的间隔（秒）
+        :param task_name: 任务名称（用于日志）
+        :return: LLM 响应内容
+        """
+        # 优先使用传入的回调，否则使用实例变量
+        stop_func: Callable[[], bool] = should_stop or self._should_stop
+        
+        if stop_func is None:
+            # 没有停止回调，直接调用原始方法
+            return await self._call_llm_async(prompt)
+        
+        try:
+            result: str = await run_with_cancellation(
+                self._call_llm_async(prompt),
+                should_stop=stop_func,
+                check_interval=check_interval,
+                task_name=task_name
+            )
+            return result
+        except asyncio.CancelledError:
+            self.logger.info(f"[LLM调用] {task_name} 被用户取消")
+            return ""
+        except Exception as e:
+            self.logger.error(f"[LLM调用] {task_name} 失败: {e}")
+            return ""
+
 
     def diagnose(
         self, 

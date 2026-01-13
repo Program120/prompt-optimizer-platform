@@ -5,6 +5,7 @@
 1. optimize_prompt() - 原有的单次LLM优化（向后兼容）
 2. multi_strategy_optimize() - 新的多策略优化引擎
 """
+from typing import Any
 from llm_factory import LLMFactory
 import re
 import storage
@@ -126,7 +127,8 @@ async def multi_strategy_optimize(
     total_count: int = None,
     strategy_mode: str = "auto",
     max_strategies: int = 1,
-    project_id: str = None
+    project_id: str = None,
+    should_stop: Any = None
 ) -> dict:
     """
     使用多策略优化引擎优化提示词
@@ -170,7 +172,8 @@ async def multi_strategy_optimize(
         total_count=total_count,
         strategy_mode=strategy_mode,
         max_strategies=max_strategies,
-        project_id=project_id
+        project_id=project_id,
+        should_stop=should_stop
     )
     
     return result

@@ -86,24 +86,24 @@ class HardCaseDetector:
         except Exception as e:
             self.logger.warning(f"基于混淆矩阵的检测失败: {e}")
 
-        # 3. 基于向量嵌入的检测（边界与多样性）
-        # 仅当我们有 LLM 客户端来生成向量嵌入时才运行
-        if self.llm_client:
-            try:
-                # 批量生成向量嵌入
-                queries: List[str] = [str(p.get("query", "")) for p in predictions]
-                embeddings: List[List[float]] = self._extract_embeddings(queries)
-                
-                if embeddings and len(embeddings) == len(predictions):
-                    # 边界检测
-                    boundary_cases: List[Dict[str, Any]] = self._boundary_based(predictions, embeddings)
-                    self._add_weighted_scores(all_scores, boundary_cases, "boundary")
-                    
-                    # 多样性检测
-                    diversity_cases: List[Dict[str, Any]] = self._diversity_based(predictions, embeddings)
-                    self._add_weighted_scores(all_scores, diversity_cases, "diversity")
-            except Exception as e:
-                self.logger.warning(f"基于向量嵌入的检测失败: {e}")
+        # # 3. 基于向量嵌入的检测（边界与多样性）
+        # # 仅当我们有 LLM 客户端来生成向量嵌入时才运行
+        # if self.llm_client:
+        #     try:
+        #         # 批量生成向量嵌入
+        #         queries: List[str] = [str(p.get("query", "")) for p in predictions]
+        #         embeddings: List[List[float]] = self._extract_embeddings(queries)
+        #
+        #         if embeddings and len(embeddings) == len(predictions):
+        #             # 边界检测
+        #             boundary_cases: List[Dict[str, Any]] = self._boundary_based(predictions, embeddings)
+        #             self._add_weighted_scores(all_scores, boundary_cases, "boundary")
+        #
+        #             # 多样性检测
+        #             diversity_cases: List[Dict[str, Any]] = self._diversity_based(predictions, embeddings)
+        #             self._add_weighted_scores(all_scores, diversity_cases, "diversity")
+        #     except Exception as e:
+        #         self.logger.warning(f"基于向量嵌入的检测失败: {e}")
         
         # 4. 歧义检测（目前在没有外部 NLP 工具的情况下简化）
         # 我们可以实现一个基本版本，或者如果过于复杂且没有重型 NLP 库则跳过

@@ -10,9 +10,10 @@
 import asyncio
 import logging
 import re
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Callable
 from collections import Counter, defaultdict
 from openai import AsyncOpenAI, OpenAI
+from .cancellation import run_with_cancellation
 
 
 class IntentAnalyzer:
@@ -148,7 +149,8 @@ class IntentAnalyzer:
     async def deep_analyze_top_failures(
         self,
         errors: List[Dict[str, Any]],
-        top_n: int = 10
+        top_n: int = 10,
+        should_stop: Any = None
     ) -> Dict[str, Any]:
         """
         对 Top N 失败意图进行 LLM 深度分析
@@ -178,6 +180,11 @@ class IntentAnalyzer:
         total_count: int = intent_analysis.get("total_count", len(errors))
         
         for failure in top_failures:
+            # Check stop signal
+            if should_stop and should_stop():
+                 self.logger.info("意图深度分析被手动中止")
+                 break
+            
             intent: str = failure.get("intent", "")
             error_count: int = failure.get("error_count", 0)
             sample_errors: List[Dict[str, Any]] = failure.get("sample_errors", [])
@@ -206,9 +213,26 @@ class IntentAnalyzer:
                 confusion_targets=confusion_text
             )
             
-            # 调用 LLM 分析
+            # 在 LLM 调用前再次检查停止信号（避免长等待）
+            if should_stop and should_stop():
+                self.logger.info("意图深度分析在 LLM 调用前被中止")
+                break
+                
+            # 调用 LLM 分析（使用可取消的调用）
             try:
-                analysis_result: str = await self._call_llm_async(prompt)
+                analysis_result: str = await self._call_llm_with_cancellation(
+                    prompt, 
+                    should_stop,
+                    "意图深度分析"
+                )
+                
+                # 如果返回空字符串，可能是被取消了
+                if not analysis_result:
+                    if should_stop and should_stop():
+                        self.logger.info("意图深度分析 LLM 调用被取消")
+                        break
+                    analysis_result = "分析失败: 调用返回空"
+                
                 analyses.append({
                     "intent": intent,
                     "error_count": error_count,
@@ -216,6 +240,9 @@ class IntentAnalyzer:
                     "confusion_targets": confusion_targets,
                     "analysis": analysis_result
                 })
+            except asyncio.CancelledError:
+                self.logger.info(f"意图 {intent} 深度分析被取消")
+                break
             except Exception as e:
                 self.logger.error(f"深度分析意图 {intent} 失败: {e}")
                 analyses.append({
@@ -356,6 +383,41 @@ class IntentAnalyzer:
             except Exception as e:
                 self.logger.error(f"[LLM请求-意图深度分析] 调用失败: {e}")
                 raise e
+
+    async def _call_llm_with_cancellation(
+        self, 
+        prompt: str,
+        should_stop: Callable[[], bool] = None,
+        task_name: str = "意图分析LLM调用"
+    ) -> str:
+        """
+        可取消的 LLM 调用
+        
+        使用 run_with_cancellation 包装 LLM 调用，使其能够在收到停止信号后立即响应
+        
+        :param prompt: 输入提示词
+        :param should_stop: 停止回调函数
+        :param task_name: 任务名称（用于日志）
+        :return: LLM 响应内容
+        """
+        if should_stop is None:
+            # 没有停止回调，直接调用原始方法
+            return await self._call_llm_async(prompt)
+        
+        try:
+            result: str = await run_with_cancellation(
+                self._call_llm_async(prompt),
+                should_stop=should_stop,
+                check_interval=0.5,
+                task_name=task_name
+            )
+            return result
+        except asyncio.CancelledError:
+            self.logger.info(f"[意图分析] {task_name} 被用户取消")
+            return ""
+        except Exception as e:
+            self.logger.error(f"[意图分析] {task_name} 失败: {e}")
+            return ""
         
     def generate_analysis_context(
         self,

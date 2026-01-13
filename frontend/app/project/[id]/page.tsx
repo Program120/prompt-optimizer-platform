@@ -383,6 +383,12 @@ export default function ProjectDetail() {
                     setIsOptimizing(false);
                     isOptimizePollingRef.current = false;
                     showToast(`优化失败: ${status.message}`, "error");
+                } else if (status.status === "stopped") {
+                    // 检测到停止状态，立即更新 UI
+                    setIsOptimizing(false);
+                    isOptimizePollingRef.current = false;
+                    showToast("优化任务已停止", "success");
+                    fetchProject();
                 } else if (status.status === "idle") {
                     setIsOptimizing(false);
                     isOptimizePollingRef.current = false;

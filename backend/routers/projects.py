@@ -190,6 +190,12 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
         else:
             # 多策略优化 (需要 async 运行)
             dataset = task_status.get("results", [])
+            
+            # 定义停止回调
+            def check_stop():
+                status = optimization_status.get(project_id, {})
+                return status.get("should_stop", False) or status.get("status") == "stopped"
+
             # 在后台线程中运行 async 函数需要 new loop 或者 asyncio.run
             result = asyncio.run(multi_strategy_optimize(
                 project["current_prompt"], 
@@ -199,7 +205,8 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
                 total_count=total_count,
                 strategy_mode="auto",
                 max_strategies=1,
-                project_id=project_id
+                project_id=project_id,
+                should_stop=check_stop
             ))
             new_prompt = result.get("optimized_prompt", project["current_prompt"])
             applied_strategies = result.get("applied_strategies", [])

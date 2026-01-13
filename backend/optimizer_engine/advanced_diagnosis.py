@@ -6,8 +6,9 @@ import asyncio
 import logging
 import re
 import json
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Callable
 from collections import Counter, defaultdict
+from .cancellation import run_with_cancellation
 
 class AdvancedDiagnoser:
     """高级诊断器 - 执行深度定向分析"""
@@ -24,32 +25,63 @@ class AdvancedDiagnoser:
     async def run_all_diagnoses(
         self, 
         errors: List[Dict[str, Any]],
-        intents: Optional[List[str]] = None
+        intents: Optional[List[str]] = None,
+        should_stop: Any = None
     ) -> Dict[str, Any]:
-        """并行运行所有高级诊断"""
+        """
+        并行运行所有高级诊断（支持中途取消）
+        
+        :param errors: 错误样例列表
+        :param intents: 意图列表
+        :param should_stop: 停止回调函数
+        :return: 诊断结果
+        """
         if not errors:
             return {}
             
+        # 检查停止信号
+        if should_stop and should_stop():
+             self.logger.info("高级诊断被手动中止")
+             return {}
+            
         dataset_intents = intents or self._extract_intents(errors)
         
-        results = await asyncio.gather(
-            self.analyze_context_capabilities(errors),
-            self.analyze_multi_intent(errors),
-            self.analyze_domain_confusion(errors, dataset_intents),
-            self.analyze_clarification(errors),
-            return_exceptions=True
-        )
+        # 使用 create_task 创建任务，以便后续可取消
+        tasks = [
+            asyncio.create_task(self.analyze_context_capabilities(errors)),
+            asyncio.create_task(self.analyze_multi_intent(errors)),
+            asyncio.create_task(self.analyze_domain_confusion(errors, dataset_intents, should_stop)),
+            asyncio.create_task(self.analyze_clarification(errors)),
+        ]
         
-        # 处理异常结果
-        final_results = {}
+        # 等待所有任务完成，但定期检查停止信号
+        results = []
         keys = ["context_analysis", "multi_intent_analysis", "domain_analysis", "clarification_analysis"]
         
-        for k, res in zip(keys, results):
-            if isinstance(res, Exception):
-                self.logger.error(f"高级诊断 {k} 失败: {res}")
-                final_results[k] = {"error": str(res)}
-            else:
-                final_results[k] = res
+        for idx, task in enumerate(tasks):
+            # 在等待每个任务前检查停止信号
+            if should_stop and should_stop():
+                self.logger.info(f"高级诊断在等待任务 {keys[idx]} 时被中止，取消剩余任务...")
+                # 取消未完成的任务
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                break
+            
+            try:
+                result = await task
+                results.append(result)
+            except asyncio.CancelledError:
+                self.logger.info(f"任务 {keys[idx]} 已取消")
+                results.append({"cancelled": True})
+            except Exception as e:
+                self.logger.error(f"高级诊断 {keys[idx]} 失败: {e}")
+                results.append({"error": str(e)})
+        
+        # 构建最终结果
+        final_results = {}
+        for k, res in zip(keys[:len(results)], results):
+            final_results[k] = res
                 
         return final_results
 
@@ -159,10 +191,16 @@ class AdvancedDiagnoser:
     async def analyze_domain_confusion(
         self, 
         errors: List[Dict[str, Any]], 
-        all_intents: List[str]
+        all_intents: List[str],
+        should_stop: Any = None
     ) -> Dict[str, Any]:
         """
         分析领域级混淆 (需要 LLM 辅助将意图归类为领域)
+        
+        :param errors: 错误样例列表
+        :param all_intents: 所有意图列表
+        :param should_stop: 停止回调函数
+        :return: 分析结果
         """
         if not self.llm_client or not all_intents:
             return {"message": "由于缺少 LLM 客户端或意图列表，已跳过领域分析"}
@@ -200,8 +238,17 @@ class AdvancedDiagnoser:
     "summary": "简短分析"
 }}"""
 
+        # 在 LLM 调用前检查停止信号
+        if should_stop and should_stop():
+            self.logger.info("领域混淆分析在 LLM 调用前被中止")
+            return {"cancelled": True, "message": "已中止"}
+
         try:
-             response = await self._call_llm_async(prompt)
+             # 使用可取消的 LLM 调用
+             response: str = await self._call_llm_with_cancellation(prompt, should_stop, "领域混淆分析")
+             if not response:
+                 return {"cancelled": True, "message": "调用已取消或失败"}
+             
              # 尝试解析 JSON
              if "```json" in response:
                  response = response.split("```json")[1].split("```")[0]
@@ -210,6 +257,9 @@ class AdvancedDiagnoser:
                  
              analysis = json.loads(response.strip())
              return analysis
+        except asyncio.CancelledError:
+            self.logger.info("领域混淆分析 LLM 调用被取消")
+            return {"cancelled": True, "message": "已取消"}
         except Exception as e:
             self.logger.warning(f"领域混淆分析失败: {e}")
             return {"error": str(e)}
@@ -252,56 +302,106 @@ class AdvancedDiagnoser:
 
     async def _call_llm_async(self, prompt: str) -> str:
         """
-        异步调用 LLM
+        异步调用 LLM (支持 AsyncOpenAI)
         
         :param prompt: 输入提示词
         :return: LLM 响应内容
         """
-        loop = asyncio.get_event_loop()
+        from openai import AsyncOpenAI
         
-        # 记录 LLM 请求输入日志
+        model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
+        temperature: float = float(self.model_config.get("temperature", 0.1))
+        max_tokens: int = int(self.model_config.get("max_tokens", 4000))
+        
         self.logger.info(f"[LLM请求-高级诊断] 输入提示词长度: {len(prompt)} 字符")
-        self.logger.debug(f"[LLM请求-高级诊断] 输入内容:\n{prompt[:600]}...")
         
-        def run_sync() -> str:
-            model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
-            self.logger.info(f"[LLM请求-高级诊断] 使用模型: {model_name}")
-            
-            try:
-                response = self.llm_client.chat.completions.create(
+        try:
+            # 区分 AsyncOpenAI 和 OpenAI
+            if isinstance(self.llm_client, AsyncOpenAI):
+                response = await self.llm_client.chat.completions.create(
                     model=model_name,
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=float(self.model_config.get("temperature", 0.1)),
-                    max_tokens=int(self.model_config.get("max_tokens", 4000)),
-                    # 强制 JSON
+                    temperature=temperature,
+                    max_tokens=max_tokens,
                     extra_body={"response_format": {"type": "json_object"}}
                 )
                 result: str = response.choices[0].message.content.strip()
-                
-                # 记录 LLM 响应输出日志
-                self.logger.info(f"[LLM响应-高级诊断] 输出长度: {len(result)} 字符")
-                self.logger.debug(f"[LLM响应-高级诊断] 输出内容:\n{result[:600]}...")
-                
-                return result
-            except Exception as e:
-                self.logger.warning(f"[LLM请求-高级诊断] JSON模式调用失败: {e}，尝试普通模式...")
-                # Retry without json enforcement if failed
-                try:
-                    response = self.llm_client.chat.completions.create(
+            else:
+                # 同步客户端，必须在 Executor 中运行
+                loop = asyncio.get_running_loop()
+                def run_sync() -> str:
+                    resp = self.llm_client.chat.completions.create(
                         model=model_name,
                         messages=[{"role": "user", "content": prompt}],
-                        temperature=float(self.model_config.get("temperature", 0.1)),
-                        max_tokens=int(self.model_config.get("max_tokens", 4000))
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        extra_body={"response_format": {"type": "json_object"}}
                     )
-                    result: str = response.choices[0].message.content.strip()
+                    return resp.choices[0].message.content.strip()
+                
+                result = await loop.run_in_executor(None, run_sync)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.warning(f"[LLM请求-高级诊断] JSON模式调用失败: {e}，尝试普通模式...")
+            try:
+                if isinstance(self.llm_client, AsyncOpenAI):
+                    response = await self.llm_client.chat.completions.create(
+                        model=model_name,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
+                    result = response.choices[0].message.content.strip()
+                else:
+                    loop = asyncio.get_running_loop()
+                    def run_sync_retry() -> str:
+                        resp = self.llm_client.chat.completions.create(
+                            model=model_name,
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=temperature,
+                            max_tokens=max_tokens
+                        )
+                        return resp.choices[0].message.content.strip()
+                    result = await loop.run_in_executor(None, run_sync_retry)
                     
-                    # 记录重试后的响应
-                    self.logger.info(f"[LLM响应-高级诊断(重试)] 输出长度: {len(result)} 字符")
-                    self.logger.debug(f"[LLM响应-高级诊断(重试)] 输出内容:\n{result[:600]}...")
-                    
-                    return result
-                except Exception as e2:
-                    self.logger.error(f"[LLM请求-高级诊断] 重试后仍失败: {e2}")
-                    raise e2
-                    
-        return await loop.run_in_executor(None, run_sync)
+                return result
+            except Exception as e2:
+                self.logger.error(f"[LLM请求-高级诊断] 重试后仍失败: {e2}")
+                raise e2
+
+    async def _call_llm_with_cancellation(
+        self, 
+        prompt: str,
+        should_stop: Callable[[], bool] = None,
+        task_name: str = "高级诊断LLM调用"
+    ) -> str:
+        """
+        可取消的 LLM 调用
+        
+        使用 run_with_cancellation 包装 LLM 调用，使其能够在收到停止信号后立即响应
+        
+        :param prompt: 输入提示词
+        :param should_stop: 停止回调函数
+        :param task_name: 任务名称（用于日志）
+        :return: LLM 响应内容
+        """
+        if should_stop is None:
+            # 没有停止回调，直接调用原始方法
+            return await self._call_llm_async(prompt)
+        
+        try:
+            result: str = await run_with_cancellation(
+                self._call_llm_async(prompt),
+                should_stop=should_stop,
+                check_interval=0.5,
+                task_name=task_name
+            )
+            return result
+        except asyncio.CancelledError:
+            self.logger.info(f"[高级诊断] {task_name} 被用户取消")
+            return ""
+        except Exception as e:
+            self.logger.error(f"[高级诊断] {task_name} 失败: {e}")
+            return ""
