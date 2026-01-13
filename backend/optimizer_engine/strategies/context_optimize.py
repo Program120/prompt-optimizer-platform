@@ -41,4 +41,6 @@ class ContextEnhancementStrategy(BaseStrategy):
             "3. Adding a few-shot example that demonstrates correct coreference resolution."
         )
         
-        return self._meta_optimize(prompt, referential_cases, optimization_instruction)
+        return self._meta_optimize(
+            prompt, referential_cases, optimization_instruction, diagnosis=diagnosis
+        )

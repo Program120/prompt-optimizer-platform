@@ -94,7 +94,8 @@ class MultiStrategyOptimizer:
         strategy_mode: str = "auto",
         max_strategies: int = 1,
         project_id: Optional[str] = None,
-        should_stop: Any = None
+        should_stop: Any = None,
+        newly_failed_cases: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
         执行多策略优化（增强版七阶段工作流）
@@ -114,6 +115,7 @@ class MultiStrategyOptimizer:
         :param strategy_mode: 策略模式（auto/initial/precision_focus 等）
         :param max_strategies: 最多应用的策略数量
         :param project_id: 项目ID（用于知识库）
+        :param newly_failed_cases: 新增的失败案例（上一轮成功，本轮失败）
         :return: 优化结果字典
         """
         if not errors:
@@ -241,13 +243,23 @@ class MultiStrategyOptimizer:
             )
 
         
-        # 获取历史优化经验（如有知识库）
+        # 获取历史优化经验（如有知识库）- 获取完整历史
         if self.knowledge_base:
+            # 获取格式化的完整历史文本（V1 ~ 最新版本）
+            diagnosis["optimization_history_text"] = (
+                self.knowledge_base.get_all_history_for_prompt()
+            )
+            # 保留原有字段以兼容 MetaOptimizationStrategy
             diagnosis["optimization_history"] = self.knowledge_base.get_latest_analysis()
             self.logger.info(
                 f"从知识库获取历史优化记录: "
                 f"{'有' if diagnosis['optimization_history'] else '无'}"
             )
+        
+        # 将 newly_failed_cases 注入 diagnosis（供策略使用）
+        if newly_failed_cases:
+            diagnosis["newly_failed_cases"] = newly_failed_cases
+            self.logger.info(f"注入新增失败案例到 diagnosis，数量: {len(newly_failed_cases)}")
         
         # 阶段 4：策略匹配
         self.logger.info("步骤 4: 策略匹配...")
@@ -310,7 +322,8 @@ class MultiStrategyOptimizer:
                 intent_analysis=intent_analysis,
                 applied_strategies=applied_strategies,
                 accuracy_before=accuracy,
-                deep_analysis=deep_analysis
+                deep_analysis=deep_analysis,
+                newly_failed_cases=newly_failed_cases
             )
         
         self.logger.info(f"优化任务结束。最终胜出策略: {best_result.get('strategy')}, 预估提升分数: {best_result.get('score', 0):.4f}")

@@ -44,4 +44,6 @@ class DomainDistinctionStrategy(BaseStrategy):
         optimization_instruction = "\n".join(instruction_parts)
         # 这里可以使用 errors，或者如果 analysis 里有 sample cases 更好
         # 目前 domain analysis 没返回 sample cases，所以用 errors
-        return self._meta_optimize(prompt, errors[:5], optimization_instruction)
+        return self._meta_optimize(
+            prompt, errors[:5], optimization_instruction, diagnosis=diagnosis
+        )

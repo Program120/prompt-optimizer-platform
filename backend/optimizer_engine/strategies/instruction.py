@@ -77,7 +77,8 @@ class InstructionRefinementStrategy(BaseStrategy):
             prompt, 
             errors, 
             instruction_text, 
-            conservative=True
+            conservative=True,
+            diagnosis=diagnosis
         )
     
     def _build_instruction_issues(self, prompt_analysis: Dict[str, Any]) -> str:

@@ -59,14 +59,27 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
         # 构建困难案例分析
         hard_cases_text = self._build_hard_cases_text(hard_cases[:10])
         
-        # 构建优化提示
-        optimize_prompt = EXAMPLE_INJECTION_PROMPT.format(
-            prompt=prompt,
-            hard_cases=hard_cases_text
-        )
+        # 构建优化指令（替代原来直接调用 _call_llm）
+        optimization_instruction: str = f"""当前提示词在处理一些困难案例时表现不佳。
+
+## 困难案例分析
+以下是模型难以正确处理的典型案例：
+{hard_cases_text}
+
+## 优化任务
+请在提示词中注入这些困难案例作为示例，帮助模型学会正确处理类似情况：
+
+1. **选择性注入**: 选择最具代表性的困难案例作为 few-shot 示例
+2. **格式统一**: 确保新增示例与原有示例格式一致
+3. **添加解释**: 可适当添加为什么这样分类的简短说明
+4. **保持模板变量**: 必须保留原有的 {{}} 模板变量
+"""
         
-        # 调用 LLM 优化
-        return self._call_llm(optimize_prompt)
+        # 使用通用元优化方法（获得知识库历史支持）
+        return self._meta_optimize(
+            prompt, hard_cases[:10], optimization_instruction, 
+            conservative=True, diagnosis=diagnosis
+        )
     
     def _build_hard_cases_text(self, hard_cases: List[Dict[str, Any]]) -> str:
         """构建困难案例文本"""

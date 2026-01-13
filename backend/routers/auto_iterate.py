@@ -74,6 +74,9 @@ async def start_auto_iterate(
         path = file_path 
         current_prompt = prompt
         
+        # 记录上一轮成功的索引集合，用于检测新增失败案例 (regression)
+        previous_success_indices = set()
+        
         try:
             for round_num in range(1, max_rounds + 1):
                 # 重新读取状态，检查是否被停止
@@ -130,11 +133,38 @@ async def start_auto_iterate(
                 
                 # 计算准确率
                 task_status = tm.get_task_status(task_id)
-                if task_status and task_status["results"]:
-                    accuracy = (len(task_status["results"]) - len(task_status.get("errors", []))) / len(task_status["results"])
+                current_results = task_status.get("results", [])
+                current_errors = task_status.get("errors", [])
+                
+                if current_results:
+                    accuracy = (len(current_results) - len(current_errors)) / len(current_results)
                 else:
                     accuracy = 0
                 
+                # --- 新增失败案例检测逻辑 START ---
+                # 1. 计算当前成功的索引集合
+                current_error_indices = {e["index"] for e in current_errors}
+                current_success_indices = {r["index"] for r in current_results if r["index"] not in current_error_indices}
+                
+                # 2. 找出那些"上一轮成功，但这一轮失败"的案例 (Regression)
+                # 注意：第一轮时 previous_success_indices 为空，不会检测出 regression，这是符合预期的
+                regression_indices = previous_success_indices.intersection(current_error_indices)
+                
+                regression_cases = []
+                if regression_indices:
+                    # 从 errors 中提取详情
+                    for err in current_errors:
+                        if err["index"] in regression_indices:
+                            regression_cases.append(err)
+                    
+                    logging.info(f"[AutoIterate {project_id}] Round {round_num}: Found {len(regression_cases)} regression cases (indices: {regression_indices})")
+                else:
+                    logging.info(f"[AutoIterate {project_id}] Round {round_num}: No regression cases found.")
+
+                # 3. 更新 previous_success_indices 为本轮的，供下一轮使用
+                previous_success_indices = current_success_indices
+                # --- 新增失败案例检测逻辑 END ---
+
                 status["current_accuracy"] = accuracy
                 status["message"] = f"第 {round_num}/{max_rounds} 轮: 准确率 {accuracy*100:.1f}%"
                 storage.save_auto_iterate_status(project_id, status)
@@ -208,7 +238,8 @@ async def start_auto_iterate(
                                 total_count=total_count,
                                 strategy_mode="auto",
                                 max_strategies=1,
-                                project_id=project_id
+                                project_id=project_id,
+                                newly_failed_cases=regression_cases
                             ))
                         
                         # 优化完成后再次检查停止信号

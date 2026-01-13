@@ -55,7 +55,8 @@ class BaseStrategy(ABC):
         prompt: str,
         error_cases: List[Dict[str, Any]],
         instruction: str,
-        conservative: bool = True
+        conservative: bool = True,
+        diagnosis: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         基于特定指令进行元优化的通用方法 (Git Diff Mode)
@@ -64,6 +65,7 @@ class BaseStrategy(ABC):
         :param error_cases: 错误案例列表
         :param instruction: 优化指令
         :param conservative: 是否使用保守模式（保留原有结构）
+        :param diagnosis: 诊断结果（可选，包含历史优化经验和新增失败案例）
         :return: 优化后的提示词
         """
         import logging
@@ -86,6 +88,43 @@ class BaseStrategy(ABC):
 3. 除非明确要求替换，否则保留所有现有的 few-shot 示例。
 """
         
+        # 构建历史优化经验章节
+        history_section: str = ""
+        if diagnosis:
+            history_text: str = diagnosis.get("optimization_history_text", "")
+            if history_text and history_text != "暂无历史优化记录":
+                history_section = f"""
+## 历史优化经验
+以下是之前各版本的优化总结，请参考避免重复无效的修改：
+
+{history_text}
+"""
+                logger.info(f"[元优化] 已注入历史优化经验，长度: {len(history_text)} 字符")
+        
+        # 构建新增失败案例章节（去空格后原样输出）
+        newly_failed_section: str = ""
+        if diagnosis:
+            newly_failed_cases: Optional[List[Dict[str, Any]]] = diagnosis.get(
+                "newly_failed_cases"
+            )
+            if newly_failed_cases and len(newly_failed_cases) > 0:
+                lines: List[str] = [
+                    "## 新增失败案例（本轮回退）",
+                    "以下案例在上一轮优化后变得失败，需要特别关注，避免类似的优化方向：",
+                    ""
+                ]
+                for case in newly_failed_cases:
+                    # 去除空格后原样输出
+                    query: str = str(case.get("query", "")).strip()
+                    target: str = str(case.get("target", "")).strip()
+                    output: str = str(case.get("output", "")).strip()
+                    lines.append(f"- Query: {query}")
+                    lines.append(f"  Expected: {target} | Actual: {output}")
+                newly_failed_section = "\n".join(lines) + "\n"
+                logger.info(
+                    f"[元优化] 已注入新增失败案例，数量: {len(newly_failed_cases)}"
+                )
+        
         optimization_prompt: str = f"""你是一个提示词工程专家。
 请根据提供的具体指令和错误案例优化以下提示词。
 
@@ -94,7 +133,7 @@ class BaseStrategy(ABC):
 
 ## 错误案例
 {error_text}
-
+{history_section}{newly_failed_section}
 ## 优化指令
 {instruction}
 {constraint_text}

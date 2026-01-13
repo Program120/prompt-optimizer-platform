@@ -45,4 +45,6 @@ class ClarificationMechanismStrategy(BaseStrategy):
         optimization_instruction = "\n".join(instruction_parts)
         sample_cases = clar_analysis.get("sample_cases", errors[:3])
         
-        return self._meta_optimize(prompt, sample_cases, optimization_instruction)
+        return self._meta_optimize(
+            prompt, sample_cases, optimization_instruction, diagnosis=diagnosis
+        )

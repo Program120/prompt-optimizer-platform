@@ -60,14 +60,28 @@ class BoundaryClarificationStrategy(BaseStrategy):
         # 构建混淆分析文本
         confusion_analysis = self._build_confusion_analysis(confusion_pairs, errors)
         
-        # 构建优化提示
-        optimize_prompt = BOUNDARY_CLARIFICATION_PROMPT.format(
-            prompt=prompt,
-            confusion_analysis=confusion_analysis
-        )
+        # 构建优化指令（替代原来直接调用 _call_llm）
+        optimization_instruction: str = f"""当前提示词在处理某些相似类别时存在混淆问题。
+
+## 混淆分析
+以下是模型容易混淆的类别对及典型错误案例：
+{confusion_analysis}
+
+## 优化任务
+请针对上述混淆问题，在提示词中添加明确的区分规则和边界说明，帮助模型准确区分这些相似类别。
+
+优化要点：
+1. 为每对混淆类别添加明确的区分标准
+2. 可添加"如果...则属于A类，如果...则属于B类"的判断规则
+3. 可添加典型的对比示例
+4. 保持原有提示词的结构和模板变量不变
+"""
         
-        # 调用 LLM 优化
-        return self._call_llm(optimize_prompt)
+        # 使用通用元优化方法（获得知识库历史支持）
+        return self._meta_optimize(
+            prompt, errors, optimization_instruction, 
+            conservative=True, diagnosis=diagnosis
+        )
     
     def _build_confusion_analysis(
         self, 

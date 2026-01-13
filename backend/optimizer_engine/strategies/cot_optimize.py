@@ -93,4 +93,6 @@ class CoTReasoningStrategy(BaseStrategy):
    - 强制要求更严格地遵守逻辑步骤。
 """
             
-        return self._meta_optimize(prompt, errors, instruction, conservative=True)
+        return self._meta_optimize(
+            prompt, errors, instruction, conservative=True, diagnosis=diagnosis
+        )

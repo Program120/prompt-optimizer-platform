@@ -99,7 +99,8 @@ class OptimizationKnowledgeBase:
         applied_strategies: List[str],
         accuracy_before: float,
         accuracy_after: Optional[float] = None,
-        deep_analysis: Optional[Dict[str, Any]] = None
+        deep_analysis: Optional[Dict[str, Any]] = None,
+        newly_failed_cases: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
         记录一次优化
@@ -112,6 +113,7 @@ class OptimizationKnowledgeBase:
         :param accuracy_before: 优化前准确率
         :param accuracy_after: 优化后准确率（可选，可后续更新）
         :param deep_analysis: 深度分析数据（可选）
+        :param newly_failed_cases: 新增的失败案例（上一轮成功，本轮失败）（可选）
         :return: 保存的优化记录
         """
         # 加载历史记录
@@ -131,7 +133,8 @@ class OptimizationKnowledgeBase:
             "deep_analysis": deep_analysis,
             "applied_strategies": applied_strategies,
             "accuracy_before": accuracy_before,
-            "accuracy_after": accuracy_after
+            "accuracy_after": accuracy_after,
+            "newly_failed_cases": newly_failed_cases
         }
         
         # 添加到历史记录
@@ -266,4 +269,57 @@ class OptimizationKnowledgeBase:
             lines.append(f"- 优化总结: {summary}")
             lines.append("")
             
+        return "\n".join(lines)
+    
+    def get_all_history_for_prompt(self) -> str:
+        """
+        获取所有历史版本的格式化文本，用于注入到优化 Prompt 中
+        
+        与 format_history_for_prompt 不同，此方法：
+        1. 返回所有历史版本（按版本正序，从 V1 到最新）
+        2. 包含每轮的新增失败案例（去空格后原样输出）
+        
+        :return: 格式化的完整历史文本
+        """
+        # 加载所有历史记录
+        history: List[Dict[str, Any]] = self._load_history()
+        
+        if not history:
+            return "暂无历史优化记录"
+        
+        # 按版本正序排列（从 V1 到最新）
+        history.sort(key=lambda x: x.get("version", 0))
+        
+        lines: List[str] = []
+        
+        for record in history:
+            version: int = record.get("version", 0)
+            summary: str = record.get("analysis_summary", "无总结")
+            strategies: List[str] = record.get("applied_strategies", [])
+            acc_before: float = record.get("accuracy_before", 0)
+            acc_after: Optional[float] = record.get("accuracy_after")
+            newly_failed: Optional[List[Dict[str, Any]]] = record.get(
+                "newly_failed_cases"
+            )
+            
+            lines.append(f"### 版本 {version}")
+            lines.append(f"- 优化前准确率: {acc_before:.1%}")
+            if acc_after is not None:
+                lines.append(f"- 优化后准确率: {acc_after:.1%}")
+            lines.append(f"- 应用策略: {', '.join(strategies)}")
+            lines.append(f"- 优化总结: {summary}")
+            
+            # 添加新增失败案例（去空格后原样输出）
+            if newly_failed and len(newly_failed) > 0:
+                lines.append("- 新增失败案例（本轮回退）:")
+                for case in newly_failed:
+                    # 去除空格后原样输出 query
+                    query: str = str(case.get("query", "")).strip()
+                    target: str = str(case.get("target", "")).strip()
+                    output: str = str(case.get("output", "")).strip()
+                    lines.append(f"  - Query: {query}")
+                    lines.append(f"    Expected: {target} | Actual: {output}")
+            
+            lines.append("")
+        
         return "\n".join(lines)
