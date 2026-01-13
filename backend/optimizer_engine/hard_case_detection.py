@@ -350,9 +350,18 @@ class HardCaseDetector:
     ) -> List[List[float]]:
         """
         使用 LLM 客户端批量提取嵌入。
+        
+        :param texts: 需要提取嵌入的文本列表
+        :return: 嵌入向量列表
         """
         if not self.llm_client:
+            self.logger.warning("[嵌入向量-困难案例] 未配置 LLM 客户端，跳过嵌入提取")
             return []
+        
+        # 记录嵌入请求输入日志
+        self.logger.info(f"[嵌入向量请求-困难案例] 输入文本数量: {len(texts)}")
+        if texts:
+            self.logger.debug(f"[嵌入向量请求-困难案例] 首个文本预览: {texts[0][:100]}...")
             
         try:
             # 检查客户端是否支持向量嵌入
@@ -376,19 +385,29 @@ class HardCaseDetector:
                      else:
                          # 对于其他提供商，我们可能没有安全的默认值。
                          # 记录警告并跳过比在 ada-002 上崩溃或报 404 更好
-                         self.logger.warning("未配置 embedding_model，且无法推断默认模型。跳过困难案例检测。")
+                         self.logger.warning("[嵌入向量请求-困难案例] 未配置 embedding_model，且无法推断默认模型。跳过困难案例检测。")
                          return []
 
+                 self.logger.info(f"[嵌入向量请求-困难案例] 使用嵌入模型: {model_name}")
+                 
                  response: Any = self.llm_client.embeddings.create(
                      input=texts,
                      model=model_name,
                      timeout=int(self.model_config.get("timeout", 180))
                  )
-                 return [data.embedding for data in response.data]
+                 
+                 embeddings: List[List[float]] = [data.embedding for data in response.data]
+                 
+                 # 记录嵌入响应输出日志
+                 self.logger.info(f"[嵌入向量响应-困难案例] 生成向量数量: {len(embeddings)}")
+                 if embeddings:
+                     self.logger.debug(f"[嵌入向量响应-困难案例] 向量维度: {len(embeddings[0])}")
+                 
+                 return embeddings
         except Exception as e:
             # 捕获所有向量嵌入错误（404, 400 等）以防止整个优化过程崩溃
             # 尤其是对于提供商不兼容的情况（例如阿里云与 OpenAI 的模型名称）
-            self.logger.warning(f"生成向量嵌入失败: {e}。跳过基于向量的困难案例检测。")
+            self.logger.warning(f"[嵌入向量请求-困难案例] 生成向量嵌入失败: {e}。跳过基于向量的困难案例检测。")
             return []
         
         return []

@@ -285,10 +285,17 @@ class IntentAnalyzer:
         """
         loop = asyncio.get_event_loop()
         
+        # 记录 LLM 请求输入日志
+        self.logger.info(f"[LLM请求-意图深度分析] 输入提示词长度: {len(prompt)} 字符")
+        self.logger.debug(f"[LLM请求-意图深度分析] 输入内容:\n{prompt[:800]}...")
+        
         def run_sync() -> str:
             try:
+                model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
+                self.logger.info(f"[LLM请求-意图深度分析] 使用模型: {model_name}")
+                
                 response = self.llm_client.chat.completions.create(
-                    model=self.model_config.get("model_name", "gpt-3.5-turbo"),
+                    model=model_name,
                     messages=[
                         {
                             "role": "system", 
@@ -302,6 +309,11 @@ class IntentAnalyzer:
                     extra_body=self.model_config.get("extra_body")
                 )
                 content: str = response.choices[0].message.content.strip()
+                
+                # 记录 LLM 响应输出日志（处理前）
+                self.logger.info(f"[LLM响应-意图深度分析] 原始输出长度: {len(content)} 字符")
+                self.logger.debug(f"[LLM响应-意图深度分析] 原始输出内容:\n{content[:800]}...")
+                
                 # 处理思考模型的 <think> 标签
                 content = re.sub(
                     r'<think>.*?</think>', 
@@ -309,9 +321,13 @@ class IntentAnalyzer:
                     content, 
                     flags=re.DOTALL
                 ).strip()
+                
+                # 记录处理后的输出
+                self.logger.info(f"[LLM响应-意图深度分析] 处理后输出长度: {len(content)} 字符")
+                
                 return content
             except Exception as e:
-                self.logger.error(f"LLM 调用失败: {e}")
+                self.logger.error(f"[LLM请求-意图深度分析] 调用失败: {e}")
                 raise e
                 
         return await loop.run_in_executor(None, run_sync)

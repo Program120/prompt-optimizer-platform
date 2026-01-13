@@ -251,29 +251,57 @@ class AdvancedDiagnoser:
         }
 
     async def _call_llm_async(self, prompt: str) -> str:
-        """异步调用 LLM"""
+        """
+        异步调用 LLM
+        
+        :param prompt: 输入提示词
+        :return: LLM 响应内容
+        """
         loop = asyncio.get_event_loop()
-        def run_sync():
+        
+        # 记录 LLM 请求输入日志
+        self.logger.info(f"[LLM请求-高级诊断] 输入提示词长度: {len(prompt)} 字符")
+        self.logger.debug(f"[LLM请求-高级诊断] 输入内容:\n{prompt[:600]}...")
+        
+        def run_sync() -> str:
+            model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
+            self.logger.info(f"[LLM请求-高级诊断] 使用模型: {model_name}")
+            
             try:
                 response = self.llm_client.chat.completions.create(
-                    model=self.model_config.get("model_name", "gpt-3.5-turbo"),
+                    model=model_name,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
                     max_tokens=600,
-                    extra_body={"response_format": {"type": "json_object"}} # 强制 JSON
+                    # 强制 JSON
+                    extra_body={"response_format": {"type": "json_object"}}
                 )
-                return response.choices[0].message.content.strip()
+                result: str = response.choices[0].message.content.strip()
+                
+                # 记录 LLM 响应输出日志
+                self.logger.info(f"[LLM响应-高级诊断] 输出长度: {len(result)} 字符")
+                self.logger.debug(f"[LLM响应-高级诊断] 输出内容:\n{result[:600]}...")
+                
+                return result
             except Exception as e:
+                self.logger.warning(f"[LLM请求-高级诊断] JSON模式调用失败: {e}，尝试普通模式...")
                 # Retry without json enforcement if failed
                 try:
                     response = self.llm_client.chat.completions.create(
-                        model=self.model_config.get("model_name", "gpt-3.5-turbo"),
+                        model=model_name,
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.1,
                         max_tokens=600
                     )
-                    return response.choices[0].message.content.strip()
+                    result: str = response.choices[0].message.content.strip()
+                    
+                    # 记录重试后的响应
+                    self.logger.info(f"[LLM响应-高级诊断(重试)] 输出长度: {len(result)} 字符")
+                    self.logger.debug(f"[LLM响应-高级诊断(重试)] 输出内容:\n{result[:600]}...")
+                    
+                    return result
                 except Exception as e2:
+                    self.logger.error(f"[LLM请求-高级诊断] 重试后仍失败: {e2}")
                     raise e2
                     
         return await loop.run_in_executor(None, run_sync)

@@ -12,6 +12,7 @@ import ExecutionPanel from "./_components/ExecutionPanel";
 import HistoryPanel from "./_components/HistoryPanel";
 import LogDetailModal from "./_components/LogDetailModal";
 import IterationDetailModal from "./_components/IterationDetailModal";
+import KnowledgeDetailModal from "./_components/KnowledgeDetailModal";
 
 // 统一使用相对路径
 const API_BASE = "/api";
@@ -52,6 +53,10 @@ export default function ProjectDetail() {
         strategy: "simple"
     });
     const [autoIterateStatus, setAutoIterateStatus] = useState<any>(null);
+
+    // 知识库状态
+    const [knowledgeRecords, setKnowledgeRecords] = useState<any[]>([]);
+    const [selectedKnowledge, setSelectedKnowledge] = useState<any>(null);
 
     const [showExternalOptimize, setShowExternalOptimize] = useState(false);
     const [externalPrompt, setExternalPrompt] = useState("");
@@ -103,6 +108,15 @@ export default function ProjectDetail() {
         }
     };
 
+    const fetchKnowledgeBase = async () => {
+        try {
+            const res = await axios.get(`${API_BASE}/projects/${id}/knowledge-base`);
+            setKnowledgeRecords(res.data.records || []);
+        } catch (e) {
+            console.error("Failed to fetch knowledge base", e);
+        }
+    };
+
     const fetchProject = async () => {
         try {
             const res = await axios.get(`${API_BASE}/projects/${id}`);
@@ -139,6 +153,8 @@ export default function ProjectDetail() {
 
             // 获取任务历史
             await fetchTaskHistory();
+            // 获取知识库记录
+            await fetchKnowledgeBase();
 
             // 如果有历史任务，恢复最近一个的状态 (这里我们要小心，因为 fetchTaskHistory 是异步的，
             // 但我们需要 taskHistory 里的数据。await fetchTaskHistory() 会设置 state，
@@ -362,6 +378,7 @@ export default function ProjectDetail() {
                     isOptimizePollingRef.current = false;
                     showToast("提示词优化成功！", "success");
                     fetchProject();
+                    fetchKnowledgeBase();
                 } else if (status.status === "failed") {
                     setIsOptimizing(false);
                     isOptimizePollingRef.current = false;
@@ -678,6 +695,8 @@ export default function ProjectDetail() {
                         runHistory={taskHistory}
                         onSelectLog={setSelectedLog}
                         onSelectIteration={setSelectedIteration}
+                        knowledgeRecords={knowledgeRecords}
+                        onSelectKnowledge={setSelectedKnowledge}
                     />
                 </div>
             </div>
@@ -696,6 +715,14 @@ export default function ProjectDetail() {
                     setProject({ ...project, current_prompt: newPrompt });
                     if (msg) showToast(msg, "success");
                 }}
+            />
+
+            <KnowledgeDetailModal
+                record={selectedKnowledge}
+                projectId={id as string}
+                onClose={() => setSelectedKnowledge(null)}
+                onUpdate={fetchKnowledgeBase}
+                showToast={showToast}
             />
         </div>
     );

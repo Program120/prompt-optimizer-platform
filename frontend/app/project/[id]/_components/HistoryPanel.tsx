@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy, Layers, TrendingUp } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -9,9 +9,12 @@ interface HistoryPanelProps {
     runHistory: any[];  // 运行历史列表 (List of past execution tasks)
     onSelectLog: (log: any) => void;
     onSelectIteration: (iteration: any) => void;
+    // 知识库相关
+    knowledgeRecords?: any[];
+    onSelectKnowledge?: (record: any) => void;
 }
 
-export default function HistoryPanel({ taskStatus, project, runHistory, onSelectLog, onSelectIteration }: HistoryPanelProps) {
+export default function HistoryPanel({ taskStatus, project, runHistory, onSelectLog, onSelectIteration, knowledgeRecords, onSelectKnowledge }: HistoryPanelProps) {
     const [activeTab, setActiveTab] = useState("run"); // run, history, runHistory
     const [showPromptModal, setShowPromptModal] = useState(false);
     const [currentPrompt, setCurrentPrompt] = useState("");
@@ -93,6 +96,12 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
                     className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "history" ? "bg-white/5 text-blue-400 border-b-2 border-blue-500" : "text-slate-500 hover:text-slate-300"}`}
                 >
                     迭代历史
+                </button>
+                <button
+                    onClick={() => setActiveTab("knowledge")}
+                    className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "knowledge" ? "bg-white/5 text-purple-400 border-b-2 border-purple-500" : "text-slate-500 hover:text-slate-300"}`}
+                >
+                    优化分析
                 </button>
             </div>
 
@@ -204,7 +213,7 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
                         ))}
                         {!runHistory?.length && <p className="text-center text-slate-600 mt-20">暂无运行历史</p>}
                     </div>
-                ) : (
+                ) : activeTab === "history" ? (
                     // 迭代历史 Tab
                     <div className="space-y-4">
                         {project.iterations?.slice().reverse().map((it: any, idx: number) => (
@@ -245,7 +254,75 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
                         ))}
                         {!project.iterations?.length && <p className="text-center text-slate-600 mt-20">暂无优化历史</p>}
                     </div>
-                )}
+                ) : activeTab === "knowledge" ? (
+                    // 优化分析 Tab (知识库)
+                    <div className="space-y-3">
+                        {knowledgeRecords?.map((record: any, idx: number) => (
+                            <div
+                                key={record.version}
+                                onClick={() => onSelectKnowledge?.(record)}
+                                className="p-3 rounded-xl border border-purple-500/20 bg-gradient-to-br from-purple-600/5 to-blue-600/5 hover:from-purple-600/10 hover:to-blue-600/10 cursor-pointer transition-all"
+                            >
+                                {/* 头部: 版本号和时间 */}
+                                <div className="flex justify-between items-center mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                                            <Layers size={12} className="text-purple-400" />
+                                        </div>
+                                        <span className="text-sm font-bold text-white">v{record.version}</span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-500">
+                                        {new Date(record.timestamp).toLocaleString()}
+                                    </span>
+                                </div>
+
+                                {/* 准确率变化 */}
+                                <div className="flex items-center gap-2 mb-2 text-xs">
+                                    <span className="text-orange-400">
+                                        {(record.accuracy_before * 100).toFixed(1)}%
+                                    </span>
+                                    <TrendingUp size={12} className="text-emerald-400" />
+                                    <span className="text-emerald-400 font-medium">
+                                        {record.accuracy_after !== null && record.accuracy_after !== undefined
+                                            ? `${(record.accuracy_after * 100).toFixed(1)}%`
+                                            : "待验证"}
+                                    </span>
+                                </div>
+
+                                {/* 应用策略 */}
+                                {record.applied_strategies?.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mb-2">
+                                        {record.applied_strategies.slice(0, 3).map((strategy: string, sIdx: number) => (
+                                            <span
+                                                key={sIdx}
+                                                className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 text-[10px] rounded border border-blue-500/20"
+                                            >
+                                                {strategy}
+                                            </span>
+                                        ))}
+                                        {record.applied_strategies.length > 3 && (
+                                            <span className="text-[10px] text-slate-500">
+                                                +{record.applied_strategies.length - 3}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* 优化总结预览 */}
+                                <p className="text-[11px] text-slate-400 line-clamp-2">
+                                    {record.analysis_summary || "暂无优化总结"}
+                                </p>
+                            </div>
+                        ))}
+                        {!knowledgeRecords?.length && (
+                            <div className="text-center mt-20">
+                                <Layers size={32} className="mx-auto text-slate-600 mb-2" />
+                                <p className="text-slate-600 text-sm">暂无优化分析记录</p>
+                                <p className="text-slate-700 text-xs mt-1">完成优化后将自动记录分析历史</p>
+                            </div>
+                        )}
+                    </div>
+                ) : null}
             </div>
 
             {/* Prompt Modal */}

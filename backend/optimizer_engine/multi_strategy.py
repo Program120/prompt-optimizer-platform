@@ -351,7 +351,7 @@ class MultiStrategyOptimizer:
         self.logger.info(f"正在对提示词进行快速评估 (长度={len(prompt)})，测试案例数: {total}...")
         
         # 限制并发
-        sem = asyncio.Semaphore(5)
+        sem = asyncio.Semaphore(3)
         
         async def run_case(case):
             async with sem:
@@ -390,24 +390,42 @@ class MultiStrategyOptimizer:
         return best
 
     async def _call_llm_async(self, prompt: str) -> str:
-        """异步调用 LLM"""
+        """
+        异步调用 LLM
+        
+        :param prompt: 输入提示词
+        :return: LLM 响应内容
+        """
         # 适配同步的 llm_client 到异步
         # 假设 llm_client 是 openai 风格但同步的，或者支持 async
         # 这里为了保险，用 run_in_executor
         import functools
         loop = asyncio.get_event_loop()
         
-        def run_sync():
+        # 记录 LLM 请求输入日志
+        self.logger.info(f"[LLM请求-快速评估] 输入提示词长度: {len(prompt)} 字符")
+        self.logger.debug(f"[LLM请求-快速评估] 输入内容: {prompt[:500]}...")
+        
+        def run_sync() -> str:
             try:
+                model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
+                self.logger.info(f"[LLM请求-快速评估] 使用模型: {model_name}")
+                
                 response = self.llm_client.chat.completions.create(
-                    model=self.model_config.get("model_name", "gpt-3.5-turbo"),
+                    model=model_name,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0,
                     max_tokens=500
                 )
-                return response.choices[0].message.content.strip()
+                result: str = response.choices[0].message.content.strip()
+                
+                # 记录 LLM 响应输出日志
+                self.logger.info(f"[LLM响应-快速评估] 输出长度: {len(result)} 字符")
+                self.logger.debug(f"[LLM响应-快速评估] 输出内容: {result[:500]}...")
+                
+                return result
             except Exception as e:
-                self.logger.error(f"LLM 异步调用失败: {e}")
+                self.logger.error(f"[LLM请求-快速评估] 调用失败: {e}")
                 return ""
                 
         return await loop.run_in_executor(None, run_sync)
