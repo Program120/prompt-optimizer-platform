@@ -167,7 +167,7 @@ class TaskManager:
                     response = task_client.chat.completions.create(
                         model=model_config.get("model_name", "gpt-3.5-turbo"),
                         messages=[
-                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": prompt},
                             {"role": "user", "content": query}
                         ],
                         temperature=float(model_config.get("temperature", 0)),

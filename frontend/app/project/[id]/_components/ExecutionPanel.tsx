@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import {
-    Rocket, Pause, Play, Square, Upload, RefreshCw, Copy, Download, X, ClipboardPaste, AlertCircle
-} from "lucide-react";
+    Play, RotateCcw, Upload, FileText, CheckCircle2, AlertCircle, RefreshCw, Copy, ExternalLink, Rocket, XCircle,
+    Download, Pause, Square, X, ClipboardPaste
+} from 'lucide-react';
 
 // 统一使用相对路径
 const API_BASE = "/api";
@@ -13,7 +14,7 @@ interface ExecutionPanelProps {
     setConfig: (config: { query_col: string; target_col: string }) => void;
     extractField: string;
     setExtractField: (field: string) => void;
-    autoIterateConfig: { enabled: boolean; maxRounds: number; targetAccuracy: number };
+    autoIterateConfig: { enabled: boolean; maxRounds: number; targetAccuracy: number; strategy: "simple" | "multi" };
     setAutoIterateConfig: (config: any) => void;
     autoIterateStatus: any;
     isAutoIterating: boolean;
@@ -22,6 +23,7 @@ interface ExecutionPanelProps {
     onControlTask: (action: string) => void;
     onStopAutoIterate: () => void;
     onOptimize: () => void;
+    onStopOptimize?: () => void;
     isOptimizing: boolean;
     showExternalOptimize: boolean;
     setShowExternalOptimize: (show: boolean) => void;
@@ -30,6 +32,8 @@ interface ExecutionPanelProps {
     onCopyOptimizeContext: () => void;
     onApplyExternalOptimize: () => void;
     optimizeContext: string;
+    strategy: "multi" | "simple";
+    setStrategy: (strategy: "multi" | "simple") => void;
 }
 
 export default function ExecutionPanel({
@@ -48,6 +52,7 @@ export default function ExecutionPanel({
     onControlTask,
     onStopAutoIterate,
     onOptimize,
+    onStopOptimize,
     isOptimizing,
     showExternalOptimize,
     setShowExternalOptimize,
@@ -55,7 +60,9 @@ export default function ExecutionPanel({
     setExternalPrompt,
     onCopyOptimizeContext,
     onApplyExternalOptimize,
-    optimizeContext
+    optimizeContext,
+    strategy,
+    setStrategy
 }: ExecutionPanelProps) {
     return (
         <section className="glass p-6 rounded-2xl">
@@ -199,6 +206,23 @@ export default function ExecutionPanel({
                                         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm"
                                     />
                                 </div>
+                                <div className="col-span-2">
+                                    <label className="block text-xs text-slate-400 mb-1">优化策略</label>
+                                    <div className="flex bg-black/20 p-1 rounded-lg">
+                                        <button
+                                            onClick={() => setAutoIterateConfig({ ...autoIterateConfig, strategy: "simple" })}
+                                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${autoIterateConfig.strategy === "simple" ? "bg-blue-600 text-white shadow-lg" : "text-slate-400 hover:text-slate-300"}`}
+                                        >
+                                            快速 (LLM 单次优化)
+                                        </button>
+                                        <button
+                                            onClick={() => setAutoIterateConfig({ ...autoIterateConfig, strategy: "multi" })}
+                                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${!autoIterateConfig.strategy || autoIterateConfig.strategy === "multi" ? "bg-purple-600 text-white shadow-lg" : "text-slate-400 hover:text-slate-300"}`}
+                                        >
+                                            深度 (多策略自动优化)
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             {autoIterateStatus?.status === "running" && (
@@ -244,14 +268,41 @@ export default function ExecutionPanel({
                     {taskStatus.status === "completed" && (
                         <div className="space-y-3">
                             <div className="flex gap-4">
-                                <button
-                                    onClick={onOptimize}
-                                    disabled={isOptimizing || taskStatus.errors.length === 0}
-                                    className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20"
-                                >
-                                    {isOptimizing ? <RefreshCw className="animate-spin" size={20} /> : <RefreshCw size={20} />}
-                                    一键智能优化
-                                </button>
+                                {isOptimizing ? (
+                                    <button
+                                        onClick={onStopOptimize}
+                                        className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-red-900/20"
+                                    >
+                                        <XCircle size={20} />
+                                        停止优化
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={onOptimize}
+                                        disabled={taskStatus.errors.length === 0}
+                                        className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20"
+                                    >
+                                        <RefreshCw size={20} />
+                                        一键智能优化
+                                    </button>
+                                )}
+
+                                {/* 优化策略切换 */}
+                                <div className="flex bg-black/20 p-1 rounded-xl">
+                                    <button
+                                        onClick={() => setStrategy("simple")}
+                                        className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${strategy === "simple" ? "bg-blue-600 text-white shadow-lg" : "text-slate-400 hover:text-slate-300"}`}
+                                    >
+                                        快速
+                                    </button>
+                                    <button
+                                        onClick={() => setStrategy("multi")}
+                                        className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${strategy === "multi" ? "bg-purple-600 text-white shadow-lg" : "text-slate-400 hover:text-slate-300"}`}
+                                    >
+                                        深度
+                                    </button>
+                                </div>
+
                                 <button
                                     onClick={() => {
                                         // 同时打开面板和复制上下文

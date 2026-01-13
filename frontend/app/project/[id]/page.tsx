@@ -39,7 +39,17 @@ export default function ProjectDetail() {
     const [selectedIteration, setSelectedIteration] = useState<any>(null);
 
     // Auto-iterate config
-    const [autoIterateConfig, setAutoIterateConfig] = useState({ enabled: false, maxRounds: 5, targetAccuracy: 95 });
+    const [autoIterateConfig, setAutoIterateConfig] = useState<{
+        enabled: boolean;
+        maxRounds: number;
+        targetAccuracy: number;
+        strategy: "simple" | "multi";
+    }>({
+        enabled: false,
+        maxRounds: 5,
+        targetAccuracy: 95,
+        strategy: "simple"
+    });
     const [autoIterateStatus, setAutoIterateStatus] = useState<any>(null);
 
     const [showExternalOptimize, setShowExternalOptimize] = useState(false);
@@ -285,6 +295,58 @@ export default function ProjectDetail() {
         } catch (e) { console.error(e); }
     };
 
+    const [strategy, setStrategy] = useState<"multi" | "simple">("simple");
+
+    // 优化状态轮询
+    const isOptimizePollingRef = useRef(false);
+
+    const pollOptimizationStatus = () => {
+        if (isOptimizePollingRef.current) return;
+        isOptimizePollingRef.current = true;
+        setIsOptimizing(true);
+
+        const poll = async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/projects/${id}/optimize/status`);
+                const status = res.data;
+
+                if (status.status === "completed") {
+                    setIsOptimizing(false);
+                    isOptimizePollingRef.current = false;
+                    showToast("提示词优化成功！", "success");
+                    fetchProject();
+                } else if (status.status === "failed") {
+                    setIsOptimizing(false);
+                    isOptimizePollingRef.current = false;
+                    showToast(`优化失败: ${status.message}`, "error");
+                } else if (status.status === "idle") {
+                    setIsOptimizing(false);
+                    isOptimizePollingRef.current = false;
+                } else {
+                    // Running... continue polling
+                    setTimeout(poll, 1000);
+                }
+            } catch (e) {
+                console.error(e);
+                setIsOptimizing(false);
+                isOptimizePollingRef.current = false;
+            }
+        };
+        poll();
+    };
+
+    // 页面加载时检查是否有正在进行的优化任务
+    useEffect(() => {
+        if (id) {
+            // 简单检查一下状态
+            axios.get(`${API_BASE}/projects/${id}/optimize/status`).then(res => {
+                if (res.data.status === "running") {
+                    pollOptimizationStatus();
+                }
+            }).catch(console.error);
+        }
+    }, [id]);
+
     const handleOptimize = async () => {
         if (!taskStatus?.id) return;
 
@@ -303,13 +365,27 @@ export default function ProjectDetail() {
             return;
         }
 
-        setIsOptimizing(true);
         try {
-            const res = await axios.post(`${API_BASE}/projects/${id}/optimize?task_id=${taskStatus.id}`, {}, { timeout: 300000 });
-            showToast("提示词优化成功！", "success");
-            fetchProject();
-        } catch (e) { showToast("优化失败", "error"); }
-        finally { setIsOptimizing(false); }
+            // 启动优化任务
+            await axios.post(`${API_BASE}/projects/${id}/optimize?task_id=${taskStatus.id}&strategy=${strategy}`);
+            showToast("优化任务已启动，正在后台运行...", "success");
+            // 开始轮询
+            pollOptimizationStatus();
+        } catch (e) {
+            showToast("启动优化任务失败", "error");
+            console.error(e);
+        }
+    };
+
+    const handleStopOptimize = async () => {
+        try {
+            await axios.post(`${API_BASE}/projects/${id}/optimize/stop`);
+            showToast("正在停止优化任务...", "success");
+            // 轮询会检测到 stopped 状态并更新 UI
+        } catch (e) {
+            console.error("Stop failed", e);
+            showToast("停止请求失败", "error");
+        }
     };
 
     const startAutoIterate = async () => {
@@ -336,6 +412,7 @@ export default function ProjectDetail() {
         formData.append("prompt", project.current_prompt);
         formData.append("max_rounds", autoIterateConfig.maxRounds.toString());
         formData.append("target_accuracy", (autoIterateConfig.targetAccuracy / 100).toString());
+        formData.append("strategy", autoIterateConfig.strategy || "multi");
         if (extractField) formData.append("extract_field", extractField);
 
         try {
@@ -527,6 +604,7 @@ export default function ProjectDetail() {
                         onControlTask={controlTask}
                         onStopAutoIterate={stopAutoIterate}
                         onOptimize={handleOptimize}
+                        onStopOptimize={handleStopOptimize}
                         isOptimizing={isOptimizing}
                         showExternalOptimize={showExternalOptimize}
                         setShowExternalOptimize={setShowExternalOptimize}
@@ -535,6 +613,8 @@ export default function ProjectDetail() {
                         onCopyOptimizeContext={copyOptimizeContext}
                         onApplyExternalOptimize={applyExternalOptimize}
                         optimizeContext={optimizeContext}
+                        strategy={strategy}
+                        setStrategy={setStrategy}
                     />
                 </div>
 

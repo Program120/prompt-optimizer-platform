@@ -149,79 +149,176 @@ async def get_project_tasks(project_id: str):
     tasks = storage.get_project_tasks(project_id)
     return {"tasks": tasks}
 
+
+# 优化任务状态存储
+# 格式: {project_id: {"status": "running"|"completed"|"failed", "message": "...", "result": {...}}}
+optimization_status = {}
+
+def background_optimize_task(project_id: str, task_id: str, strategy: str, model_config: dict, optimization_prompt: str, project: dict, task_status: dict):
+    """后台优化任务"""
+    import asyncio
+    try:
+        # 更新状态为运行中
+        optimization_status[project_id] = {
+            "status": "running",
+            "message": "正在优化中...",
+            "start_time": datetime.now().isoformat()
+        }
+        
+        # 计算总样本数
+        total_count = len(task_status.get("results", []))
+        errors = task_status.get("errors", [])
+        
+        diagnosis = None
+        applied_strategies = []
+        new_prompt = project["current_prompt"]
+        
+        if strategy == "simple":
+            # 简单优化
+            # optimize_prompt 是同步函数
+            new_prompt = optimize_prompt(
+                project["current_prompt"],
+                errors,
+                model_config,
+                optimization_prompt
+            )
+            applied_strategies = [{"name": "Simple Optimization", "success": True}]
+        else:
+            # 多策略优化 (需要 async 运行)
+            dataset = task_status.get("results", [])
+            # 在后台线程中运行 async 函数需要 new loop 或者 asyncio.run
+            result = asyncio.run(multi_strategy_optimize(
+                project["current_prompt"], 
+                errors, 
+                model_config,
+                dataset=dataset,
+                total_count=total_count,
+                strategy_mode="auto",
+                max_strategies=1
+            ))
+            new_prompt = result.get("optimized_prompt", project["current_prompt"])
+            applied_strategies = result.get("applied_strategies", [])
+            diagnosis = result.get("diagnosis")
+            
+        # 检查是否被停止
+        if optimization_status.get(project_id, {}).get("should_stop"):
+             optimization_status[project_id] = {
+                "status": "stopped",
+                "message": "优化已手动停止"
+            }
+             return
+
+        # 保存一轮迭代
+        dataset_path = task_status.get("file_path")
+        dataset_name = None
+        if dataset_path:
+            import os
+            dataset_name = os.path.basename(dataset_path)
+
+        iteration_record = {
+            "old_prompt": project["current_prompt"],
+            "new_prompt": new_prompt,
+            "task_id": task_id,
+            "dataset_path": dataset_path,
+            "dataset_name": dataset_name,
+            "accuracy": (len(task_status["results"]) - len(task_status["errors"])) / len(task_status["results"]) if task_status.get("results") else 0,
+            "applied_strategies": [s.get("name") for s in applied_strategies if s.get("success")],
+            "created_at": datetime.now().isoformat()
+        }
+        
+        # 重新获取项目以避免并发覆盖 (虽然这里还是有风险，但比直接用旧对象好)
+        curr_project = storage.get_project(project_id)
+        if curr_project:
+            curr_project["iterations"].append(iteration_record)
+            curr_project["current_prompt"] = new_prompt
+            
+            projects = storage.get_projects()
+            for idx, p in enumerate(projects):
+                if p["id"] == project_id:
+                    projects[idx] = curr_project
+                    break
+            storage.save_projects(projects)
+            
+        # 更新状态为完成
+        optimization_status[project_id] = {
+            "status": "completed",
+            "message": "优化完成",
+            "result": {
+                "new_prompt": new_prompt,
+                "applied_strategies": applied_strategies,
+                "diagnosis": diagnosis
+            }
+        }
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        optimization_status[project_id] = {
+            "status": "failed",
+            "message": f"优化失败: {str(e)}"
+        }
+
+@router.post("/{project_id}/optimize/stop")
+async def stop_optimization(project_id: str):
+    """停止优化任务"""
+    if project_id in optimization_status and optimization_status[project_id]["status"] == "running":
+        optimization_status[project_id]["should_stop"] = True
+        optimization_status[project_id]["status"] = "stopped"
+        optimization_status[project_id]["message"] = "正在停止..."
+        return {"status": "stopping"}
+    return {"status": "not_running"}
+
 @router.post("/{project_id}/optimize")
-async def optimize_project_prompt(project_id: str, task_id: str):
+async def optimize_project_prompt(project_id: str, task_id: str, strategy: str = "multi"):
+    """
+    启动异步优化任务
+    """
+    import threading
+    
     project = storage.get_project(project_id)
     task_status = tm.get_task_status(task_id)
     
     if not project or not task_status:
         raise HTTPException(status_code=404, detail="Project or Task not found")
     
-    # 获取优化模型配置
-    # 如果项目有 optimization_model_config 则使用，否则回退到 model_config
-    model_config = project.get("optimization_model_config")
+    # 检查是否已有正在运行的任务
+    current_status = optimization_status.get(project_id)
+    if current_status and current_status.get("status") == "running":
+        # 如果已经运行很久了(比如超过10分钟)，允许强制重新开始？暂时不处理
+        return {"status": "running", "message": "已有优化任务正在进行中"}
     
-    # 如果没有专门的优化配置，使用通用配置
+    # 获取优化模型配置
+    model_config = project.get("optimization_model_config")
     if not model_config:
         model_config = project.get("model_config")
     
     if not model_config or not model_config.get("api_key"):
         raise HTTPException(status_code=400, detail="请先在项目设置中配置提示词优化模型参数(API Key)")
     
-    # 计算总样本数和准确率
-    total_count = len(task_status.get("results", []))
-    errors = task_status.get("errors", [])
+    # 兼容性处理
+    if not strategy:
+        strategy = "multi"
+        
+    optimization_prompt = project.get("optimization_prompt")
+    
+    # 启动后台线程
+    thread = threading.Thread(
+        target=background_optimize_task,
+        args=(project_id, task_id, strategy, model_config, optimization_prompt, project, task_status)
+    )
+    thread.daemon = True
+    thread.start()
+    
+    # 立即返回状态
+    return {"status": "started", "message": "优化任务已启动"}
 
-    # 调用多策略优化函数
-    try:
-        # 传递 dataset (task results)
-        dataset = task_status.get("results", [])
-        result = await multi_strategy_optimize(
-            project["current_prompt"], 
-            errors, 
-            model_config,
-            dataset=dataset,
-            total_count=total_count,
-            strategy_mode="auto",
-            max_strategies=1
-        )
-        new_prompt = result.get("optimized_prompt", project["current_prompt"])
-        applied_strategies = result.get("applied_strategies", [])
-        diagnosis = result.get("diagnosis")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"优化失败: {str(e)}")
-    
-    # 保存一轮迭代
-    dataset_path = task_status.get("file_path")
-    dataset_name = None
-    if dataset_path:
-        import os
-        dataset_name = os.path.basename(dataset_path)
-
-    project["iterations"].append({
-        "old_prompt": project["current_prompt"],
-        "new_prompt": new_prompt,
-        "task_id": task_id,
-        "dataset_path": dataset_path,
-        "dataset_name": dataset_name,
-        "accuracy": (len(task_status["results"]) - len(task_status["errors"])) / len(task_status["results"]) if task_status["results"] else 0,
-        "applied_strategies": [s.get("name") for s in applied_strategies if s.get("success")],
-        "created_at": datetime.now().isoformat()
-    })
-    project["current_prompt"] = new_prompt
-    
-    projects = storage.get_projects()
-    for idx, p in enumerate(projects):
-        if p["id"] == project_id:
-            projects[idx] = project
-            break
-    storage.save_projects(projects)
-    
-    return {
-        "new_prompt": new_prompt,
-        "applied_strategies": applied_strategies,
-        "diagnosis": diagnosis
-    }
+@router.get("/{project_id}/optimize/status")
+async def get_optimization_status(project_id: str):
+    """获取优化任务状态"""
+    status = optimization_status.get(project_id)
+    if not status:
+        return {"status": "idle"}
+    return status
 
 
 @router.get("/tasks/{task_id}/dataset")

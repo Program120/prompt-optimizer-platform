@@ -27,7 +27,8 @@ async def start_auto_iterate(
     prompt: str = Form(...),
     max_rounds: int = Form(5),
     target_accuracy: float = Form(0.95),
-    extract_field: str = Form("")
+    extract_field: str = Form(""),
+    strategy: str = Form("multi")
 ):
     """启动自动迭代优化"""
     
@@ -57,7 +58,8 @@ async def start_auto_iterate(
         "target_col": target_col,
         "prompt": prompt,
         "extract_field": extract_field,
-        "file_path": file_path
+        "file_path": file_path,
+        "strategy": strategy
     }
     auto_iterate_status[project_id] = status_data
     # 持久化状态
@@ -156,19 +158,39 @@ async def start_auto_iterate(
                     logging.info(f"[AutoIterate {project_id}] Optimizing prompt with {len(task_status['errors'])} errors...")
                     
                     try:
-                        # 使用多策略优化器
-                        total_count = len(task_status.get("results", []))
-                        dataset = task_status.get("results", [])
+                        # 获取策略
+                        strategy = status.get("strategy", "multi")
                         
-                        result = asyncio.run(multi_strategy_optimize(
-                            current_prompt, 
-                            task_status["errors"], 
-                            model_config,
-                            dataset=dataset,
-                            total_count=total_count,
-                            strategy_mode="auto",
-                            max_strategies=1
-                        ))
+                        if strategy == "simple":
+                            # 简单优化
+                            # 注意: optimize_prompt 是同步函数，但在线程中可直接调用
+                            # optimize_prompt 返回字符串
+                            opt_prompt = optimize_prompt(
+                                current_prompt,
+                                task_status["errors"],
+                                model_config,
+                                project.get("optimization_prompt")
+                            )
+                            result = {
+                                "optimized_prompt": opt_prompt,
+                                "applied_strategies": [{"name": "Simple Optimization (Auto)", "success": True}],
+                                "diagnosis": None
+                            }
+                        else:
+                            # 多策略优化器
+                            total_count = len(task_status.get("results", []))
+                            dataset = task_status.get("results", [])
+                            
+                            result = asyncio.run(multi_strategy_optimize(
+                                current_prompt, 
+                                task_status["errors"], 
+                                model_config,
+                                dataset=dataset,
+                                total_count=total_count,
+                                strategy_mode="auto",
+                                max_strategies=1
+                            ))
+                        
                         new_prompt = result.get("optimized_prompt", current_prompt)
                         applied_strategies = result.get("applied_strategies", [])
                         logging.info(f"[AutoIterate {project_id}] Prompt optimized successfully, strategies: {[s.get('name') for s in applied_strategies if s.get('success')]}")

@@ -6,7 +6,7 @@ const API_BASE = "/api";
 interface HistoryPanelProps {
     taskStatus: any;
     project: any;
-    runHistory: any[];  // 运行历史列表
+    runHistory: any[];  // 运行历史列表 (List of past execution tasks)
     onSelectLog: (log: any) => void;
     onSelectIteration: (iteration: any) => void;
 }
