@@ -300,13 +300,15 @@ SEARCH/REPLACE 规则：
 
     def _call_llm(self, prompt: str) -> str:
         """
-        调用 LLM
+        调用 LLM (同步方法，支持 AsyncOpenAI 和 OpenAI 客户端)
         
         :param prompt: 输入提示词
         :return: LLM 响应内容
         """
         import re
         import logging
+        import asyncio
+        from openai import AsyncOpenAI
         
         logger: logging.Logger = logging.getLogger(__name__)
         
@@ -327,17 +329,65 @@ SEARCH/REPLACE 规则：
             
             logger.info(f"[LLM请求-策略优化] 使用模型: {model_name}, temperature: {temperature}, max_tokens: {max_tokens}")
             
-            response = self.llm_client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    # {\"role\": \"system\", \"content\": \"You are a prompt optimization expert.\"}, # System prompt optional
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout,
-                extra_body=self.model_config.get("extra_body")
-            )
+            # 判断客户端类型并选择正确的调用方式
+            if isinstance(self.llm_client, AsyncOpenAI):
+                # AsyncOpenAI 客户端需要异步调用
+                # 在同步上下文中运行异步代码
+                async def _async_call():
+                    """
+                    异步调用 LLM
+                    
+                    :return: LLM 响应对象
+                    """
+                    return await self.llm_client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=timeout,
+                        extra_body=self.model_config.get("extra_body")
+                    )
+                
+                # 检查是否有正在运行的事件循环
+                try:
+                    loop = asyncio.get_running_loop()
+                    # 有运行中的循环，使用 nest_asyncio 或创建新线程
+                    import concurrent.futures
+                    
+                    def run_in_new_loop():
+                        """
+                        在新的事件循环中运行异步代码
+                        
+                        :return: LLM 响应对象
+                        """
+                        new_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(new_loop)
+                        try:
+                            return new_loop.run_until_complete(_async_call())
+                        finally:
+                            new_loop.close()
+                    
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(run_in_new_loop)
+                        response = future.result(timeout=timeout + 10)
+                        
+                except RuntimeError:
+                    # 没有运行中的循环，可以直接运行
+                    response = asyncio.run(_async_call())
+            else:
+                # 同步 OpenAI 客户端，直接调用
+                response = self.llm_client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                    extra_body=self.model_config.get("extra_body")
+                )
 
             content: str = response.choices[0].message.content.strip()
             
