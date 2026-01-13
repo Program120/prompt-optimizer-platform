@@ -36,9 +36,11 @@ META_OPTIMIZATION_PROMPT: str = """你是一个提示词优化专家。请优化
 5. 针对高失败率意图进行重点优化
 6. 参考历史优化经验，避免重复错误
 
-## 重要约束
+## 重要约束 (稳步迭代模式)
 - 必须保留原有的 {{}} 模板变量（如 {{input}}, {{context}}）
 - 禁止翻译或修改变量名
+- **严禁重写整个提示词**：仅针对上述问题点进行增量修改
+- **保持结构一致性**：保留原有的格式、语气和示例（除非示例显然错误）
 - 直接输出优化后的完整提示词，不要包含任何解释
 
 请直接输出优化后的提示词："""
@@ -153,10 +155,11 @@ class MetaOptimizationStrategy(BaseStrategy):
                 {"role": "user", "content": prompt}
             ],
             temperature=float(self.model_config.get("temperature", 0.7)),
-            max_tokens=min(int(self.model_config.get("max_tokens", 2000)), 4096),
+            max_tokens=int(self.model_config.get("max_tokens", 4000)),
             timeout=int(self.model_config.get("timeout", 180)),
             extra_body=self.model_config.get("extra_body")
         )
+
         
         content = response.choices[0].message.content.strip()
         content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
