@@ -58,6 +58,11 @@ META_OPTIMIZATION_PROMPT: str = """你是一个提示词优化专家。请优化
 >>>>>>>
 
 Do NOT output the full prompt. Only the modified sections.
+
+**IMPORTANT - To Avoid Duplication**:
+- If you want to modify an existing section (e.g. Reasoning Step), you MUST copy the ENTIRE existing section into the SEARCH block.
+- Do NOT just Search for a nearby header and Insert the new section next to it. That will cause duplicates.
+- ALWAYS check if the section you want to add already exists in the prompt.
 """
 
 
@@ -122,8 +127,8 @@ class MetaOptimizationStrategy(BaseStrategy):
         # 构建 Top 失败意图深度分析文本
         top_failures_analysis: str = self._build_deep_analysis(deep_analysis)
         
-        # 构建历史优化经验文本
-        history_text: str = self._build_history_text(optimization_history)
+        # 构建历史优化经验文本 (优先使用通过 knowledge.get_all_history_for_prompt() 获取的完整文本)
+        history_text: str = diagnosis.get("optimization_history_text") or self._build_history_text(optimization_history)
         
         # 构建元优化提示
         optimize_prompt: str = META_OPTIMIZATION_PROMPT.format(

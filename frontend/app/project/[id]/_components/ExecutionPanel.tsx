@@ -228,7 +228,7 @@ export default function ExecutionPanel({
                     <textarea
                         value={extractField}
                         onChange={e => setExtractField(e.target.value)}
-                        className="w-full h-[60px] bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono resize-none"
+                        className="w-full min-h-[120px] bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono resize-y"
                         placeholder="例如: intent 或 py: data['intent']"
                     />
                     <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">

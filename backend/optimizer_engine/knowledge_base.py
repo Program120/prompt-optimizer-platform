@@ -11,6 +11,7 @@ import json
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import difflib
 
 
 class OptimizationKnowledgeBase:
@@ -134,7 +135,9 @@ class OptimizationKnowledgeBase:
             "applied_strategies": applied_strategies,
             "accuracy_before": accuracy_before,
             "accuracy_after": accuracy_after,
-            "newly_failed_cases": newly_failed_cases
+            "accuracy_after": accuracy_after,
+            "newly_failed_cases": newly_failed_cases,
+            "diff": self._compute_diff(original_prompt, optimized_prompt)
         }
         
         # 添加到历史记录
@@ -148,6 +151,30 @@ class OptimizationKnowledgeBase:
         )
         
         return record
+        
+    def _compute_diff(self, original: str, optimized: str) -> str:
+        """
+        计算简单的文本差异
+        """
+        try:
+            diff_lines = list(difflib.unified_diff(
+                original.splitlines(),
+                optimized.splitlines(),
+                lineterm=''
+            ))
+            
+            # 过滤掉 unified diff 的头部信息 (---, +++, @@)
+            clean_diff = []
+            for line in diff_lines:
+                if line.startswith('---') or line.startswith('+++'):
+                    continue
+                clean_diff.append(line)
+                
+            return "\n".join(clean_diff).strip()
+        except Exception as e:
+            self.logger.warning(f"Diff 计算失败: {e}")
+            return ""
+
         
     def update_accuracy_after(
         self, 
@@ -308,6 +335,14 @@ class OptimizationKnowledgeBase:
                 lines.append(f"- 优化后准确率: {acc_after:.1%}")
             lines.append(f"- 应用策略: {', '.join(strategies)}")
             lines.append(f"- 优化总结: {summary}")
+            
+            # 添加 Diff 信息
+            diff_content = record.get("diff", "")
+            if diff_content:
+                lines.append("- 修改 Diff:")
+                # 简单缩进显示
+                for d_line in diff_content.split('\n'):
+                    lines.append(f"  {d_line}")
             
             # 添加新增失败案例（去空格后原样输出）
             if newly_failed and len(newly_failed) > 0:

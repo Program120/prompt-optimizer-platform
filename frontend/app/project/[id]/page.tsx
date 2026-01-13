@@ -146,8 +146,12 @@ export default function ProjectDetail() {
                 }
 
                 // 恢复验证配置
-                if (res.data.config.validation_limit !== undefined) {
-                    setValidationLimit(res.data.config.validation_limit);
+                const limit = res.data.config.validation_limit;
+                const parsedLimit = parseInt(limit);
+                if (!isNaN(parsedLimit) && parsedLimit > 0) {
+                    setValidationLimit(parsedLimit);
+                } else {
+                    setValidationLimit("");
                 }
             }
 

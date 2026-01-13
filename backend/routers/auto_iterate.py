@@ -210,6 +210,12 @@ async def start_auto_iterate(
                         if not opt_model_config or not opt_model_config.get("api_key"):
                             opt_model_config = model_config
                         
+                        # 定义停止回调
+                        def check_stop():
+                            # 重新读取全局状态，检查是否收到停止信号
+                            status = auto_iterate_status.get(project_id, {})
+                            return status.get("should_stop", False) or status.get("status") == "stopped"
+
                         if strategy == "simple":
                             # 简单优化
                             # 注意: optimize_prompt 是同步函数，但在线程中可直接调用
@@ -239,7 +245,8 @@ async def start_auto_iterate(
                                 strategy_mode="auto",
                                 max_strategies=1,
                                 project_id=project_id,
-                                newly_failed_cases=regression_cases
+                                newly_failed_cases=regression_cases,
+                                should_stop=check_stop
                             ))
                         
                         # 优化完成后再次检查停止信号
