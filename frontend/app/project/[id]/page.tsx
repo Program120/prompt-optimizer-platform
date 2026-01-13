@@ -78,15 +78,18 @@ export default function ProjectDetail() {
     }, [taskStatus?.id, taskStatus?.status, autoIterateStatus?.status]);
 
     // 自动保存配置 (Debounce 1s)
+    // 在自动迭代或优化中时，不触发自动保存，避免重复保存
     useEffect(() => {
         if (!project) return;
+        // 如果正在自动迭代 或 正在优化，跳过自动保存
+        if (autoIterateStatus?.status === "running" || isOptimizing) return;
 
         const timer = setTimeout(() => {
             saveProject(true);
         }, 1000);
 
         return () => clearTimeout(timer);
-    }, [config, fileInfo, extractField, project?.current_prompt]);
+    }, [config, fileInfo, extractField, project?.current_prompt, autoIterateStatus?.status, isOptimizing]);
 
     const router = useRouter();
 
@@ -150,10 +153,15 @@ export default function ProjectDetail() {
                     setTaskStatus(taskRes.data);
                 } catch (e) { console.log("无法恢复任务状态"); }
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            // 发生错误（如 404），跳转回主页
-            router.push("/");
+            // 只有 404 时跳转回主页
+            if (e.response && e.response.status === 404) {
+                router.push("/");
+            } else {
+                // 其他错误仅提示，不跳转
+                console.error("Fetch project failed", e);
+            }
         }
     };
 

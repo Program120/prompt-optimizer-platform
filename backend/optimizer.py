@@ -25,7 +25,7 @@ def _build_error_samples_table(errors: list) -> str:
     """
     table: str = "| 用户输入 | 预期输出 | 模型实际输出 |\n| :--- | :--- | :--- |\n"
     # 取前300个错误样例
-    for err in errors[:300]:
+    for err in errors[:100]:
         # 处理换行符和管道符，避免表格格式错乱
         query: str = str(err.get('query', '')).replace('\n', ' ').replace('|', '\\|')
         target: str = str(err.get('target', '')).replace('\n', ' ').replace('|', '\\|')

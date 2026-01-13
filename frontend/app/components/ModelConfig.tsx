@@ -239,6 +239,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         formData.append("api_key", targetConfig.api_key);
         formData.append("model_name", targetConfig.model_name);
         formData.append("max_tokens", String(targetConfig.max_tokens));
+        formData.append("temperature", String(targetConfig.temperature));
 
         // Add extra params
         if (targetConfig.extra_body) {
@@ -344,19 +345,41 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-2">最大 Token (Output)</label>
                         <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             value={cfg.max_tokens}
-                            onChange={e => setCfg({ ...cfg, max_tokens: parseInt(e.target.value) || 2000 })}
+                            onChange={e => {
+                                const val = e.target.value;
+                                if (val === '' || /^\d*$/.test(val)) {
+                                    setCfg({ ...cfg, max_tokens: val === '' ? '' : parseInt(val) });
+                                }
+                            }}
+                            onBlur={e => {
+                                const val = parseInt(e.target.value);
+                                setCfg({ ...cfg, max_tokens: isNaN(val) || val <= 0 ? 2000 : val });
+                            }}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                            placeholder="2000"
                         />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-2">超时 (秒)</label>
                         <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             value={cfg.timeout}
-                            onChange={e => setCfg({ ...cfg, timeout: parseInt(e.target.value) || 60 })}
+                            onChange={e => {
+                                const val = e.target.value;
+                                if (val === '' || /^\d*$/.test(val)) {
+                                    setCfg({ ...cfg, timeout: val === '' ? '' : parseInt(val) });
+                                }
+                            }}
+                            onBlur={e => {
+                                const val = parseInt(e.target.value);
+                                setCfg({ ...cfg, timeout: isNaN(val) || val <= 0 ? 60 : val });
+                            }}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                            placeholder="60"
                         />
                     </div>
                 </div>
@@ -366,10 +389,21 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 <div>
                     <label className="block text-sm font-medium text-slate-400 mb-2">超时 (秒)</label>
                     <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         value={cfg.timeout}
-                        onChange={e => setCfg({ ...cfg, timeout: parseInt(e.target.value) || 60 })}
+                        onChange={e => {
+                            const val = e.target.value;
+                            if (val === '' || /^\d*$/.test(val)) {
+                                setCfg({ ...cfg, timeout: val === '' ? '' : parseInt(val) });
+                            }
+                        }}
+                        onBlur={e => {
+                            const val = parseInt(e.target.value);
+                            setCfg({ ...cfg, timeout: isNaN(val) || val <= 0 ? 60 : val });
+                        }}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                        placeholder="60"
                     />
                 </div>
             )}
@@ -378,12 +412,22 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 <div>
                     <label className="block text-sm font-medium text-slate-400 mb-2">并发度</label>
                     <input
-                        type="number"
-                        min={1}
-                        max={50}
+                        type="text"
+                        inputMode="numeric"
                         value={cfg.concurrency}
-                        onChange={e => setCfg({ ...cfg, concurrency: parseInt(e.target.value) || 5 })}
+                        onChange={e => {
+                            const val = e.target.value;
+                            if (val === '' || /^\d*$/.test(val)) {
+                                setCfg({ ...cfg, concurrency: val === '' ? '' : parseInt(val) });
+                            }
+                        }}
+                        onBlur={e => {
+                            const val = parseInt(e.target.value);
+                            const finalVal = isNaN(val) || val < 1 ? 5 : Math.min(val, 50);
+                            setCfg({ ...cfg, concurrency: finalVal });
+                        }}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                        placeholder="5"
                     />
                 </div>
             )}
@@ -419,13 +463,23 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                                     className="flex-1 accent-blue-500 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
                                 />
                                 <input
-                                    type="number"
-                                    min="0"
-                                    max="1"
-                                    step="0.1"
+                                    type="text"
+                                    inputMode="decimal"
                                     value={cfg.temperature}
-                                    onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) || 0 })}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                            setCfg({ ...cfg, temperature: val === '' ? '' : val });
+                                        }
+                                    }}
+                                    onBlur={e => {
+                                        let val = parseFloat(e.target.value);
+                                        if (isNaN(val)) val = 0;
+                                        val = Math.max(0, Math.min(1, val));
+                                        setCfg({ ...cfg, temperature: Math.round(val * 10) / 10 });
+                                    }}
                                     className="w-16 bg-white/5 border border-white/10 rounded-xl px-2 py-1 text-center text-sm focus:outline-none focus:border-blue-500"
+                                    placeholder="0.7"
                                 />
                             </div>
                         </div>

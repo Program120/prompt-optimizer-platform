@@ -279,8 +279,8 @@ export default function ExecutionPanel({
                                 ) : (
                                     <button
                                         onClick={onOptimize}
-                                        disabled={taskStatus.errors.length === 0}
-                                        className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20"
+                                        disabled={taskStatus.errors.length === 0 || isAutoIterating}
+                                        className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed py-3 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20"
                                     >
                                         <RefreshCw size={20} />
                                         一键智能优化
@@ -288,15 +288,17 @@ export default function ExecutionPanel({
                                 )}
 
                                 {/* 优化策略切换 */}
-                                <div className="flex bg-black/20 p-1 rounded-xl">
+                                <div className={`flex bg-black/20 p-1 rounded-xl ${isAutoIterating ? "opacity-50 pointer-events-none" : ""}`}>
                                     <button
                                         onClick={() => setStrategy("simple")}
+                                        disabled={isAutoIterating}
                                         className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${strategy === "simple" ? "bg-blue-600 text-white shadow-lg" : "text-slate-400 hover:text-slate-300"}`}
                                     >
                                         快速
                                     </button>
                                     <button
                                         onClick={() => setStrategy("multi")}
+                                        disabled={isAutoIterating}
                                         className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${strategy === "multi" ? "bg-purple-600 text-white shadow-lg" : "text-slate-400 hover:text-slate-300"}`}
                                     >
                                         深度
@@ -309,8 +311,8 @@ export default function ExecutionPanel({
                                         setShowExternalOptimize(true);
                                         onCopyOptimizeContext();
                                     }}
-                                    disabled={taskStatus.errors.length === 0}
-                                    className="flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 px-4 rounded-xl font-medium transition-colors"
+                                    disabled={taskStatus.errors.length === 0 || isAutoIterating}
+                                    className="flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 rounded-xl font-medium transition-colors"
                                 >
                                     <Copy size={20} /> 外部优化
                                 </button>

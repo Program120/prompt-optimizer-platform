@@ -157,9 +157,16 @@ async def start_auto_iterate(
                     storage.save_auto_iterate_status(project_id, status)
                     logging.info(f"[AutoIterate {project_id}] Optimizing prompt with {len(task_status['errors'])} errors...")
                     
+
                     try:
                         # 获取策略
                         strategy = status.get("strategy", "multi")
+                        
+                        # 获取优化专用模型配置
+                        # 优先使用 optimization_model_config，如果没有则回退到 model_config
+                        opt_model_config = project.get("optimization_model_config")
+                        if not opt_model_config or not opt_model_config.get("api_key"):
+                            opt_model_config = model_config
                         
                         if strategy == "simple":
                             # 简单优化
@@ -168,7 +175,7 @@ async def start_auto_iterate(
                             opt_prompt = optimize_prompt(
                                 current_prompt,
                                 task_status["errors"],
-                                model_config,
+                                opt_model_config,
                                 project.get("optimization_prompt")
                             )
                             result = {
@@ -184,7 +191,7 @@ async def start_auto_iterate(
                             result = asyncio.run(multi_strategy_optimize(
                                 current_prompt, 
                                 task_status["errors"], 
-                                model_config,
+                                opt_model_config,
                                 dataset=dataset,
                                 total_count=total_count,
                                 strategy_mode="auto",
