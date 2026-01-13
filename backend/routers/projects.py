@@ -198,7 +198,8 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
                 dataset=dataset,
                 total_count=total_count,
                 strategy_mode="auto",
-                max_strategies=1
+                max_strategies=1,
+                project_id=project_id
             ))
             new_prompt = result.get("optimized_prompt", project["current_prompt"])
             applied_strategies = result.get("applied_strategies", [])

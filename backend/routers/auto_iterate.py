@@ -207,7 +207,8 @@ async def start_auto_iterate(
                                 dataset=dataset,
                                 total_count=total_count,
                                 strategy_mode="auto",
-                                max_strategies=1
+                                max_strategies=1,
+                                project_id=project_id
                             ))
                         
                         # 优化完成后再次检查停止信号
