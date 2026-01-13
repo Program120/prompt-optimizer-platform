@@ -37,6 +37,7 @@ export default function ProjectDetail() {
     // Actually, let's keep it to be safe.
     const [taskHistory, setTaskHistory] = useState<any[]>([]);
     const [selectedIteration, setSelectedIteration] = useState<any>(null);
+    const [validationLimit, setValidationLimit] = useState<number | "">("");
 
     // Auto-iterate config
     const [autoIterateConfig, setAutoIterateConfig] = useState<{
@@ -89,7 +90,7 @@ export default function ProjectDetail() {
         }, 1000);
 
         return () => clearTimeout(timer);
-    }, [config, fileInfo, extractField, project?.current_prompt, autoIterateStatus?.status, isOptimizing]);
+    }, [config, fileInfo, extractField, project?.current_prompt, autoIterateStatus?.status, isOptimizing, validationLimit]);
 
     const router = useRouter();
 
@@ -128,6 +129,11 @@ export default function ProjectDetail() {
                 // 恢复自动迭代配置
                 if (res.data.config.auto_iterate_config) {
                     setAutoIterateConfig(res.data.config.auto_iterate_config);
+                }
+
+                // 恢复验证配置
+                if (res.data.config.validation_limit !== undefined) {
+                    setValidationLimit(res.data.config.validation_limit);
                 }
             }
 
@@ -306,6 +312,7 @@ export default function ProjectDetail() {
         formData.append("target_col", config.target_col);
         formData.append("prompt", project.current_prompt);
         if (extractField) formData.append("extract_field", extractField);
+        if (validationLimit) formData.append("validation_limit", validationLimit.toString());
         // 传递原始文件名
         if (fileInfo.filename) formData.append("original_filename", fileInfo.filename);
 
@@ -453,6 +460,7 @@ export default function ProjectDetail() {
         formData.append("max_rounds", autoIterateConfig.maxRounds.toString());
         formData.append("target_accuracy", (autoIterateConfig.targetAccuracy / 100).toString());
         formData.append("strategy", autoIterateConfig.strategy || "multi");
+        if (validationLimit) formData.append("validation_limit", validationLimit.toString());
         if (extractField) formData.append("extract_field", extractField);
 
         try {
@@ -578,6 +586,8 @@ export default function ProjectDetail() {
             formData.append("name", project.name);
             // 保存自动迭代配置
             formData.append("auto_iterate_config", JSON.stringify(autoIterateConfig));
+            // 保存验证配置
+            formData.append("validation_limit", validationLimit === "" ? "" : validationLimit.toString());
 
             await axios.put(`${API_BASE}/projects/${id}`, formData);
             if (!silent) showToast("项目保存成功！", "success");
@@ -655,6 +665,8 @@ export default function ProjectDetail() {
                         optimizeContext={optimizeContext}
                         strategy={strategy}
                         setStrategy={setStrategy}
+                        validationLimit={validationLimit}
+                        setValidationLimit={setValidationLimit}
                     />
                 </div>
 

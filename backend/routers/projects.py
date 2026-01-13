@@ -63,7 +63,8 @@ async def update_project(
     iterations: Optional[str] = Form(None),
     model_cfg: Optional[str] = Form(None),
     optimization_model_config: Optional[str] = Form(None),
-    optimization_prompt: Optional[str] = Form(None)
+    optimization_prompt: Optional[str] = Form(None),
+    validation_limit: Optional[str] = Form(None)
 ):
     """保存/更新项目配置"""
     import json as json_lib
@@ -86,6 +87,9 @@ async def update_project(
         config["target_col"] = target_col
     if extract_field is not None:
         config["extract_field"] = extract_field
+    if validation_limit is not None:
+        # 如果是空字符串，表示清除
+        config["validation_limit"] = validation_limit if validation_limit != "" else None
 
     # 解析文件信息 JSON
     if file_info:

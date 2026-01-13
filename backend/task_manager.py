@@ -20,7 +20,7 @@ class TaskManager:
                     cls._instance.tasks = {} # task_id -> {status, thread, stop_event, pause_event}
         return cls._instance
 
-    def create_task(self, project_id: str, file_path: str, query_col: str, target_col: str, prompt: str, model_config: Dict[str, str], extract_field: Optional[str] = None, original_filename: Optional[str] = None):
+    def create_task(self, project_id: str, file_path: str, query_col: str, target_col: str, prompt: str, model_config: Dict[str, str], extract_field: Optional[str] = None, original_filename: Optional[str] = None, validation_limit: Optional[int] = None):
         task_id = f"task_{int(time.time())}"
         
         # 加载数据以校验
@@ -42,6 +42,7 @@ class TaskManager:
             "extract_field": extract_field, # 保存需要提取的字段名
             "model_config": model_config,   # 保存模型配置
             "original_filename": original_filename, # 保存原始文件名
+            "validation_limit": validation_limit,
             "results": [],
             "errors": []
         }
@@ -87,7 +88,32 @@ class TaskManager:
         prompt = info["prompt"]
         extract_field = info.get("extract_field")
         model_config = info.get("model_config", {"base_url": "https://api.openai.com/v1", "api_key": ""})
+        model_config = info.get("model_config", {"base_url": "https://api.openai.com/v1", "api_key": ""})
         concurrency = int(model_config.get("concurrency", 1))
+
+        # Apply validation limit if set
+        validation_limit = info.get("validation_limit")
+        if validation_limit and isinstance(validation_limit, int) and validation_limit > 0:
+            # We only change the effective total for processing loop
+            # BUT we should probably also update info["total_count"] so frontend progress bar is correct
+            # However, info["total_count"] was set to len(df) in create_task.
+            # Let's adjust it here or rely on the loop limit.
+            # Better to adjust existing total_count in info if not started? 
+            # Or just use min here.
+            # To make frontend progress bar correct (e.g. 0/5 instead of 0/1000), we should update info["total_count"].
+            # But create_task already set it. 
+            pass 
+        
+        # Re-calculate total based on limit
+        full_df_len = len(df)
+        limit = info.get("validation_limit")
+        if limit and isinstance(limit, int) and limit > 0:
+            total = min(full_df_len, limit)
+        else:
+            total = full_df_len
+            
+        # Update info total_count to reflect the limit (important for frontend progress)
+        info["total_count"] = total
 
         # 初始化 client
         validation_mode = model_config.get("validation_mode", "llm")

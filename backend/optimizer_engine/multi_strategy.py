@@ -108,7 +108,17 @@ class MultiStrategyOptimizer:
                 model_config=self.model_config
             )
         )
-        self.logger.info(f"诊断结果: 准确率={diagnosis.get('overall_metrics', {}).get('accuracy')}, 发现问题={list(diagnosis.get('error_patterns', {}).keys())}")
+        metrics = diagnosis.get('overall_metrics', {})
+        error_patterns = diagnosis.get('error_patterns', {})
+        self.logger.info(
+            f"诊断完成: 准确率={metrics.get('accuracy'):.4f} "
+            f"({metrics.get('error_count')}/{metrics.get('total_count')} 错误/总数)"
+        )
+        self.logger.info(f"主要错误模式: {list(error_patterns.keys())}")
+        if error_patterns.get('confusion_pairs'):
+            self.logger.info(f"Top 混淆对: {error_patterns['confusion_pairs'][:3]}")
+        if error_patterns.get('category_distribution'):
+             self.logger.info(f"错误分布 Top 3: {dict(list(error_patterns['category_distribution'].items())[:3])}")
         
         # 阶段 2：意图详细分析 & 高级定向分析
         self.logger.info("步骤 2: 意图详细分析 & 高级定向分析...")
@@ -126,12 +136,28 @@ class MultiStrategyOptimizer:
             all_intents
         )
         
+        # 记录高级诊断摘要
+        for diag_key, res in advanced_diagnosis.items():
+            if isinstance(res, dict) and res.get("has_issue"):
+                self.logger.info(f"高级诊断报告 - {diag_key}: 发现潜在问题")
+                if "referential_error_ratio" in res:
+                    self.logger.info(f"  - 指代错误率: {res['referential_error_ratio']:.2%}")
+                if "false_negative_rate" in res:
+                    self.logger.info(f"  - 多意图漏判率: {res['false_negative_rate']:.2%}")
+                if "summary" in res:
+                    self.logger.info(f"  - 领域分析总结: {res['summary']}")
+                if "missing_rate" in res:
+                    self.logger.info(f"  - 缺失澄清率: {res['missing_rate']:.2%}")
+        
         # 阶段 3：Top 失败意图深度分析
         self.logger.info("步骤 3: Top 失败意图深度分析...")
         deep_analysis: Dict[str, Any] = await self.intent_analyzer.deep_analyze_top_failures(
             errors, 
             top_n=3
         )
+        if deep_analysis.get("analyses"):
+            for root_cause in deep_analysis["analyses"]:
+                self.logger.info(f"意图 '{root_cause.get('intent')}' 根因分析: {root_cause.get('root_cause', '无')[:100]}...")
         
         # 将分析结果注入 diagnosis
         diagnosis["intent_analysis"] = intent_analysis
@@ -150,6 +176,7 @@ class MultiStrategyOptimizer:
         # 阶段 4：策略匹配
         self.logger.info("步骤 4: 策略匹配...")
         strategies = self.matcher.match_strategies(diagnosis, max_strategies)
+        self.logger.info(f"匹配到的策略: {[s.name for s in strategies]}")
         if hasattr(self.matcher, 'get_preset_strategies') and strategy_mode != 'auto':
              strategies = self.matcher.get_preset_strategies(strategy_mode)[:max_strategies]
              
@@ -169,6 +196,8 @@ class MultiStrategyOptimizer:
         # 阶段 5.1：快速筛选
         self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)})")
         filtered_candidates = await self._rapid_evaluation(candidates, errors[:5])
+        if filtered_candidates:
+            self.logger.info(f"筛选后的候选方案及其评分: {[(c['strategy'], round(c.get('score', 0), 4)) for c in filtered_candidates]}")
         
         # 阶段 6：选择最佳方案
         self.logger.info("步骤 6: 选择最佳方案...")

@@ -28,7 +28,8 @@ async def start_auto_iterate(
     max_rounds: int = Form(5),
     target_accuracy: float = Form(0.95),
     extract_field: str = Form(""),
-    strategy: str = Form("multi")
+    strategy: str = Form("multi"),
+    validation_limit: Optional[int] = Form(None)
 ):
     """启动自动迭代优化"""
     
@@ -59,7 +60,8 @@ async def start_auto_iterate(
         "prompt": prompt,
         "extract_field": extract_field,
         "file_path": file_path,
-        "strategy": strategy
+        "strategy": strategy,
+        "validation_limit": validation_limit
     }
     auto_iterate_status[project_id] = status_data
     # 持久化状态
