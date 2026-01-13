@@ -58,18 +58,27 @@ class InstructionRefinementStrategy(BaseStrategy):
         # 构建指令问题分析
         instruction_issues = self._build_instruction_issues(prompt_analysis)
         
-        # 构建错误样例
-        error_samples = self._build_error_samples(errors[:10])
+        # 构造优化指令
+        instruction_text = f"""
+请优化提示词的指令部分，使其更加清晰、明确、易于执行。
+
+# 指令问题分析
+{instruction_issues}
+
+# 优化具体要求
+1. **增加明确性**: 将模糊的指令改为具体的操作步骤
+2. **添加步骤引导**: 如"请按以下步骤分析..."
+3. **明确边界条件**: 清晰定义什么情况属于什么类别
+4. **保持模板变量**: 必须保留原有的 {{}} 模板变量
+"""
         
-        # 构建优化提示
-        optimize_prompt = INSTRUCTION_REFINEMENT_PROMPT.format(
-            prompt=prompt,
-            instruction_issues=instruction_issues,
-            error_samples=error_samples
+        # 使用通用的元优化方法 (支持 Diff 模式)
+        return self._meta_optimize(
+            prompt, 
+            errors, 
+            instruction_text, 
+            conservative=True
         )
-        
-        # 调用 LLM 优化
-        return self._call_llm(optimize_prompt)
     
     def _build_instruction_issues(self, prompt_analysis: Dict[str, Any]) -> str:
         """构建指令问题分析"""

@@ -33,7 +33,7 @@ def diagnose_prompt_performance(
     
     # 困难案例探测
     detector = HardCaseDetector(llm_client, model_config)
-    hard_cases = detector.detect_hard_cases(errors, top_k=20)
+    hard_cases = detector.detect_hard_cases(errors, top_k=50)
     if not hard_cases: # Fallback to old method if no hard cases found (e.g. empty lists)
          hard_cases = identify_hard_cases(errors)
 
@@ -261,12 +261,12 @@ def extract_confusion_pairs(
             confusion_pairs.append((intent_a, intent_b, rate))
     
     confusion_pairs.sort(key=lambda x: x[2], reverse=True)
-    return confusion_pairs[:10]
+    return confusion_pairs[:20]
 
 
 def identify_hard_cases(
     errors: List[Dict[str, Any]], 
-    top_k: int = 20
+    top_k: int = 50
 ) -> List[Dict[str, Any]]:
     """
     识别困难案例 - 选择最具代表性的错误样例

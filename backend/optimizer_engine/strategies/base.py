@@ -65,45 +65,49 @@ class BaseStrategy(ABC):
         constraint_text = ""
         if conservative:
             constraint_text = """
-## Constraints (Conservative Optimization)
-1. You MUST maintain the original structure, tone, and formatting of the prompt.
-2. The goal is incremental improvement.
-3. Keep all existing few-shot examples unless explicitly asked to replace them.
+## 约束条件 (保守优化模式)
+1. 必须保留提示词原有的结构、语气和格式。
+2. 目标是渐进式改进，而非重写。
+3. 除非明确要求替换，否则保留所有现有的 few-shot 示例。
 """
         
-        optimization_prompt = f"""You are a prompt engineering expert.
-Please optimize the following prompt based on the specific instruction and error cases provided.
+        optimization_prompt = f"""你是一个提示词工程专家。
+请根据提供的具体指令和错误案例优化以下提示词。
 
-## Current Prompt
+## 当前提示词
 {prompt}
 
-## Error Cases
+## 错误案例
 {error_text}
 
-## Optimization Instruction
+## 优化指令
 {instruction}
 {constraint_text}
 
-## Output Format
-1. **Analysis**: First, analyze the current prompt and error patterns step-by-step. Identify the root causes and plan specific improvements.
-2. **Optimization**: Then, output the Git Diff blocks to apply the changes.
+## 输出格式
+1. **分析**：首先，逐步分析当前提示词和错误模式。识别根本原因并规划具体的改进措施。
+2. **优化**：然后，输出用于应用更改的 Git Diff 块。
 
-You MUST use the Search/Replace block format to modify the prompt. 
-Do NOT output the full prompt. Only output the modified sections.
+你必须使用 Search/Replace 块格式来修改提示词。
+**严禁输出完整提示词**。仅输出修改的部分。
 
-Use this format:
+请严格遵守以下格式：
 <<<<<<< SEARCH
-[Exact text to be replaced from the original prompt]
+[要从原始提示词中替换的确切文本]
 =======
-[New text to replace with]
+[用于替换的新文本]
 >>>>>>>
 
-Rules for SEARCH/REPLACE:
-1. The SEARCH block must obtain EXACTLY the text from the "Current Prompt", including whitespace and newlines.
-2. If you want to insert text, SEARCH for the adjacent line and include it in REPLACE with your new text.
-3. To delete text, leave the REPLACE block empty (but keep the line structure).
+SEARCH/REPLACE 规则：
+1. SEARCH 块必须包含与“当前提示词”完全一致的文本，包括空格和换行符。
+2. 如果要插入文本，请 SEARCH 相邻的行，并在 REPLACE 中包含它以及你的新文本。
+3. 要删除文本，请将 REPLACE 块留空（但保留行结构以便于定位）。
 """
         response_content = self._call_llm(optimization_prompt)
+        # Log raw output for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"策略元优化 - 原始模型输出:\n{response_content}")
         
         # 应用 Diff
         try:

@@ -43,7 +43,7 @@ class IntentAnalyzer:
 2. 为什么模型会将这些输入错误分类？
 3. 提供 2-3 条针对性的改进建议
 
-请用简洁的文字回答，不要超过 200 字。"""
+请用专业、详尽的文字回答，充分分析错误模式和改进方向。"""
 
     def __init__(
         self, 
@@ -110,7 +110,7 @@ class IntentAnalyzer:
             error_rate_by_intent[intent] = count / total
             
         # 按错误数量排序，获取 Top 失败意图
-        top_failing: List[Tuple[str, int]] = intent_error_counts.most_common(10)
+        top_failing: List[Tuple[str, int]] = intent_error_counts.most_common(20)
         
         # 构建 Top 失败意图详情
         top_failing_intents: List[Dict[str, Any]] = []
@@ -143,7 +143,7 @@ class IntentAnalyzer:
     async def deep_analyze_top_failures(
         self,
         errors: List[Dict[str, Any]],
-        top_n: int = 3
+        top_n: int = 10
     ) -> Dict[str, Any]:
         """
         对 Top N 失败意图进行 LLM 深度分析
@@ -233,7 +233,7 @@ class IntentAnalyzer:
     def _format_error_samples(
         self, 
         errors: List[Dict[str, Any]], 
-        max_samples: int = 5
+        max_samples: int = 20
     ) -> str:
         """
         格式化错误样例
@@ -334,7 +334,7 @@ class IntentAnalyzer:
         lines.append("### 按意图错误分布")
         top_failures: List[Dict[str, Any]] = intent_analysis.get(
             "top_failing_intents", []
-        )[:5]
+        )[:10]
         
         if top_failures:
             lines.append("| 意图 | 错误数 | 错误率 | 主要混淆目标 |")
@@ -368,9 +368,7 @@ class IntentAnalyzer:
                 analysis_text: str = analysis.get("analysis", "")
                 
                 lines.append(f"#### {intent}")
-                # 截断过长的分析
-                if len(analysis_text) > 300:
-                    analysis_text = analysis_text[:300] + "..."
+                # 不再截断分析
                 lines.append(analysis_text)
                 lines.append("")
                 

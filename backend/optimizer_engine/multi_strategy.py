@@ -153,7 +153,7 @@ class MultiStrategyOptimizer:
         self.logger.info("步骤 3: Top 失败意图深度分析...")
         deep_analysis: Dict[str, Any] = await self.intent_analyzer.deep_analyze_top_failures(
             errors, 
-            top_n=3
+            top_n=10
         )
         if deep_analysis.get("analyses"):
             for root_cause in deep_analysis["analyses"]:
@@ -195,7 +195,7 @@ class MultiStrategyOptimizer:
         
         # 阶段 5.1：快速筛选
         self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)})")
-        filtered_candidates = await self._rapid_evaluation(candidates, errors[:5])
+        filtered_candidates = await self._rapid_evaluation(candidates, errors[:50])
         if filtered_candidates:
             self.logger.info(f"筛选后的候选方案及其评分: {[(c['strategy'], round(c.get('score', 0), 4)) for c in filtered_candidates]}")
         

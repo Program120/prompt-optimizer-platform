@@ -140,6 +140,10 @@ class MetaOptimizationStrategy(BaseStrategy):
         
         # 调用 LLM 优化
         response_content = self._call_llm(optimize_prompt)
+        # Log raw output
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"元优化策略 - 原始模型输出:\n{response_content}")
         
         # 应用 Diff
         try:
