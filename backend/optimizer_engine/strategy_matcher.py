@@ -66,7 +66,7 @@ class StrategyMatcher:
     def match_strategies(
         self, 
         diagnosis: Dict[str, Any],
-        max_strategies: int = 3
+        max_strategies: int = 1
     ) -> List[BaseStrategy]:
         """
         基于诊断结果匹配合适的优化策略

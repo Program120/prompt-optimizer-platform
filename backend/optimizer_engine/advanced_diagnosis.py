@@ -271,8 +271,8 @@ class AdvancedDiagnoser:
                 response = self.llm_client.chat.completions.create(
                     model=model_name,
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1,
-                    max_tokens=600,
+                    temperature=float(self.model_config.get("temperature", 0.1)),
+                    max_tokens=int(self.model_config.get("max_tokens", 4000)),
                     # 强制 JSON
                     extra_body={"response_format": {"type": "json_object"}}
                 )
@@ -290,8 +290,8 @@ class AdvancedDiagnoser:
                     response = self.llm_client.chat.completions.create(
                         model=model_name,
                         messages=[{"role": "user", "content": prompt}],
-                        temperature=0.1,
-                        max_tokens=600
+                        temperature=float(self.model_config.get("temperature", 0.1)),
+                        max_tokens=int(self.model_config.get("max_tokens", 4000))
                     )
                     result: str = response.choices[0].message.content.strip()
                     

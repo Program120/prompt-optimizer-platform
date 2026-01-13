@@ -190,7 +190,7 @@ export default function ExecutionPanel({
                                     <input
                                         type="range"
                                         min="1"
-                                        max="300"
+                                        max={fileInfo?.row_count || 300}
                                         step="1"
                                         value={validationLimit || 50}
                                         onChange={(e) => setValidationLimit(parseInt(e.target.value))}
@@ -209,7 +209,7 @@ export default function ExecutionPanel({
                                 </div>
                                 <div className="flex justify-between text-[10px] text-slate-600 px-1 font-mono">
                                     <span>1</span>
-                                    <span>300+</span>
+                                    <span>{fileInfo?.row_count || 300}</span>
                                 </div>
                             </motion.div>
                         )}

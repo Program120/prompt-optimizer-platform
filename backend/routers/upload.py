@@ -24,23 +24,26 @@ async def upload_file(file: UploadFile = File(...)):
         
         logger.info(f"File saved to {file_path}")
         
-        # 获取列名以便前端选择
+        # 获取列名和总行数以便前端选择和配置
+        row_count: int = 0
         if file_ext == ".csv":
             try:
-                # Try reading with utf-8 first
-                df = pd.read_csv(file_path, nrows=5, encoding='utf-8')
+                # 尝试使用 utf-8 编码读取
+                df_full: pd.DataFrame = pd.read_csv(file_path, encoding='utf-8')
             except UnicodeDecodeError:
-                # If utf-8 fails, try gbk (common for Chinese excel/csv)
-                logger.warning(f"UTF-8 decode failed for {file.filename}, trying GBK")
-                df = pd.read_csv(file_path, nrows=5, encoding='gbk')
+                # 如果 utf-8 失败，尝试 gbk 编码（常见于中文 Excel/CSV）
+                logger.warning(f"UTF-8 解码失败: {file.filename}，尝试 GBK 编码")
+                df_full = pd.read_csv(file_path, encoding='gbk')
+            row_count = len(df_full)
         elif file_ext in [".xls", ".xlsx"]:
-            df = pd.read_excel(file_path, nrows=5)
+            df_full = pd.read_excel(file_path)
+            row_count = len(df_full)
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported file extension: {file_ext}")
+            raise HTTPException(status_code=400, detail=f"不支持的文件扩展名: {file_ext}")
 
-        columns = df.columns.tolist()
-        logger.info(f"Successfully parsed columns: {columns}")
-        return {"file_id": file_id, "columns": columns, "filename": file.filename}
+        columns: list = df_full.columns.tolist()
+        logger.info(f"成功解析列名: {columns}，总行数: {row_count}")
+        return {"file_id": file_id, "columns": columns, "filename": file.filename, "row_count": row_count}
         
     except HTTPException:
         raise

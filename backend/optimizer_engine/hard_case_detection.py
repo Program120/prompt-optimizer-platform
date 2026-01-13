@@ -7,7 +7,9 @@ from typing import List, Dict, Any, Optional, Tuple
 from collections import defaultdict, Counter
 import numpy as np
 import networkx as nx
+import networkx as nx
 from sklearn.neighbors import NearestNeighbors
+from openai import AsyncOpenAI, OpenAI
 
 # 如果需要，可以尝试导入用于文本分析的其他可选依赖项
 # 目前我们坚持使用标准库和 sklearn
@@ -390,11 +392,49 @@ class HardCaseDetector:
 
                  self.logger.info(f"[嵌入向量请求-困难案例] 使用嵌入模型: {model_name}")
                  
-                 response: Any = self.llm_client.embeddings.create(
-                     input=texts,
-                     model=model_name,
-                     timeout=int(self.model_config.get("timeout", 180))
-                 )
+                 self.logger.info(f"[嵌入向量请求-困难案例] 使用嵌入模型: {model_name}")
+                 
+                 # 异步客户端支持
+                 if isinstance(self.llm_client, AsyncOpenAI):
+                     # AsyncOpenAI 需要 await
+                     # 注意：HardCaseDetector 的方法目前大多是同步调用的 (detector.detect_hard_cases)
+                     # 但 multi_strategy.py 中调用 detector 是在一个 lambda 里 run_in_executor 的:
+                     # diagnosis = await loop.run_in_executor(None, lambda: diagnose_prompt_performance(...))
+                     # 而 diagnose_prompt_performance 内部同步调用 detector.detect_hard_cases
+                     # 这导致我们在一个同步上下文中，无法直接 await 一个 async client。
+                     # 必须权衡：
+                     # 1. 改造 diagnose_prompt_performance 为 async。 (这会引起连锁反应，涉及 diagnosis.py)
+                     # 2. 在这里临时创建一个 loop 运行 async (不推荐，nested loop)
+                     # 3. 如果是 AsyncClient，在这里回退到 httpx 或者 manual request? 不行。
+                     # 
+                     # 最佳方案：既然 diagnose_prompt_performance 已经在 run_in_executor 中运行（即在独立线程中），
+                     # 我们可以使用 asyncio.run() 来运行这个 async 调用，前提是这线程里没有 running loop。
+                     # 但 run_in_executor 的线程通常是没有 loop 的。
+                     # 不过，如果 llm_client 是 AsyncOpenAI，它本身绑定了主线程的 loop 吗？
+                     # 通常 AsyncOpenAI 可以在任何 loop 中使用，只要 session 没绑定死。
+                     
+                     # 让我们尝试使用 asyncio.run()。
+                     import asyncio
+                     try:
+                         loop = asyncio.get_event_loop()
+                     except RuntimeError:
+                         loop = asyncio.new_event_loop()
+                         asyncio.set_event_loop(loop)
+                         
+                     response = loop.run_until_complete(
+                         self.llm_client.embeddings.create(
+                            input=texts,
+                            model=model_name,
+                            timeout=int(self.model_config.get("timeout", 180))
+                         )
+                     )
+                 else:
+                     # 同步客户端
+                     response: Any = self.llm_client.embeddings.create(
+                         input=texts,
+                         model=model_name,
+                         timeout=int(self.model_config.get("timeout", 180))
+                     )
                  
                  embeddings: List[List[float]] = [data.embedding for data in response.data]
                  

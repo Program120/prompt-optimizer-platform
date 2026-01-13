@@ -24,8 +24,8 @@ def _build_error_samples_table(errors: list) -> str:
     :return: Markdown 格式的表格字符串
     """
     table: str = "| 用户输入 | 预期输出 | 模型实际输出 |\n| :--- | :--- | :--- |\n"
-    # 取前300个错误样例
-    for err in errors[:100]:
+    # 取前x个错误样例
+    for err in errors[:]:
         # 处理换行符和管道符，避免表格格式错乱
         query: str = str(err.get('query', '')).replace('\n', ' ').replace('|', '\\|')
         target: str = str(err.get('target', '')).replace('\n', ' ').replace('|', '\\|')
@@ -153,8 +153,8 @@ async def multi_strategy_optimize(
     if not model_config:
         model_config = storage.get_model_config()
     
-    # 创建 LLM 客户端
-    client = LLMFactory.create_client(model_config)
+    # 创建 LLM 客户端 (使用异步客户端以支持高并发)
+    client = LLMFactory.create_async_client(model_config)
     
     # 创建多策略优化器
     optimizer = MultiStrategyOptimizer(

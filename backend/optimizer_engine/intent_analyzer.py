@@ -12,6 +12,7 @@ import logging
 import re
 from typing import List, Dict, Any, Optional, Tuple
 from collections import Counter, defaultdict
+from openai import AsyncOpenAI, OpenAI
 
 
 class IntentAnalyzer:
@@ -48,17 +49,21 @@ class IntentAnalyzer:
     def __init__(
         self, 
         llm_client: Any = None, 
-        model_config: Dict[str, Any] = None
+        model_config: Dict[str, Any] = None,
+        semaphore: asyncio.Semaphore = None
     ):
         """
         初始化意图分析器
         
         :param llm_client: LLM 客户端实例
         :param model_config: 模型配置
+        :param semaphore: 并发控制信号量
         """
         self.llm_client = llm_client
         self.model_config: Dict[str, Any] = model_config or {}
         self.logger: logging.Logger = logging.getLogger(__name__)
+        # 如果未传入，则创建一个(但不推荐，最好共享)
+        self.semaphore = semaphore or asyncio.Semaphore(5)
         
     def analyze_errors_by_intent(
         self,
@@ -233,7 +238,7 @@ class IntentAnalyzer:
     def _format_error_samples(
         self, 
         errors: List[Dict[str, Any]], 
-        max_samples: int = 20
+        max_samples: int = 50
     ) -> str:
         """
         格式化错误样例
@@ -244,7 +249,7 @@ class IntentAnalyzer:
         """
         lines: List[str] = []
         for err in errors[:max_samples]:
-            query: str = str(err.get("query", ""))[:80]
+            query: str = str(err.get("query", ""))
             target: str = str(err.get("target", ""))
             output: str = str(err.get("output", ""))
             lines.append(f"- 输入: {query}")
@@ -278,37 +283,59 @@ class IntentAnalyzer:
         
     async def _call_llm_async(self, prompt: str) -> str:
         """
-        异步调用 LLM
+        异步调用 LLM (支持 AsyncOpenAI)
         
         :param prompt: 提示词
         :return: LLM 响应内容
         """
-        loop = asyncio.get_event_loop()
+        model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
+        temperature: float = float(self.model_config.get("temperature", 0.7))
+        max_tokens: int = int(self.model_config.get("max_tokens", 4000))
+        timeout: int = int(self.model_config.get("timeout", 60))
+        extra_body: Dict = self.model_config.get("extra_body", {})
         
         # 记录 LLM 请求输入日志
         self.logger.info(f"[LLM请求-意图深度分析] 输入提示词长度: {len(prompt)} 字符")
         self.logger.debug(f"[LLM请求-意图深度分析] 输入内容:\n{prompt[:800]}...")
         
-        def run_sync() -> str:
+        async with self.semaphore:
             try:
-                model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
-                self.logger.info(f"[LLM请求-意图深度分析] 使用模型: {model_name}")
-                
-                response = self.llm_client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {
-                            "role": "system", 
-                            "content": "You are an intent classification error analyst."
-                        },
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3,
-                    max_tokens=500,
-                    timeout=int(self.model_config.get("timeout", 60)),
-                    extra_body=self.model_config.get("extra_body")
-                )
-                content: str = response.choices[0].message.content.strip()
+                if isinstance(self.llm_client, AsyncOpenAI):
+                    response = await self.llm_client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {
+                                "role": "system", 
+                                "content": "You are an intent classification error analyst."
+                            },
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=timeout,
+                        extra_body=extra_body
+                    )
+                    content: str = response.choices[0].message.content.strip()
+                else:
+                    # Fallback for sync client
+                    loop = asyncio.get_event_loop()
+                    def run_sync() -> str:
+                        return self.llm_client.chat.completions.create(
+                            model=model_name,
+                            messages=[
+                                {
+                                    "role": "system", 
+                                    "content": "You are an intent classification error analyst."
+                                },
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            timeout=timeout,
+                            extra_body=extra_body
+                        )
+                    response = await loop.run_in_executor(None, run_sync)
+                    content: str = response.choices[0].message.content.strip()
                 
                 # 记录 LLM 响应输出日志（处理前）
                 self.logger.info(f"[LLM响应-意图深度分析] 原始输出长度: {len(content)} 字符")
@@ -329,8 +356,6 @@ class IntentAnalyzer:
             except Exception as e:
                 self.logger.error(f"[LLM请求-意图深度分析] 调用失败: {e}")
                 raise e
-                
-        return await loop.run_in_executor(None, run_sync)
         
     def generate_analysis_context(
         self,
