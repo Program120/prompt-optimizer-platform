@@ -48,10 +48,10 @@ class AdvancedDiagnoser:
         
         # 使用 create_task 创建任务，以便后续可取消
         tasks = [
-            asyncio.create_task(self.analyze_context_capabilities(errors)),
-            asyncio.create_task(self.analyze_multi_intent(errors)),
+            asyncio.create_task(self.analyze_context_capabilities(errors, should_stop)),
+            asyncio.create_task(self.analyze_multi_intent(errors, should_stop)),
             asyncio.create_task(self.analyze_domain_confusion(errors, dataset_intents, should_stop)),
-            asyncio.create_task(self.analyze_clarification(errors)),
+            asyncio.create_task(self.analyze_clarification(errors, should_stop)),
         ]
         
         # 等待所有任务完成，但定期检查停止信号
@@ -99,7 +99,11 @@ class AdvancedDiagnoser:
     # -------------------------------------------------------------------------
     # A. 上下文处理能力分析
     # -------------------------------------------------------------------------
-    async def analyze_context_capabilities(self, errors: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def analyze_context_capabilities(
+        self, 
+        errors: List[Dict[str, Any]],
+        should_stop: Callable[[], bool] = None
+    ) -> Dict[str, Any]:
         """
         分析上下文依赖导致的错误
         """
@@ -107,7 +111,14 @@ class AdvancedDiagnoser:
         referential_keywords = ["这个", "那个", "它", "其", "这", "那", "these", "those", "it", "that", "this"]
         
         context_errors = []
-        for err in errors:
+        for i, err in enumerate(errors):
+            # 避免阻塞事件循环
+            if i % 50 == 0:
+                await asyncio.sleep(0)
+                if should_stop and should_stop():
+                    self.logger.info("上下文分析被取消")
+                    raise asyncio.CancelledError()
+                    
             query = str(err.get('query', '')).lower()
             if any(k in query for k in referential_keywords):
                 context_errors.append(err)
@@ -132,7 +143,11 @@ class AdvancedDiagnoser:
     # -------------------------------------------------------------------------
     # B. 多意图识别能力分析
     # -------------------------------------------------------------------------
-    async def analyze_multi_intent(self, errors: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def analyze_multi_intent(
+        self, 
+        errors: List[Dict[str, Any]],
+        should_stop: Callable[[], bool] = None
+    ) -> Dict[str, Any]:
         """
         分析多意图识别问题: 漏判、误判、排序错误
         """
@@ -144,7 +159,14 @@ class AdvancedDiagnoser:
         
         mixed_errors = []
         
-        for err in errors:
+        for i, err in enumerate(errors):
+            # 避免阻塞事件循环
+            if i % 50 == 0:
+                await asyncio.sleep(0)
+                if should_stop and should_stop():
+                    self.logger.info("多意图分析被取消")
+                    raise asyncio.CancelledError()
+                    
             target = str(err.get('target', ''))
             output = str(err.get('output', ''))
             
@@ -267,7 +289,11 @@ class AdvancedDiagnoser:
     # -------------------------------------------------------------------------
     # D. 澄清机制分析
     # -------------------------------------------------------------------------
-    async def analyze_clarification(self, errors: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def analyze_clarification(
+        self, 
+        errors: List[Dict[str, Any]],
+        should_stop: Callable[[], bool] = None
+    ) -> Dict[str, Any]:
         """
         分析澄清机制：过度澄清 vs 缺失澄清
         """
@@ -278,7 +304,14 @@ class AdvancedDiagnoser:
         
         clarification_errors = []
         
-        for err in errors:
+        for i, err in enumerate(errors):
+            # 避免阻塞事件循环
+            if i % 50 == 0:
+                await asyncio.sleep(0)
+                if should_stop and should_stop():
+                    self.logger.info("澄清机制分析被取消")
+                    raise asyncio.CancelledError()
+                    
             target = str(err.get('target', '')).lower()
             output = str(err.get('output', '')).lower()
             

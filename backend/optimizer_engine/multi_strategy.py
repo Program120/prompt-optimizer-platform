@@ -165,9 +165,12 @@ class MultiStrategyOptimizer:
 
         # 阶段 2：意图详细分析 & 高级定向分析
         self.logger.info("步骤 2: 意图详细分析 & 高级定向分析...")
-        intent_analysis: Dict[str, Any] = self.intent_analyzer.analyze_errors_by_intent(
-            errors, 
-            total_count
+        intent_analysis: Dict[str, Any] = await loop.run_in_executor(
+            None,
+            lambda: self.intent_analyzer.analyze_errors_by_intent(
+                errors, 
+                total_count
+            )
         )
         
         # 执行高级诊断 (并行)

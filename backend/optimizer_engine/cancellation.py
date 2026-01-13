@@ -52,7 +52,7 @@ class CancellationToken:
 async def run_with_cancellation(
     coro: Coroutine,
     should_stop: Callable[[], bool] = None,
-    check_interval: float = 0.5,
+    check_interval: float = 0.1,
     task_name: str = "未命名任务"
 ) -> Any:
     """
@@ -133,7 +133,7 @@ async def run_with_cancellation(
 async def gather_with_cancellation(
     *coros: Coroutine,
     should_stop: Callable[[], bool] = None,
-    check_interval: float = 0.5,
+    check_interval: float = 0.1,
     return_exceptions: bool = True
 ) -> list:
     """
