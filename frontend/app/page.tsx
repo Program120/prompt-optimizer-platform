@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Plus, Rocket, FileText, ChevronRight, Activity, Settings, Trash2 } from "lucide-react";
+import { Plus, Rocket, FileText, ChevronRight, Activity, Settings, Trash2, Database } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import GlobalModelsConfig from "./components/GlobalModelsConfig";
 
 // 统一使用相对路径，由 Next.js rewrites 转发到后端
 const API_BASE = "/api";
@@ -16,6 +17,8 @@ export default function Home() {
 
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; projectId: string | null }>({ show: false, projectId: null });
   const [password, setPassword] = useState("");
+  // 公共模型配置弹窗状态
+  const [showGlobalModels, setShowGlobalModels] = useState<boolean>(false);
 
   useEffect(() => {
     fetchProjects();
@@ -71,13 +74,23 @@ export default function Home() {
           </h1>
           <p className="text-slate-400 mt-2">智能提示词优化与意图识别评测平台</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 transition-colors px-6 py-3 rounded-xl font-medium shadow-lg shadow-blue-900/20"
-        >
-          <Plus size={20} />
-          新建项目
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowGlobalModels(true)}
+            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 transition-colors px-4 py-3 rounded-xl font-medium border border-slate-600"
+            title="管理公共模型配置"
+          >
+            <Database size={18} />
+            公共模型
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 transition-colors px-6 py-3 rounded-xl font-medium shadow-lg shadow-blue-900/20"
+          >
+            <Plus size={20} />
+            新建项目
+          </button>
+        </div>
       </header>
 
       {loading ? (
@@ -219,6 +232,11 @@ export default function Home() {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {/* Global Models Config Modal */}
+      {showGlobalModels && (
+        <GlobalModelsConfig onClose={() => setShowGlobalModels(false)} />
       )}
     </div>
   );

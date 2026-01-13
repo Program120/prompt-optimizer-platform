@@ -1,0 +1,110 @@
+"""
+公共模型配置API路由
+提供公共模型配置的增删改查接口
+"""
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
+import storage
+import logging
+
+router = APIRouter(prefix="/global-models", tags=["global-models"])
+logger = logging.getLogger(__name__)
+
+
+class GlobalModelCreate(BaseModel):
+    """
+    创建公共模型配置的请求体
+    """
+    name: str
+    base_url: str
+    api_key: str
+    model_name: str = "gpt-3.5-turbo"
+    max_tokens: int = 2000
+    temperature: float = 0.0
+    timeout: int = 60
+    extra_body: Optional[Dict[str, Any]] = None
+    default_headers: Optional[Dict[str, Any]] = None
+
+
+class GlobalModelUpdate(BaseModel):
+    """
+    更新公共模型配置的请求体
+    """
+    name: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model_name: Optional[str] = None
+    max_tokens: Optional[int] = None
+    temperature: Optional[float] = None
+    timeout: Optional[int] = None
+    extra_body: Optional[Dict[str, Any]] = None
+    default_headers: Optional[Dict[str, Any]] = None
+
+
+@router.get("")
+async def get_global_models():
+    """
+    获取所有公共模型配置
+    @return: 公共模型配置列表
+    """
+    logger.info("获取所有公共模型配置")
+    models = storage.get_global_models()
+    return models
+
+
+@router.get("/{model_id}")
+async def get_global_model(model_id: str):
+    """
+    获取单个公共模型配置
+    @param model_id: 模型配置ID
+    @return: 模型配置详情
+    """
+    logger.info(f"获取公共模型配置: {model_id}")
+    model = storage.get_global_model(model_id)
+    if not model:
+        raise HTTPException(status_code=404, detail="模型配置不存在")
+    return model
+
+
+@router.post("")
+async def create_global_model(model_data: GlobalModelCreate):
+    """
+    创建新的公共模型配置
+    @param model_data: 模型配置数据
+    @return: 创建的模型配置
+    """
+    logger.info(f"创建公共模型配置: {model_data.name}")
+    new_model = storage.create_global_model(model_data.model_dump())
+    return new_model
+
+
+@router.put("/{model_id}")
+async def update_global_model(model_id: str, updates: GlobalModelUpdate):
+    """
+    更新公共模型配置
+    @param model_id: 模型配置ID
+    @param updates: 要更新的字段
+    @return: 更新后的模型配置
+    """
+    logger.info(f"更新公共模型配置: {model_id}")
+    # 只传递非None的字段
+    update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
+    updated_model = storage.update_global_model(model_id, update_dict)
+    if not updated_model:
+        raise HTTPException(status_code=404, detail="模型配置不存在")
+    return updated_model
+
+
+@router.delete("/{model_id}")
+async def delete_global_model(model_id: str):
+    """
+    删除公共模型配置
+    @param model_id: 模型配置ID
+    @return: 删除结果
+    """
+    logger.info(f"删除公共模型配置: {model_id}")
+    success = storage.delete_global_model(model_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="模型配置不存在")
+    return {"status": "success", "message": "模型配置已删除"}

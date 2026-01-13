@@ -166,3 +166,113 @@ def get_auto_iterate_status(project_id: str) -> Optional[Dict[str, Any]]:
         except:
             return None
     return None
+
+
+# 公共模型配置文件路径
+GLOBAL_MODELS_FILE: str = os.path.join(DATA_DIR, "global_models.json")
+
+
+def get_global_models() -> List[Dict[str, Any]]:
+    """
+    获取所有公共模型配置
+    @return: 公共模型配置列表
+    """
+    if os.path.exists(GLOBAL_MODELS_FILE):
+        with open(GLOBAL_MODELS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def _save_global_models(models: List[Dict[str, Any]]) -> None:
+    """
+    保存公共模型配置列表到文件
+    @param models: 公共模型配置列表
+    """
+    with open(GLOBAL_MODELS_FILE, "w", encoding="utf-8") as f:
+        json.dump(models, f, indent=2, ensure_ascii=False)
+
+
+def create_global_model(model_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    创建新的公共模型配置
+    @param model_data: 模型配置数据
+    @return: 创建的模型配置（包含生成的ID）
+    """
+    models: List[Dict[str, Any]] = get_global_models()
+    
+    # 生成唯一ID
+    new_model: Dict[str, Any] = {
+        "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+        "name": model_data.get("name", "未命名模型"),
+        "base_url": model_data.get("base_url", ""),
+        "api_key": model_data.get("api_key", ""),
+        "model_name": model_data.get("model_name", "gpt-3.5-turbo"),
+        "max_tokens": model_data.get("max_tokens", 2000),
+        "temperature": model_data.get("temperature", 0.0),
+        "timeout": model_data.get("timeout", 60),
+        "extra_body": model_data.get("extra_body", None),
+        "default_headers": model_data.get("default_headers", None),
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    models.append(new_model)
+    _save_global_models(models)
+    return new_model
+
+
+def update_global_model(model_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    更新公共模型配置
+    @param model_id: 模型配置ID
+    @param updates: 要更新的字段
+    @return: 更新后的模型配置，如果未找到则返回None
+    """
+    models: List[Dict[str, Any]] = get_global_models()
+    
+    for idx, model in enumerate(models):
+        if model["id"] == model_id:
+            # 更新允许的字段
+            allowed_fields: List[str] = [
+                "name", "base_url", "api_key", "model_name", 
+                "max_tokens", "temperature", "timeout",
+                "extra_body", "default_headers"
+            ]
+            for field in allowed_fields:
+                if field in updates:
+                    model[field] = updates[field]
+            model["updated_at"] = datetime.now().isoformat()
+            models[idx] = model
+            _save_global_models(models)
+            return model
+    
+    return None
+
+
+def delete_global_model(model_id: str) -> bool:
+    """
+    删除公共模型配置
+    @param model_id: 模型配置ID
+    @return: 是否删除成功
+    """
+    models: List[Dict[str, Any]] = get_global_models()
+    initial_len: int = len(models)
+    models = [m for m in models if m["id"] != model_id]
+    
+    if len(models) < initial_len:
+        _save_global_models(models)
+        return True
+    return False
+
+
+def get_global_model(model_id: str) -> Optional[Dict[str, Any]]:
+    """
+    根据ID获取单个公共模型配置
+    @param model_id: 模型配置ID
+    @return: 模型配置，如果未找到则返回None
+    """
+    models: List[Dict[str, Any]] = get_global_models()
+    for model in models:
+        if model["id"] == model_id:
+            return model
+    return None
