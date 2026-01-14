@@ -100,10 +100,9 @@ class BaseStrategy(ABC):
         constraint_text: str = ""
         if conservative:
             constraint_text = """
-## 约束条件 (保守优化模式)
+## 约束条件 (**保守优化模式**)
 1. 必须保留提示词原有的结构、语气和格式。
-2. 目标是渐进式改进，而非重写。
-3. 除非明确要求替换，否则保留所有现有的 few-shot 示例。
+2. 目标是渐进式改进，而非重写, 严格遵循**优化指令**中的。
 """
         
         # 构建历史优化经验章节
@@ -127,7 +126,7 @@ class BaseStrategy(ABC):
             )
             if newly_failed_cases and len(newly_failed_cases) > 0:
                 lines: List[str] = [
-                    "## 新增失败案例（本轮回退）",
+                    "## 新增失败案例",
                     "以下案例在上一轮优化后变得失败，需要特别关注，避免类似的优化方向：",
                     ""
                 ]

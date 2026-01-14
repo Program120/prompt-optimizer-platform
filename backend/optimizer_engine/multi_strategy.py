@@ -353,7 +353,7 @@ class MultiStrategyOptimizer:
         use_negative_fusion: bool = False
         if strategy_mode == 'auto' and deep_analysis.get("analyses"):
             accuracy: float = metrics.get('accuracy', 0)
-            if accuracy < 0.8:
+            if accuracy < 0.5:
                 use_negative_fusion = True
                 self.logger.info(
                     f"[负向融合策略] 深度分析完成，准确率 {accuracy:.2%} < 80%，"
