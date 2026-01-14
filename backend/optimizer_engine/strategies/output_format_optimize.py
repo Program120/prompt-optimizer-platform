@@ -23,6 +23,7 @@ class OutputFormatOptimizationStrategy(BaseStrategy):
     name: str = "output_format_optimization"
     priority: int = 80
     description: str = "标准化输出优化策略：统一 JSON 格式与字段定义"
+    module_name: str = "标准化输出格式"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """
@@ -147,16 +148,12 @@ class OutputFormatOptimizationStrategy(BaseStrategy):
 {{"rewritten_query": "重写后的查询语句", "intent": ["无意图"], "confidence": 0.95, "clarify": null}}
 ```
 
-### 5. 格式要求 (Strict Mode)
-- **严禁修改其他模块**: 你只能修改"输出格式定义"相关的内容。绝对禁止修改前面的Few-Shot示例等其他模块的内容。
-- **允许新增模块**: 如果当前提示词中缺失本模块，请按照要求在规定的位置进行**新增**。
-- **禁止重复添加**: 输出前必须检查当前提示词是否已包含本模块内容，若已存在则只能修改，不能重复添加。
-
 """
         
         return self._meta_optimize(
             prompt, errors, instruction, 
-            conservative=True, diagnosis=diagnosis
+            conservative=True, diagnosis=diagnosis,
+            module_name=self.module_name
         )
     
     def _analyze_format_issues(

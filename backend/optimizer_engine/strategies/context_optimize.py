@@ -18,6 +18,7 @@ class ContextEnhancementStrategy(BaseStrategy):
     name: str = "context_enhancement"
     priority: int = 85
     description: str = "上下文增强策略：解决多轮对话中的语义断裂和指代消解问题"
+    module_name: str = "上下文与指代处理规则"
         
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """
@@ -103,13 +104,9 @@ class ContextEnhancementStrategy(BaseStrategy):
 - 用户轮2: "第二个"
 - 补全后: "查询第二个订单的详情"
 
-### 5. 格式要求 (Strict Mode)
-- **严禁修改其他模块**: 你只能修改"上下文与指代处理规则"模块的内容。绝对禁止修改其他任何内容。
-- **允许新增模块**: 如果当前提示词中缺失本模块，请按照要求在规定的位置进行**新增**。
-- **禁止重复添加**: 输出前必须检查当前提示词是否已包含本模块内容，若已存在则只能修改，不能重复添加。
-
 """
         
         return self._meta_optimize(
-            prompt, referential_cases, optimization_instruction, diagnosis=diagnosis
+            prompt, referential_cases, optimization_instruction, 
+            diagnosis=diagnosis, module_name=self.module_name
         )

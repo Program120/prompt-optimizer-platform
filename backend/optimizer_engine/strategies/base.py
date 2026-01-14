@@ -74,7 +74,8 @@ class BaseStrategy(ABC):
         error_cases: List[Dict[str, Any]],
         instruction: str,
         conservative: bool = True,
-        diagnosis: Optional[Dict[str, Any]] = None
+        diagnosis: Optional[Dict[str, Any]] = None,
+        module_name: Optional[str] = None
     ) -> str:
         """
         基于特定指令进行元优化的通用方法 (Git Diff Mode)
@@ -84,27 +85,38 @@ class BaseStrategy(ABC):
         :param instruction: 优化指令
         :param conservative: 是否使用保守模式（保留原有结构）
         :param diagnosis: 诊断结果（可选，包含历史优化经验和新增失败案例）
+        :param module_name: 可修改的模块名称（用于模块边界约束）
         :return: 优化后的提示词
         """
         import logging
         
         logger: logging.Logger = logging.getLogger(__name__)
         
-        logger.info(f"[元优化] 开始执行，策略: {self.name}")
+        logger.info(f"[元优化] 开始执行，策略: {self.name}, 模块: {module_name or '无限制'}")
         logger.info(f"[元优化] 原始提示词长度: {len(prompt)} 字符")
         logger.info(f"[元优化] 错误案例数量: {len(error_cases)}")
         logger.debug(f"[元优化] 优化指令: {instruction[:200]}...")
         
         error_text: str = self._build_error_samples(error_cases)
         
+        # 构建模块边界约束（前置到角色声明中）
+        module_constraint: str = ""
+        if module_name:
+            module_constraint = f"""
+> **[核心约束 - 请务必遵守]**
+> 你只能修改「{module_name}」模块的内容。
+> 严禁修改其他任何模块或部分，违反此约束将导致优化失败。
+"""
+        
+        # 构建保守模式约束
         constraint_text: str = ""
         if conservative:
-            constraint_text = """
-## 严格约束条件 (**保守优化模式**)
-1. 必须保留提示词原有的结构、语气和格式。
-2. 目标是渐进式改进，而非重写, 严格遵循**优化指令**中的。
-3. 只修改必要的部分，不要添加或删除任何内容。
-4. 替换后, 相较原提示词, 总改动字符不要超过100字符。
+            constraint_text = f"""
+## 严格约束条件
+1. **模块边界**: {"只能修改「" + module_name + "」模块" if module_name else "保留提示词原有结构"}
+2. **渐进改进**: 目标是小幅迭代，而非重写
+3. **最小改动**: 总改动字符不要超过100字符
+4. **禁止越界**: 绝对禁止修改其他模块的内容
 """
         
         # 构建历史优化经验章节
@@ -144,7 +156,21 @@ class BaseStrategy(ABC):
                     f"[元优化] 已注入新增失败案例，数量: {len(newly_failed_cases)}"
                 )
         
-        optimization_prompt: str = f"""你是一个提示词工程专家。
+        # 构建自检提示（仅当指定了模块名时）
+        self_check_section: str = ""
+        if module_name:
+            self_check_section = f"""
+## 输出前自检（必须执行）
+在输出每个 SEARCH/REPLACE 块之前，请确认：
+1. SEARCH 块中的内容是否属于「{module_name}」模块？ → 必须为 Yes
+2. REPLACE 块是否仅修改了「{module_name}」模块的内容？ → 必须为 Yes
+3. 是否触及了其他模块（如角色定义、全局约束、输出格式等）？ → 必须为 No
+
+**如果任一检查不通过，请放弃该修改，重新选择仅属于「{module_name}」模块的内容进行优化。**
+"""
+        
+        optimization_prompt: str = f"""你是一个提示词模块优化专家。
+{module_constraint}
 请根据提供的具体指令和错误案例优化以下提示词。
 
 ## 当前提示词
@@ -156,7 +182,7 @@ class BaseStrategy(ABC):
 ## 优化指令
 {instruction}
 {constraint_text}
-
+{self_check_section}
 ## 输出格式
 1. **分析**：首先，逐步分析当前提示词和错误模式。识别根本原因并规划具体的改进措施。
 2. **优化**：然后，输出用于应用更改的 Git Diff 块。

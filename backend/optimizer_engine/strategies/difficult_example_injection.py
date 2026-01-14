@@ -12,6 +12,7 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
     name = "difficult_example_injection"
     priority = 70
     description = "困难案例注入策略：将难处理的案例作为示例注入提示词"
+    module_name: str = "Few-Shot 场景示例"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """当存在较多困难案例时适用"""
@@ -102,17 +103,13 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
 - 避免极端或罕见场景
 - 优先选择边界案例作为示例
 
-### 6. 格式要求 (Strict Mode)
-- **严禁修改其他模块**: 你只能修改"Few-Shot 场景示例"模块的内容。绝对禁止修改其他任何内容。
-- **允许新增模块**: 如果当前提示词中缺失本模块，请按照要求在规定的位置进行**新增**。
-- **禁止重复添加**: 输出前必须检查当前提示词是否已包含本模块内容，若已存在则只能修改，不能重复添加。
-
 """
         
         # 使用通用元优化方法（获得知识库历史支持）
         return self._meta_optimize(
             prompt, hard_cases[:10], optimization_instruction, 
-            conservative=True, diagnosis=diagnosis
+            conservative=True, diagnosis=diagnosis,
+            module_name=self.module_name
         )
     
     def _build_hard_cases_text(self, hard_cases: List[Dict[str, Any]]) -> str:

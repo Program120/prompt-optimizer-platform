@@ -11,6 +11,7 @@ class CoTReasoningStrategy(BaseStrategy):
     name: str = "cot_reasoning"
     priority: int = 85
     description: str = "CoT优化策略：添加或修复思维链推理步骤"
+    module_name: str = "CoT 思维链引导"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """
@@ -95,11 +96,6 @@ Step 5: 输出结果 - 生成标准化JSON输出, (如果当前提示词是json�
 - 与意图体系的定义强关联，避免脱离业务场景
 - 便于人工排查误判原因，后续优化意图规则
 
-### 5. 格式要求 (Strict Mode)
-- **严禁修改其他模块**: 你只能修改"CoT 思维链引导"相关的内容。绝对禁止修改前面的辅助数据或后面的Few-Shot示例等其他模块的内容。
-- **允许新增模块**: 如果当前提示词中缺失本模块，请按照要求在规定的位置进行**新增**。
-- **禁止重复添加**: 输出前必须检查当前提示词是否已包含本模块内容，若已存在则只能修改，不能重复添加。
-
 """
         else:
             instruction: str = """
@@ -114,5 +110,6 @@ Step 5: 输出结果 - 生成标准化JSON输出, (如果当前提示词是json�
 """
             
         return self._meta_optimize(
-            prompt, errors, instruction, conservative=True, diagnosis=diagnosis
+            prompt, errors, instruction, conservative=True, diagnosis=diagnosis,
+            module_name=self.module_name
         )

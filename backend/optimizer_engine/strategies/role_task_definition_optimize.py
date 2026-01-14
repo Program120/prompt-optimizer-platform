@@ -23,6 +23,7 @@ class RoleTaskDefinitionStrategy(BaseStrategy):
     name: str = "role_task_definition"
     priority: int = 95
     description: str = "角色与任务定义优化策略：明确模型身份、识别边界与场景范围"
+    module_name: str = "角色与任务定义"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """
@@ -121,16 +122,12 @@ class RoleTaskDefinitionStrategy(BaseStrategy):
 - **澄清场景**: 用户表达模糊或信息不足，需要请求澄清
 - **无意图场景**: 问候、闲聊、恶意内容等不属于业务意图的情况
 
-### 5. 要求 (Strict Mode)
-- **严禁修改其他模块**: 你只能修改"角色与任务定义"模块的内容。绝对禁止修改其他任何部分。
-- **允许新增模块**: 如果当前提示词中缺失本模块，请按照要求在规定的位置进行**新增**。
-- **禁止重复添加**: 输出前必须检查当前提示词是否已包含本模块内容，若已存在则只能修改，不能重复添加。
-
 """
         
         return self._meta_optimize(
             prompt, errors, instruction, 
-            conservative=True, diagnosis=diagnosis
+            conservative=True, diagnosis=diagnosis,
+            module_name=self.module_name
         )
     
     def _analyze_role_issues(

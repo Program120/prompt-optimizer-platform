@@ -22,6 +22,7 @@ class CustomDataOptimizationStrategy(BaseStrategy):
     name: str = "custom_data_optimization"
     priority: int = 75
     description: str = "自定义数据优化策略：基于用户自定义数据优化提示词结构"
+    module_name: str = "业务专属辅助数据"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """
@@ -119,16 +120,12 @@ class CustomDataOptimizationStrategy(BaseStrategy):
 - 保留原有提示词的核心结构和模板变量
 - 辅助数据作为补充信息，不替换原有内容
 
-### 6. 要求 (Strict Mode)
-- **严禁修改其他模块**: 你只能修改"业务专属辅助数据"模块的内容。绝对禁止修改其他任何内容
-- **允许新增模块**: 如果当前提示词中缺失本模块，请按照要求在规定的位置进行**新增**。
-- **禁止重复添加**: 输出前必须检查当前提示词是否已包含本模块内容，若已存在则只能修改，不能重复添加。
-
 """
         
         return self._meta_optimize(
             prompt, errors, instruction, 
-            conservative=True, diagnosis=diagnosis
+            conservative=True, diagnosis=diagnosis,
+            module_name=self.module_name
         )
     
     def _build_custom_data_text(

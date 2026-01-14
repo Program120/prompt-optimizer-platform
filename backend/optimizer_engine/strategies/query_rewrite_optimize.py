@@ -23,6 +23,7 @@ class QueryRewriteOptimizationStrategy(BaseStrategy):
     name: str = "query_rewrite_optimization"
     priority: int = 78
     description: str = "Query改写优化策略：优化用户查询的改写和标准化逻辑"
+    module_name: str = "Query 预处理"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """
@@ -140,16 +141,12 @@ class QueryRewriteOptimizationStrategy(BaseStrategy):
 3. **Step 3**: 补全省略的主语/宾语
 4. **Step 4**: 输出标准化后的 Query 用于后续意图识别
 
-### 6. 要求 (Strict Mode)
-- **严禁修改其他模块**: 你只能修改"Query 改写"模块的内容。绝对禁止修改其他模块的任何内容。
-- **允许新增模块**: 如果当前提示词中缺失本模块，请按照要求在规定的位置进行**新增**。
-- **禁止重复添加**: 输出前必须检查当前提示词是否已包含本模块内容，若已存在则只能修改，不能重复添加。
-
 """
         
         return self._meta_optimize(
             prompt, errors, instruction, 
-            conservative=True, diagnosis=diagnosis
+            conservative=True, diagnosis=diagnosis,
+            module_name=self.module_name
         )
     
     def _analyze_query_issues(

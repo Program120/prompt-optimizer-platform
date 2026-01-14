@@ -23,6 +23,7 @@ class IntentDefinitionOptimizationStrategy(BaseStrategy):
     name: str = "intent_definition_optimization"
     priority: int = 88
     description: str = "意图定义优化策略：优化意图的定义描述使其更清晰准确"
+    module_name: str = "意图体系定义"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """
@@ -127,16 +128,12 @@ class IntentDefinitionOptimizationStrategy(BaseStrategy):
 - 正向触发词（强关联）
 - 负向排除词（明确不属于该意图）
 
-### 6. 要求 (Strict Mode)
-- **严禁修改其他模块**: 你只能修改"意图体系定义"这一模块内的内容。绝对禁止修改意图体系定义之外的任何部分。
-- **允许新增模块**: 如果当前提示词中缺失本模块，请按照要求在规定的位置进行**新增**。
-- **禁止重复添加**: 输出前必须检查当前提示词是否已包含本模块内容，若已存在则只能修改，不能重复添加。
-
 """
         
         return self._meta_optimize(
             prompt, errors, instruction, 
-            conservative=True, diagnosis=diagnosis
+            conservative=True, diagnosis=diagnosis,
+            module_name=self.module_name
         )
     
     def _analyze_intent_issues(self, diagnosis: Dict[str, Any]) -> str:
