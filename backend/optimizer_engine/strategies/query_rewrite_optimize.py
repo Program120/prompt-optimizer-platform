@@ -37,13 +37,15 @@ class QueryRewriteOptimizationStrategy(BaseStrategy):
         error_patterns: Dict[str, Any] = diagnosis.get("error_patterns", {})
         
         # 检查是否存在术语相关错误
-        terminology_errors: int = error_patterns.get("terminology_errors", 0)
-        if terminology_errors > 0:
+        # terminology_errors 现在是 List[Dict]
+        terminology_errors: List[Dict] = error_patterns.get("terminology_errors", [])
+        if len(terminology_errors) > 0:
             return True
         
         # 检查是否有模糊查询问题
-        ambiguous_queries: int = error_patterns.get("ambiguous_queries", 0)
-        if ambiguous_queries > 3:
+        # ambiguous_queries 现在是 List[Dict]
+        ambiguous_queries: List[Dict] = error_patterns.get("ambiguous_queries", [])
+        if len(ambiguous_queries) > 3:
             return True
         
         # 检查高级诊断中的上下文分析
@@ -62,10 +64,10 @@ class QueryRewriteOptimizationStrategy(BaseStrategy):
         :return: 动态计算的优先级
         """
         error_patterns: Dict[str, Any] = diagnosis.get("error_patterns", {})
-        terminology_errors: int = error_patterns.get("terminology_errors", 0)
-        ambiguous_queries: int = error_patterns.get("ambiguous_queries", 0)
+        terminology_errors: List[Dict] = error_patterns.get("terminology_errors", [])
+        ambiguous_queries: List[Dict] = error_patterns.get("ambiguous_queries", [])
         
-        total_issues: int = terminology_errors + ambiguous_queries
+        total_issues: int = len(terminology_errors) + len(ambiguous_queries)
         
         if total_issues >= 10:
             return int(self.priority * 1.3)

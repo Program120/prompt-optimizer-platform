@@ -42,15 +42,18 @@ class RoleTaskDefinitionStrategy(BaseStrategy):
         
         # 检查是否有任务边界问题（模型输出超范围）
         error_patterns: Dict[str, Any] = diagnosis.get("error_patterns", {})
-        boundary_violations: int = error_patterns.get("boundary_violations", 0)
+        # boundary_violations 现在是 List[Dict]
+        boundary_violations: List[Dict] = error_patterns.get("boundary_violations", [])
         
-        if boundary_violations > 0:
+        if len(boundary_violations) > 0:
             return True
         
         # 检查是否有场景覆盖不全的问题
-        scene_coverage: float = prompt_analysis.get("scene_coverage", 1.0)
+        # scene_coverage 现在是 Dict
+        scene_coverage: Dict[str, Any] = prompt_analysis.get("scene_coverage", {})
+        coverage_score: float = scene_coverage.get("score", 1.0)
         
-        return scene_coverage < 0.8
+        return coverage_score < 0.8
     
     def get_priority(self, diagnosis: Dict[str, Any]) -> int:
         """
@@ -176,10 +179,11 @@ class RoleTaskDefinitionStrategy(BaseStrategy):
         
         # 从诊断结果中获取额外信息
         error_patterns: Dict[str, Any] = diagnosis.get("error_patterns", {})
-        boundary_violations: int = error_patterns.get("boundary_violations", 0)
+        # boundary_violations 现在是 List[Dict]
+        boundary_violations: List[Dict] = error_patterns.get("boundary_violations", [])
         
-        if boundary_violations > 0:
-            lines.append(f"- 检测到 **{boundary_violations} 个任务边界违规案例**，模型输出超出了意图识别范围")
+        if len(boundary_violations) > 0:
+            lines.append(f"- 检测到 **{len(boundary_violations)} 个任务边界违规案例**，模型输出超出了意图识别范围")
         
         if not lines:
             lines.append("- 当前角色定义基本完整，但可进一步清晰化和标准化")

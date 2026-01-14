@@ -35,22 +35,23 @@ class OutputFormatOptimizationStrategy(BaseStrategy):
         """
         # 检查提示词分析中的格式问题
         prompt_analysis: Dict[str, Any] = diagnosis.get("prompt_analysis", {})
-        format_issues: List[str] = prompt_analysis.get("format_issues", [])
-        
-        if format_issues:
+        if len(format_issues) > 0:
             return True
         
         # 检查是否有输出格式相关的错误
         error_patterns: Dict[str, Any] = diagnosis.get("error_patterns", {})
-        format_errors: int = error_patterns.get("format_errors", 0)
+        # format_errors 现在是 List[Dict]
+        format_errors: List[Dict] = error_patterns.get("format_errors", [])
         
-        if format_errors > 0:
+        if len(format_errors) > 0:
             return True
         
         # 检查输出一致性评分
-        output_consistency: float = prompt_analysis.get("output_consistency", 1.0)
+        # output_consistency 现在是 Dict
+        output_consistency: Dict[str, Any] = prompt_analysis.get("output_consistency", {})
+        consistency_score: float = output_consistency.get("score", 1.0)
         
-        return output_consistency < 0.8
+        return consistency_score < 0.8
     
     def get_priority(self, diagnosis: Dict[str, Any]) -> int:
         """
@@ -62,7 +63,9 @@ class OutputFormatOptimizationStrategy(BaseStrategy):
         :return: 动态计算的优先级
         """
         prompt_analysis: Dict[str, Any] = diagnosis.get("prompt_analysis", {})
-        format_issues: List[str] = prompt_analysis.get("format_issues", [])
+        # format_issues 现在是 Dict (包含 issues 列表)
+        format_issues_data: Dict[str, Any] = prompt_analysis.get("format_issues", {})
+        format_issues: List[str] = format_issues_data.get("issues", [])
         
         # 格式问题越多，优先级越高
         issue_count: int = len(format_issues)
@@ -199,7 +202,9 @@ class OutputFormatOptimizationStrategy(BaseStrategy):
         
         # 从诊断结果中获取格式问题
         prompt_analysis: Dict[str, Any] = diagnosis.get("prompt_analysis", {})
-        format_issues: List[str] = prompt_analysis.get("format_issues", [])
+        # format_issues 现在是 Dict
+        format_issues_data: Dict[str, Any] = prompt_analysis.get("format_issues", {})
+        format_issues: List[str] = format_issues_data.get("issues", [])
         
         if format_issues:
             for issue in format_issues[:3]:

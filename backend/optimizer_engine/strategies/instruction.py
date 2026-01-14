@@ -91,7 +91,10 @@ class InstructionRefinementStrategy(BaseStrategy):
         elif clarity < 0.7:
             issues.append("- 指令存在歧义，部分场景定义不清")
         
-        format_issues = prompt_analysis.get("format_issues", [])
+        # format_issues 现在是 Dict (包含 issues 列表)
+        format_issues_data = prompt_analysis.get("format_issues", {})
+        format_issues = format_issues_data.get("issues", [])
+        
         if format_issues:
             issues.append(f"- 输出格式问题: {', '.join(format_issues[:3])}")
         
