@@ -80,9 +80,22 @@ STRATEGY_CLASSES: Dict[str, Type[BaseStrategy]] = {
 class StrategyMatcher:
     """策略匹配器 - 基于诊断结果选择最适合的优化策略"""
     
-    def __init__(self, llm_client=None, model_config: Dict[str, Any] = None):
+    def __init__(
+        self, 
+        llm_client=None, 
+        model_config: Dict[str, Any] = None,
+        semaphore: Any = None
+    ):
+        """
+        初始化策略匹配器
+        
+        :param llm_client: LLM 客户端实例
+        :param model_config: 模型配置
+        :param semaphore: 并发控制信号量（传递给策略使用）
+        """
         self.llm_client = llm_client
         self.model_config = model_config or {}
+        self.semaphore = semaphore
     
     def match_strategies(
         self, 
@@ -105,7 +118,8 @@ class StrategyMatcher:
         for name, strategy_class in STRATEGY_CLASSES.items():
             strategy = strategy_class(
                 llm_client=self.llm_client,
-                model_config=self.model_config
+                model_config=self.model_config,
+                semaphore=self.semaphore
             )
             
             if strategy.is_applicable(diagnosis):
@@ -139,7 +153,8 @@ class StrategyMatcher:
             if strategy_type in STRATEGY_CLASSES:
                 strategy = STRATEGY_CLASSES[strategy_type](
                     llm_client=self.llm_client,
-                    model_config=self.model_config
+                    model_config=self.model_config,
+                    semaphore=self.semaphore
                 )
                 strategies.append(strategy)
         

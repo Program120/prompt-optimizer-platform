@@ -29,7 +29,7 @@ class AdvancedDiagnoser:
         should_stop: Any = None
     ) -> Dict[str, Any]:
         """
-        并行运行所有高级诊断（支持中途取消）
+        并行运行所有高级诊断（优化版 - 使用 gather 真正并行等待）
         
         :param errors: 错误样例列表
         :param intents: 意图列表
@@ -46,42 +46,56 @@ class AdvancedDiagnoser:
             
         dataset_intents = intents or self._extract_intents(errors)
         
-        # 使用 create_task 创建任务，以便后续可取消
-        tasks = [
-            asyncio.create_task(self.analyze_context_capabilities(errors, should_stop)),
-            asyncio.create_task(self.analyze_multi_intent(errors, should_stop)),
-            asyncio.create_task(self.analyze_domain_confusion(errors, dataset_intents, should_stop)),
-            asyncio.create_task(self.analyze_clarification(errors, should_stop)),
+        # 诊断任务键名列表
+        keys: List[str] = [
+            "context_analysis", 
+            "multi_intent_analysis", 
+            "domain_analysis", 
+            "clarification_analysis"
         ]
         
-        # 等待所有任务完成，但定期检查停止信号
-        results = []
-        keys = ["context_analysis", "multi_intent_analysis", "domain_analysis", "clarification_analysis"]
+        self.logger.info(f"[并发优化] 开始并行运行 {len(keys)} 个高级诊断任务")
         
-        for idx, task in enumerate(tasks):
-            # 在等待每个任务前检查停止信号
-            if should_stop and should_stop():
-                self.logger.info(f"高级诊断在等待任务 {keys[idx]} 时被中止，取消剩余任务...")
-                # 取消未完成的任务
-                for t in tasks:
-                    if not t.done():
-                        t.cancel()
-                break
-            
-            try:
-                result = await task
-                results.append(result)
-            except asyncio.CancelledError:
-                self.logger.info(f"任务 {keys[idx]} 已取消")
-                results.append({"cancelled": True})
-            except Exception as e:
-                self.logger.error(f"高级诊断 {keys[idx]} 失败: {e}")
-                results.append({"error": str(e)})
+        # 使用 create_task 创建任务，以便后续可取消
+        tasks: List[asyncio.Task] = [
+            asyncio.create_task(
+                self.analyze_context_capabilities(errors, should_stop)
+            ),
+            asyncio.create_task(
+                self.analyze_multi_intent(errors, should_stop)
+            ),
+            asyncio.create_task(
+                self.analyze_domain_confusion(errors, dataset_intents, should_stop)
+            ),
+            asyncio.create_task(
+                self.analyze_clarification(errors, should_stop)
+            ),
+        ]
+        
+        # 使用 gather 真正并行等待所有任务
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        except asyncio.CancelledError:
+            self.logger.info("高级诊断任务被取消，正在清理...")
+            # 取消所有未完成的任务
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            return {}
         
         # 构建最终结果
-        final_results = {}
-        for k, res in zip(keys[:len(results)], results):
-            final_results[k] = res
+        final_results: Dict[str, Any] = {}
+        for idx, (key, result) in enumerate(zip(keys, results)):
+            if isinstance(result, Exception):
+                self.logger.error(f"高级诊断 {key} 失败: {result}")
+                final_results[key] = {"error": str(result)}
+            elif isinstance(result, asyncio.CancelledError):
+                self.logger.info(f"任务 {key} 已取消")
+                final_results[key] = {"cancelled": True}
+            else:
+                final_results[key] = result
+        
+        self.logger.info(f"[并发优化] 高级诊断完成，成功 {len([r for r in results if not isinstance(r, Exception)])}/{len(keys)} 个任务")
                 
         return final_results
 

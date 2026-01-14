@@ -47,7 +47,14 @@ class MultiStrategyOptimizer:
         self.semaphore = asyncio.Semaphore(max_concurrency)
         self.logger: logging.Logger = logging.getLogger(__name__)
         
-        self.matcher: StrategyMatcher = StrategyMatcher(llm_client, model_config)
+        self.logger.info(f"[并发优化] 初始化信号量，最大并发数: {max_concurrency}")
+        
+        # 传递信号量给策略匹配器，使策略中的 LLM 调用也遵循并发限制
+        self.matcher: StrategyMatcher = StrategyMatcher(
+            llm_client, 
+            model_config,
+            semaphore=self.semaphore
+        )
         self.rewriter: PromptRewriter = PromptRewriter()
         self.selector: FewShotSelector = FewShotSelector()
         
@@ -135,20 +142,53 @@ class MultiStrategyOptimizer:
             self.knowledge_base = OptimizationKnowledgeBase(project_id)
             self.logger.info(f"步骤 0: 初始化知识库 (项目ID: {project_id})")
         
-        # 阶段 1：诊断分析
-        self.logger.info(f"步骤 1: 诊断分析... (错误样本数: {len(errors)})")
+        # 阶段 1 & 2：并行执行诊断分析和意图分析（性能优化）
+        self.logger.info(f"步骤 1&2: 并行执行诊断分析和意图分析... (错误样本数: {len(errors)})")
         self.logger.info(f"提示词上下文: {prompt[:100]}... (总长度: {len(prompt)})")
+        
         loop = asyncio.get_running_loop()
-        diagnosis: Dict[str, Any] = await loop.run_in_executor(
-            None,
-            lambda: diagnose_prompt_performance(
-                prompt, 
-                errors, 
-                total_count,
-                llm_client=self.llm_client,
-                model_config=self.model_config
+        
+        # 定义诊断分析任务
+        async def run_diagnosis() -> Dict[str, Any]:
+            """
+            执行诊断分析
+            
+            :return: 诊断结果
+            """
+            return await loop.run_in_executor(
+                None,
+                lambda: diagnose_prompt_performance(
+                    prompt, 
+                    errors, 
+                    total_count,
+                    llm_client=self.llm_client,
+                    model_config=self.model_config
+                )
             )
+        
+        # 定义意图分析任务
+        async def run_intent_analysis() -> Dict[str, Any]:
+            """
+            执行意图分析
+            
+            :return: 意图分析结果
+            """
+            return await loop.run_in_executor(
+                None,
+                lambda: self.intent_analyzer.analyze_errors_by_intent(
+                    errors, 
+                    total_count
+                )
+            )
+        
+        # 并行执行诊断分析和意图分析
+        self.logger.info("[并发优化] 并行启动诊断分析和意图分析...")
+        diagnosis, intent_analysis = await asyncio.gather(
+            run_diagnosis(),
+            run_intent_analysis()
         )
+        
+        # 记录诊断结果
         metrics = diagnosis.get('overall_metrics', {})
         error_patterns = diagnosis.get('error_patterns', {})
         self.logger.info(
@@ -162,20 +202,11 @@ class MultiStrategyOptimizer:
              self.logger.info(f"错误分布 Top 3: {dict(list(error_patterns['category_distribution'].items())[:3])}")
         
         # 检查停止信号
-        if self._is_stopped(should_stop, "步骤 1 完成后"): 
+        if self._is_stopped(should_stop, "步骤 1&2 完成后"): 
             return {"optimized_prompt": prompt, "message": "Stopped"}
 
-        # 阶段 2：意图详细分析 & 高级定向分析
-        self.logger.info("步骤 2: 意图详细分析 & 高级定向分析...")
-        intent_analysis: Dict[str, Any] = await loop.run_in_executor(
-            None,
-            lambda: self.intent_analyzer.analyze_errors_by_intent(
-                errors, 
-                total_count
-            )
-        )
-        
-        # 执行高级诊断 (并行)
+        # 立即启动高级诊断（与后续步骤并行）
+        self.logger.info("步骤 2.5: 启动高级定向分析...")
         all_intents = [
             i["intent"] for i in intent_analysis.get("top_failing_intents", [])
         ]
@@ -883,7 +914,7 @@ class MultiStrategyOptimizer:
                 errors=errors,
                 dataset=dataset, # 可以传全集，反正 few-shot selector 会自己挑
                 strategy_mode="precision_focus",
-                max_strategies=1
+                max_strategies=3
             )
             return {
                 "intent": intent,

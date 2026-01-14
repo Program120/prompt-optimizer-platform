@@ -153,10 +153,13 @@ class IntentAnalyzer:
         should_stop: Any = None
     ) -> Dict[str, Any]:
         """
-        对 Top N 失败意图进行 LLM 深度分析
+        对 Top N 失败意图进行 LLM 深度分析 (并发版本)
+        
+        使用 asyncio.gather 并发执行所有意图分析，利用信号量控制并发数
         
         :param errors: 错误样例列表
         :param top_n: 分析的失败意图数量
+        :param should_stop: 停止回调函数
         :return: 深度分析结果
         """
         if not errors:
@@ -174,17 +177,23 @@ class IntentAnalyzer:
         
         if not top_failures:
             return {"analyses": [], "summary": "无失败意图"}
+        
+        # 检查停止信号
+        if should_stop and should_stop():
+            self.logger.info("意图深度分析被手动中止")
+            return {"analyses": [], "summary": "用户中止"}
             
-        # 并行分析每个 Top 失败意图
-        analyses: List[Dict[str, Any]] = []
         total_count: int = intent_analysis.get("total_count", len(errors))
         
-        for failure in top_failures:
-            # Check stop signal
-            if should_stop and should_stop():
-                 self.logger.info("意图深度分析被手动中止")
-                 break
+        self.logger.info(f"[并发优化] 开始并发分析 {len(top_failures)} 个失败意图")
+        
+        async def analyze_single_failure(failure: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            分析单个失败意图
             
+            :param failure: 失败意图信息
+            :return: 分析结果
+            """
             intent: str = failure.get("intent", "")
             error_count: int = failure.get("error_count", 0)
             sample_errors: List[Dict[str, Any]] = failure.get("sample_errors", [])
@@ -213,45 +222,70 @@ class IntentAnalyzer:
                 confusion_targets=confusion_text
             )
             
-            # 在 LLM 调用前再次检查停止信号（避免长等待）
-            if should_stop and should_stop():
-                self.logger.info("意图深度分析在 LLM 调用前被中止")
-                break
-                
             # 调用 LLM 分析（使用可取消的调用）
             try:
                 analysis_result: str = await self._call_llm_with_cancellation(
                     prompt, 
                     should_stop,
-                    "意图深度分析"
+                    f"意图深度分析-{intent}"
                 )
                 
                 # 如果返回空字符串，可能是被取消了
                 if not analysis_result:
                     if should_stop and should_stop():
-                        self.logger.info("意图深度分析 LLM 调用被取消")
-                        break
+                        return None  # 标记为取消
                     analysis_result = "分析失败: 调用返回空"
                 
-                analyses.append({
+                return {
                     "intent": intent,
                     "error_count": error_count,
                     "error_rate": error_rate,
                     "confusion_targets": confusion_targets,
                     "analysis": analysis_result
-                })
+                }
             except asyncio.CancelledError:
                 self.logger.info(f"意图 {intent} 深度分析被取消")
-                break
+                return None
             except Exception as e:
                 self.logger.error(f"深度分析意图 {intent} 失败: {e}")
-                analyses.append({
+                return {
                     "intent": intent,
                     "error_count": error_count,
                     "error_rate": error_rate,
                     "confusion_targets": confusion_targets,
                     "analysis": f"分析失败: {str(e)}"
-                })
+                }
+        
+        # 创建并发任务
+        tasks: List[asyncio.Task] = [
+            asyncio.create_task(analyze_single_failure(f)) 
+            for f in top_failures
+        ]
+        
+        # 并发执行所有分析任务
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        except asyncio.CancelledError:
+            self.logger.info("意图深度分析任务被取消")
+            # 取消所有未完成的任务
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            return {"analyses": [], "summary": "用户取消"}
+        
+        # 收集有效结果
+        analyses: List[Dict[str, Any]] = []
+        for result in results:
+            # 跳过异常和取消的结果
+            if isinstance(result, Exception):
+                self.logger.error(f"分析任务异常: {result}")
+                continue
+            if result is None:
+                # 被取消的任务
+                continue
+            analyses.append(result)
+        
+        self.logger.info(f"[并发优化] 完成分析，成功 {len(analyses)}/{len(top_failures)} 个意图")
                 
         # 生成整体总结
         summary: str = self._generate_overall_summary(analyses)

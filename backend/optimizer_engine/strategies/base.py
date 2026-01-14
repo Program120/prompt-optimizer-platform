@@ -1,4 +1,5 @@
 """策略基类定义"""
+import asyncio
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
@@ -10,9 +11,22 @@ class BaseStrategy(ABC):
     priority: int = 0
     description: str = ""
     
-    def __init__(self, llm_client=None, model_config: Dict[str, Any] = None):
+    def __init__(
+        self, 
+        llm_client=None, 
+        model_config: Dict[str, Any] = None,
+        semaphore: Optional[asyncio.Semaphore] = None
+    ):
+        """
+        初始化策略基类
+        
+        :param llm_client: LLM 客户端实例
+        :param model_config: 模型配置
+        :param semaphore: 并发控制信号量（用于限制 LLM 调用并发数）
+        """
         self.llm_client = llm_client
         self.model_config = model_config or {}
+        self.semaphore = semaphore
     
     @abstractmethod
     def apply(
@@ -364,12 +378,15 @@ SEARCH/REPLACE 规则：
         """
         调用 LLM (同步方法，支持 AsyncOpenAI 和 OpenAI 客户端)
         
+        支持信号量并发控制（如果在初始化时传入了 semaphore）
+        
         :param prompt: 输入提示词
         :return: LLM 响应内容
         """
         import re
         import logging
         import asyncio
+        import threading
         from openai import AsyncOpenAI
         
         logger: logging.Logger = logging.getLogger(__name__)
@@ -383,6 +400,10 @@ SEARCH/REPLACE 规则：
         logger.info(f"[LLM请求-策略优化] 策略: {self.name}, 输入提示词长度: {len(prompt)} 字符")
         logger.debug(f"[LLM请求-策略优化] 输入内容:\n{prompt[:1000]}...")
         
+        # 如果有信号量，记录并发信息
+        if self.semaphore:
+            logger.info(f"[LLM请求-策略优化] 策略: {self.name}, 使用共享信号量控制并发")
+        
         try:
             model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
             temperature: float = float(self.model_config.get("temperature", 0.7))
@@ -395,22 +416,46 @@ SEARCH/REPLACE 规则：
             if isinstance(self.llm_client, AsyncOpenAI):
                 # AsyncOpenAI 客户端需要异步调用
                 # 在同步上下文中运行异步代码
-                async def _async_call():
-                    """
-                    异步调用 LLM
-                    
-                    :return: LLM 响应对象
-                    """
-                    return await self.llm_client.chat.completions.create(
-                        model=model_name,
-                        messages=[
-                            {"role": "user", "content": prompt}
-                        ],
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        timeout=timeout,
-                        extra_body=self.model_config.get("extra_body")
-                    )
+                
+                # 如果有信号量，需要使用 async with 获取信号量
+                if self.semaphore:
+                    async def _async_call_with_semaphore():
+                        """
+                        带信号量控制的异步调用 LLM
+                        
+                        :return: LLM 响应对象
+                        """
+                        async with self.semaphore:
+                            logger.debug(f"[LLM请求-策略优化] 策略: {self.name}, 获取到信号量许可")
+                            return await self.llm_client.chat.completions.create(
+                                model=model_name,
+                                messages=[
+                                    {"role": "user", "content": prompt}
+                                ],
+                                temperature=temperature,
+                                max_tokens=max_tokens,
+                                timeout=timeout,
+                                extra_body=self.model_config.get("extra_body")
+                            )
+                    _async_call = _async_call_with_semaphore
+                else:
+                    async def _async_call_no_semaphore():
+                        """
+                        异步调用 LLM（无信号量控制）
+                        
+                        :return: LLM 响应对象
+                        """
+                        return await self.llm_client.chat.completions.create(
+                            model=model_name,
+                            messages=[
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            timeout=timeout,
+                            extra_body=self.model_config.get("extra_body")
+                        )
+                    _async_call = _async_call_no_semaphore
                 
                 # 检查是否有正在运行的事件循环
                 try:
@@ -418,22 +463,28 @@ SEARCH/REPLACE 规则：
                     # 有运行中的循环，使用 nest_asyncio 或创建新线程
                     import concurrent.futures
                     
-                    def run_in_new_loop():
-                        """
-                        在新的事件循环中运行异步代码
-                        
-                        :return: LLM 响应对象
-                        """
-                        new_loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(new_loop)
-                        try:
-                            return new_loop.run_until_complete(_async_call())
-                        finally:
-                            new_loop.close()
-                    
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(run_in_new_loop)
+                    # 如果有信号量，需要在同一个事件循环中运行
+                    # 使用 run_coroutine_threadsafe 在当前循环中调度协程
+                    if self.semaphore:
+                        future = asyncio.run_coroutine_threadsafe(_async_call(), loop)
                         response = future.result(timeout=timeout + 10)
+                    else:
+                        def run_in_new_loop():
+                            """
+                            在新的事件循环中运行异步代码
+                            
+                            :return: LLM 响应对象
+                            """
+                            new_loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(new_loop)
+                            try:
+                                return new_loop.run_until_complete(_async_call())
+                            finally:
+                                new_loop.close()
+                        
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(run_in_new_loop)
+                            response = future.result(timeout=timeout + 10)
                         
                 except RuntimeError:
                     # 没有运行中的循环，可以直接运行
