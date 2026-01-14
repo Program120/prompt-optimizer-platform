@@ -184,7 +184,10 @@ export default function HistoryPanel({
                         </div>
                     </div>
                 ) : (
-                    <div className="flex justify-between items-start group/note">
+                    <div
+                        className="flex justify-between items-start group/note cursor-pointer hover:bg-white/5 rounded p-1 -m-1 transition-colors"
+                        onClick={(e) => startEditingNote(e, type, id, note)}
+                    >
                         <div className="flex-1 text-xs">
                             <span className="text-slate-500 mr-2 font-medium">备注:</span>
                             {note ? (

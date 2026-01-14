@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class TestPromptRequest(BaseModel):
     prompt: str
     query: str
-    model_config: Dict[str, Any]
+    llm_config: Dict[str, Any]
 
 @router.post("/test")
 async def test_prompt_output(request: TestPromptRequest):
@@ -28,7 +28,10 @@ async def test_prompt_output(request: TestPromptRequest):
     """
     prompt = request.prompt
     query = request.query
-    model_config = request.model_config
+    # 兼容前端可能传过来的 model_config (如果前端没更新)
+    # 但 Pydantic verification 会在 request validation 阶段就报错如果名字不对
+    # 所以前端必须更新
+    model_config = request.llm_config
 
     if not model_config or not model_config.get("api_key"):
         raise HTTPException(status_code=400, detail="未配置模型参数(API Key)")

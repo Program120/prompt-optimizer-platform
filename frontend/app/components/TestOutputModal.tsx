@@ -78,7 +78,7 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
             const res = await axios.post("/api/playground/test", {
                 prompt,
                 query,
-                model_config: modelConfig
+                llm_config: modelConfig
             });
 
             setOutput(res.data.output);
