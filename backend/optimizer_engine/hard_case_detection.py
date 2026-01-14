@@ -13,6 +13,13 @@ from openai import AsyncOpenAI, OpenAI
 
 # 如果需要，可以尝试导入用于文本分析的其他可选依赖项
 # 目前我们坚持使用标准库和 sklearn
+try:
+    import storage
+except ImportError:
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import storage
 
 class HardCaseDetector:
     """
@@ -42,14 +49,16 @@ class HardCaseDetector:
             "boundary": 0.25,
             "ambiguity": 0.20,
             "confusion": 0.15,
-            "diversity": 0.15
+            "diversity": 0.15,
+            "history": 0.40 # 历史高频错误权重很高
         }
     
     def detect_hard_cases(
         self, 
         predictions: List[Dict[str, Any]], 
         dataset: List[Dict[str, Any]] = None, 
-        top_k: int = 20
+        top_k: int = 20,
+        project_id: str = None
     ) -> List[Dict[str, Any]]:
         """
         使用所有可用策略检测困难案例的主入口。
@@ -61,6 +70,7 @@ class HardCaseDetector:
                          像 'boundary'（使用邻居）这样的策略可能效果较差，但仍然可用。
             dataset: 完整数据集（可选，可用于提供上下文）
             top_k: 返回的困难案例数量
+            project_id: 项目ID（可选，用于查询历史错误）
             
         返回:
             包含原因和得分的困难案例对象列表。
@@ -69,6 +79,14 @@ class HardCaseDetector:
             return []
 
         all_scores: List[Dict[str, Any]] = []
+        
+        # 0. 基于历史高频错误的检测 (优先级最高)
+        if project_id:
+            try:
+                hist_cases: List[Dict[str, Any]] = self._historical_frequency_based(predictions, project_id)
+                self._add_weighted_scores(all_scores, hist_cases, "history")
+            except Exception as e:
+                self.logger.warning(f"基于历史频率的检测失败: {e}")
         
         # 1. 基于置信度的检测
         try:
@@ -344,6 +362,60 @@ class HardCaseDetector:
                     "score": min(1.0, (dist / threshold) * 0.5) 
                 })
                 
+        return hard_cases
+
+    def _historical_frequency_based(
+        self,
+        predictions: List[Dict[str, Any]],
+        project_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        基于历史和当前错误频率识别困难案例（出现次数 > 5）
+        """
+        hard_cases: List[Dict[str, Any]] = []
+        
+        # 获取该项目所有历史错误
+        all_project_errors: List[Dict[str, Any]] = storage.get_all_project_errors(project_id)
+        
+        # 统计每个 query 的错误次数
+        # 注意: 这里使用 query 作为唯一标识符，也可以结合 target
+        error_counter = Counter()
+        
+        # 计入历史错误
+        for err in all_project_errors:
+            query = str(err.get("query", "")).strip()
+            if query:
+                error_counter[query] += 1
+                
+        # 计入当前待检测的错误/预测 (如果这些预测也是错误的话)
+        # predictions 里如果有 target != output，也算一次
+        # 这里为了避免重复计数(如果当前predictions已经保存到history了)，
+        # 我们假设 history 是过去的，current 是现在的。
+        # 如果 current 已经存入 storage，这里会重复加1。
+        # 但多算一次通常没问题，只要能找出高频错误。
+        
+        # 检查每个 prediction 是否是高频错误
+        for pred in predictions:
+            query = str(pred.get("query", "")).strip()
+            # 如果这是一个错误预测 (target != output)
+            if str(pred.get("target", "")).strip() != str(pred.get("output", "")).strip():
+                 # 加上当前这一次（如果尚未包含在 history 中）
+                 # 但实际上最简单的做法是看 error_counter[query] 是否已经很高
+                 # 或者简单地： total_count = error_counter[query] + 1 (当前这次)
+                 
+                 count = error_counter[query]
+                 # 如果在历史中已经出现过，或者算上当前这次
+                 # 我们保守一点，只看 history + current > 5
+                 
+                 total_occurrence = count + 1 # 假设 pred 是新的一次
+                 
+                 if total_occurrence > 5:
+                     hard_cases.append({
+                         "case": pred,
+                         "reason": f"历史高频错误(>5次, 共{total_occurrence}次)",
+                         "score": 1.0 # 最高优先级
+                     })
+                     
         return hard_cases
 
     def _extract_embeddings(

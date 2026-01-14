@@ -11,7 +11,8 @@ def diagnose_prompt_performance(
     errors: List[Dict[str, Any]], 
     total_count: int = None,
     llm_client: Any = None,
-    model_config: Dict[str, Any] = None
+    model_config: Dict[str, Any] = None,
+    project_id: str = None
 ) -> Dict[str, Any]:
     """
     综合诊断提示词性能
@@ -20,6 +21,7 @@ def diagnose_prompt_performance(
         prompt: 当前提示词
         errors: 错误样例列表
         total_count: 总样例数（用于计算准确率，可选）
+        project_id: 项目ID（可选，用于查询历史错误）
         
     Returns:
         诊断结果字典
@@ -33,7 +35,7 @@ def diagnose_prompt_performance(
     
     # 困难案例探测
     detector = HardCaseDetector(llm_client, model_config)
-    hard_cases = detector.detect_hard_cases(errors, top_k=50)
+    hard_cases = detector.detect_hard_cases(errors, top_k=50, project_id=project_id)
     if not hard_cases: # Fallback to old method if no hard cases found (e.g. empty lists)
          hard_cases = identify_hard_cases(errors)
 

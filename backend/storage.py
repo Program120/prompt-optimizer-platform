@@ -168,6 +168,41 @@ def get_auto_iterate_status(project_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def get_all_project_errors(project_id: str) -> List[Dict[str, Any]]:
+    """
+    获取项目所有历史任务中的错误案例
+    :param project_id: 项目ID
+    :return: 错误案例列表（包含 query, target, output 等信息）
+    """
+    if not project_id:
+        return []
+        
+    all_errors = []
+    
+    # 遍历所有任务文件
+    if not os.path.exists(DATA_DIR):
+        return []
+        
+    for filename in os.listdir(DATA_DIR):
+        if filename.startswith("task_") and filename.endswith(".json"):
+            try:
+                task_path = os.path.join(DATA_DIR, filename)
+                with open(task_path, "r", encoding="utf-8") as f:
+                    task_data = json.load(f)
+                    
+                # 检查是否属于该项目
+                if task_data.get("project_id") == project_id:
+                    # 提取错误案例
+                    errors = task_data.get("errors", [])
+                    if errors:
+                        all_errors.extend(errors)
+            except Exception as e:
+                print(f"Error reading task file {filename}: {e}")
+                continue
+                
+    return all_errors
+
+
 # 公共模型配置文件路径
 GLOBAL_MODELS_FILE: str = os.path.join(DATA_DIR, "global_models.json")
 

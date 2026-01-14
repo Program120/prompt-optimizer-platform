@@ -194,7 +194,8 @@ async def multi_strategy_optimize(
 def diagnose_and_get_recommendations(
     old_prompt: str,
     errors: list,
-    total_count: int = None
+    total_count: int = None,
+    project_id: str = None
 ) -> dict:
     """
     诊断提示词性能并获取优化建议
@@ -202,6 +203,7 @@ def diagnose_and_get_recommendations(
     :param old_prompt: 当前提示词
     :param errors: 错误样例列表
     :param total_count: 总样本数（用于计算准确率）
+    :param project_id: 项目ID（可选）
     :return: 诊断结果和推荐策略
     """
     if not errors:
@@ -221,7 +223,7 @@ def diagnose_and_get_recommendations(
         model_config=model_config
     )
     
-    diagnosis = optimizer.diagnose(old_prompt, errors, total_count)
+    diagnosis = optimizer.diagnose(old_prompt, errors, total_count, project_id=project_id)
     recommendations = optimizer.get_recommended_strategies(diagnosis)
     
     return {

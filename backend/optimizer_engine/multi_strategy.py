@@ -171,7 +171,8 @@ class MultiStrategyOptimizer:
                     errors, 
                     total_count,
                     llm_client=self.llm_client,
-                    model_config=self.model_config
+                    model_config=self.model_config,
+                    project_id=project_id
                 )
             )
         
@@ -768,7 +769,8 @@ class MultiStrategyOptimizer:
         self, 
         prompt: str, 
         errors: List[Dict[str, Any]],
-        total_count: int = None
+        total_count: int = None,
+        project_id: str = None
     ) -> Dict[str, Any]:
         """
         仅执行诊断分析
@@ -776,6 +778,7 @@ class MultiStrategyOptimizer:
         :param prompt: 当前提示词
         :param errors: 错误样例列表
         :param total_count: 总样本数
+        :param project_id: 项目ID
         :return: 诊断结果
         """
         return diagnose_prompt_performance(
@@ -783,7 +786,8 @@ class MultiStrategyOptimizer:
             errors, 
             total_count,
             llm_client=self.llm_client,
-            model_config=self.model_config
+            model_config=self.model_config,
+            project_id=project_id
         )
         
     def _generate_optimization_summary(
