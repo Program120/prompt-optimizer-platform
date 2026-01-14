@@ -100,7 +100,7 @@ async def start_auto_iterate(
                 if not model_config:
                     model_config = storage.get_model_config()
                     
-                task_id = tm.create_task(project_id, path, query_col, target_col, current_prompt, model_config, extract_field)
+                task_id = tm.create_task(project_id, path, query_col, target_col, current_prompt, model_config, extract_field, validation_limit=validation_limit)
                 
                 status["task_id"] = task_id
                 storage.save_auto_iterate_status(project_id, status)

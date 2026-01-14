@@ -32,41 +32,50 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
 
         // Reset full diff state when iteration changes
         setShowFullDiff(false);
+        // Clear previous diff result to avoid showing stale data
+        setDiffResult([]);
     }, [selectedIteration]);
 
     useEffect(() => {
         if (!selectedIteration) return;
 
+        let isCancelled = false;
+
         const calculateDiff = async () => {
             setIsDiffing(true);
             // Allow UI to render loading state
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            if (isCancelled) return;
 
             const oldP = selectedIteration.old_prompt || "";
             const newP = selectedIteration.new_prompt || "";
 
-            let oldToDiff = oldP;
-            let newToDiff = newP;
-            const isLarge = oldP.length > TRUNCATE_LENGTH || newP.length > TRUNCATE_LENGTH;
-
-            if (isLarge && !showFullDiff) {
-                oldToDiff = oldP.slice(0, TRUNCATE_LENGTH) + "...";
-                newToDiff = newP.slice(0, TRUNCATE_LENGTH) + "...";
-            }
-
             try {
-                const result = Diff.diffWords(oldToDiff, newToDiff);
-                setDiffResult(result);
+                // Always calculate full diff to ensure correctness
+                // Truncation will be handled at the display level
+                const result = Diff.diffWords(oldP, newP);
+                if (!isCancelled) {
+                    setDiffResult(result);
+                }
             } catch (e) {
                 console.error("Diff calculation failed", e);
-                setDiffResult([{ value: "Diff calculation failed due to size.", removed: false, added: false }]);
+                if (!isCancelled) {
+                    setDiffResult([{ value: "Diff calculation failed.", removed: false, added: false }]);
+                }
             } finally {
-                setIsDiffing(false);
+                if (!isCancelled) {
+                    setIsDiffing(false);
+                }
             }
         };
 
         calculateDiff();
-    }, [selectedIteration, showFullDiff]);
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [selectedIteration]);
 
     if (!selectedIteration) return null;
 
@@ -120,23 +129,59 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
                                 </div>
                             ) : (
                                 <>
-                                    {diffResult.map((part: any, i: number) => (
-                                        <span
-                                            key={i}
-                                            className={
-                                                part.added ? "bg-emerald-500/30 text-emerald-300" :
-                                                    part.removed ? "bg-red-500/30 text-red-300 line-through" :
-                                                        "text-slate-300"
+                                    {(() => {
+                                        const displayedParts = [];
+                                        let currentLength = 0;
+                                        let isTruncated = false;
+
+                                        if (showFullDiff) {
+                                            displayedParts.push(...diffResult);
+                                        } else {
+                                            for (const part of diffResult) {
+                                                // Check if adding this part would exceed the limit
+                                                if (currentLength >= TRUNCATE_LENGTH) {
+                                                    isTruncated = true;
+                                                    break;
+                                                }
+
+                                                const remainingSpace = TRUNCATE_LENGTH - currentLength;
+
+                                                if (part.value.length > remainingSpace) {
+                                                    // Slice this part
+                                                    displayedParts.push({ ...part, value: part.value.slice(0, remainingSpace) });
+                                                    currentLength += remainingSpace;
+                                                    isTruncated = true;
+                                                    break;
+                                                } else {
+                                                    // Add full part
+                                                    displayedParts.push(part);
+                                                    currentLength += part.value.length;
+                                                }
                                             }
-                                        >
-                                            {part.value}
-                                        </span>
-                                    ))}
-                                    {isLargeContent && !showFullDiff && (
-                                        <div className="block mt-4 text-center text-slate-500 text-xs italic bg-white/5 p-2 rounded">
-                                            ⚠️ 内容过长，已截断显示。点击上方按钮查看完整对比。
-                                        </div>
-                                    )}
+                                        }
+
+                                        return (
+                                            <>
+                                                {displayedParts.map((part: any, i: number) => (
+                                                    <span
+                                                        key={i}
+                                                        className={
+                                                            part.added ? "bg-emerald-500/30 text-emerald-300" :
+                                                                part.removed ? "bg-red-500/30 text-red-300 line-through" :
+                                                                    "text-slate-300"
+                                                        }
+                                                    >
+                                                        {part.value}
+                                                    </span>
+                                                ))}
+                                                {(isTruncated || (isLargeContent && !showFullDiff)) && (
+                                                    <div className="block mt-4 text-center text-slate-500 text-xs italic bg-white/5 p-2 rounded">
+                                                        ⚠️ 内容过长，已截断显示。点击上方按钮查看完整对比。
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                 </>
                             )}
                         </div>
