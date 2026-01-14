@@ -137,7 +137,7 @@ class IntentAnalyzer:
                 "confusion_targets": [
                     {"target": t, "count": c} for t, c in confusion_targets
                 ],
-                "sample_errors": intent_errors[intent][:50]
+                "sample_errors": intent_errors[intent][:10]
             })
             
         return {
