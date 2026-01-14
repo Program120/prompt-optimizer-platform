@@ -204,14 +204,34 @@ class MultiStrategyOptimizer:
         
         # 阶段 3：Top 失败意图深度分析
         self.logger.info("步骤 3: Top 失败意图深度分析...")
+        self.logger.info(f"开始分析 Top 失败意图，错误样本数: {len(errors)}, 最大分析数: 50")
         deep_analysis: Dict[str, Any] = await self.intent_analyzer.deep_analyze_top_failures(
             errors, 
             top_n=50,
             should_stop=should_stop
         )
+        
+        # 记录深度分析结果详情
+        analyzed_count: int = deep_analysis.get("analyzed_count", 0)
+        self.logger.info(f"深度分析完成，共分析 {analyzed_count} 个意图")
+        
         if deep_analysis.get("analyses"):
             for intent_res in deep_analysis["analyses"]:
-                self.logger.info(f"意图 '{intent_res.get('intent')}' 根因分析: {intent_res.get('analysis', '无')[:100]}...")
+                intent_name: str = intent_res.get('intent', '未知')
+                analysis_text: str = intent_res.get('analysis', '')
+                error_rate: float = intent_res.get('error_rate', 0)
+                
+                # 检查分析内容是否为空或异常
+                if not analysis_text or analysis_text.strip() == '':
+                    self.logger.warning(f"意图 '{intent_name}' 根因分析结果为空！")
+                elif analysis_text.startswith('分析失败'):
+                    self.logger.warning(f"意图 '{intent_name}' 根因分析失败: {analysis_text[:100]}...")
+                else:
+                    self.logger.info(
+                        f"意图 '{intent_name}' (错误率: {error_rate:.1%}) 根因分析: {analysis_text[:150]}..."
+                    )
+        else:
+            self.logger.warning("深度分析未返回任何分析结果！请检查 LLM 调用是否正常。")
         
         # 将分析结果注入 diagnosis
         diagnosis["intent_analysis"] = intent_analysis

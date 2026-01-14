@@ -9,6 +9,11 @@ from .multi_intent_optimize import MultiIntentStrategy
 from .domain_optimize import DomainDistinctionStrategy
 from .clarification_optimize import ClarificationMechanismStrategy
 from .cot_optimize import CoTReasoningStrategy
+# 新增策略
+from .custom_data_optimize import CustomDataOptimizationStrategy
+from .global_constraint_optimize import GlobalConstraintOptimizationStrategy
+from .intent_definition_optimize import IntentDefinitionOptimizationStrategy
+from .query_rewrite_optimize import QueryRewriteOptimizationStrategy
 
 __all__ = [
     "BaseStrategy",
@@ -21,5 +26,10 @@ __all__ = [
     "DomainDistinctionStrategy",
     "ClarificationMechanismStrategy",
     "CoTReasoningStrategy",
+    # 新增策略
+    "CustomDataOptimizationStrategy",
+    "GlobalConstraintOptimizationStrategy",
+    "IntentDefinitionOptimizationStrategy",
+    "QueryRewriteOptimizationStrategy",
 ]
 

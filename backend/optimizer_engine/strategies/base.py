@@ -289,13 +289,23 @@ SEARCH/REPLACE 规则：
                     
                     match = re.search(fuzzy_pattern, current_text, re.DOTALL)
                     if match:
-                        # 找到锚点位置，但我们需要找到完整的替换范围
-                        # 简化处理：在锚点前插入新内容
-                        before: str = current_text[:match.start()]
-                        after: str = current_text[match.start():]
-                        current_text = before + r_stripped + "\n\n" + after
+                        # 检测 REPLACE 块是否已包含锚点内容（避免重复）
+                        anchor_text: str = match.group(0)
+                        if anchor_text in r_stripped:
+                            # REPLACE 块已包含锚点，直接替换锚点位置
+                            before: str = current_text[:match.start()]
+                            # 跳过 after 中的锚点行，因为 REPLACE 已包含
+                            after_start: int = match.end()
+                            after: str = current_text[after_start:]
+                            current_text = before + r_stripped + after
+                            logger.info(f"[Diff应用] 块 {block_num} - 策略4(模糊匹配-替换模式) 成功")
+                        else:
+                            # REPLACE 块不包含锚点，在锚点前插入新内容
+                            before: str = current_text[:match.start()]
+                            after: str = current_text[match.start():]
+                            current_text = before + r_stripped + "\n\n" + after
+                            logger.info(f"[Diff应用] 块 {block_num} - 策略4(模糊匹配-插入模式) 成功")
                         applied_count += 1
-                        logger.info(f"[Diff应用] 块 {block_num} - 策略4(模糊匹配) 成功，锚点位置: {match.start()}")
                         continue
             except Exception as e:
                 logger.warning(f"[Diff应用] 块 {block_num} - 策略4(模糊匹配) 异常: {e}")
@@ -308,13 +318,26 @@ SEARCH/REPLACE 规则：
                 logger.debug(f"[Diff应用] 块 {block_num} - 尝试行锚点: {first_line[:50]}...")
                 
                 if first_line and first_line in current_text:
-                    # 在锚点行之前插入新内容
                     idx_anchor: int = current_text.find(first_line)
-                    before: str = current_text[:idx_anchor]
-                    after: str = current_text[idx_anchor:]
-                    current_text = before + r_stripped + "\n\n" + after
+                    
+                    # 检测 REPLACE 块是否已包含锚点行（避免重复）
+                    if first_line in r_stripped:
+                        # REPLACE 块已包含锚点行，需要跳过原文中的锚点行
+                        before: str = current_text[:idx_anchor]
+                        # 找到锚点行的结束位置
+                        line_end: int = current_text.find('\n', idx_anchor)
+                        if line_end == -1:
+                            line_end = len(current_text)
+                        after: str = current_text[line_end:]
+                        current_text = before + r_stripped + after
+                        logger.info(f"[Diff应用] 块 {block_num} - 策略5(行锚点-替换模式) 成功")
+                    else:
+                        # 在锚点行之前插入新内容
+                        before: str = current_text[:idx_anchor]
+                        after: str = current_text[idx_anchor:]
+                        current_text = before + r_stripped + "\n\n" + after
+                        logger.info(f"[Diff应用] 块 {block_num} - 策略5(行锚点-插入模式) 成功")
                     applied_count += 1
-                    logger.info(f"[Diff应用] 块 {block_num} - 策略5(行锚点匹配) 成功，锚点位置: {idx_anchor}")
                     continue
             
             # ========== 所有策略失败 ==========

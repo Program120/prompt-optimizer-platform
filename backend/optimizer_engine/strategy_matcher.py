@@ -10,6 +10,11 @@ from .strategies.multi_intent_optimize import MultiIntentStrategy
 from .strategies.domain_optimize import DomainDistinctionStrategy
 from .strategies.clarification_optimize import ClarificationMechanismStrategy
 from .strategies.cot_optimize import CoTReasoningStrategy
+# 新增策略导入
+from .strategies.custom_data_optimize import CustomDataOptimizationStrategy
+from .strategies.global_constraint_optimize import GlobalConstraintOptimizationStrategy
+from .strategies.intent_definition_optimize import IntentDefinitionOptimizationStrategy
+from .strategies.query_rewrite_optimize import QueryRewriteOptimizationStrategy
 
 
 # 策略组合预设
@@ -31,18 +36,29 @@ STRATEGY_PRESETS = {
         {"type": "difficult_example_injection", "priority": 2},
         {"type": "meta_optimization", "priority": 3}
     ],
-    "auto_directed": [ # 自动定向优化 (新模式)
+    "auto_directed": [  # 自动定向优化 (新模式)
         {"type": "context_enhancement", "priority": 1},
         {"type": "multi_intent_optimization", "priority": 1},
         {"type": "domain_distinction", "priority": 1},
         {"type": "clarification_mechanism", "priority": 1},
         {"type": "cot_reasoning", "priority": 1},
         {"type": "meta_optimization", "priority": 2}
+    ],
+    "full_strategy": [  # 全策略模式 (包含所有策略)
+        {"type": "intent_definition_optimization", "priority": 1},
+        {"type": "global_constraint_optimization", "priority": 1},
+        {"type": "boundary_clarification", "priority": 1},
+        {"type": "query_rewrite_optimization", "priority": 2},
+        {"type": "cot_reasoning", "priority": 2},
+        {"type": "difficult_example_injection", "priority": 3},
+        {"type": "custom_data_optimization", "priority": 3},
+        {"type": "meta_optimization", "priority": 4}
     ]
 }
 
 # 策略类型映射
 STRATEGY_CLASSES: Dict[str, Type[BaseStrategy]] = {
+    # 原有策略
     "boundary_clarification": BoundaryClarificationStrategy,
     "instruction_refinement": InstructionRefinementStrategy,
     "difficult_example_injection": DifficultExampleInjectionStrategy,
@@ -51,7 +67,12 @@ STRATEGY_CLASSES: Dict[str, Type[BaseStrategy]] = {
     "multi_intent_optimization": MultiIntentStrategy,
     "domain_distinction": DomainDistinctionStrategy,
     "clarification_mechanism": ClarificationMechanismStrategy,
-    "cot_reasoning": CoTReasoningStrategy
+    "cot_reasoning": CoTReasoningStrategy,
+    # 新增策略
+    "custom_data_optimization": CustomDataOptimizationStrategy,
+    "global_constraint_optimization": GlobalConstraintOptimizationStrategy,
+    "intent_definition_optimization": IntentDefinitionOptimizationStrategy,
+    "query_rewrite_optimization": QueryRewriteOptimizationStrategy
 }
 
 
