@@ -242,54 +242,56 @@ class StrategyMatcher:
         """
         基于诊断结果匹配合适的优化策略 (支持 LLM 动态评分)
         
-        Args:
-            diagnosis: 诊断分析结果
-            max_strategies: 最多返回的策略数量
-            selected_modules: 用户选择的模块ID列表。
-            should_stop: 停止回调函数
-            
-        Returns:
-            策略实例列表（按推荐优先级排序）
-        """
-        candidates = []
+        逻辑简化说明：
+        - 当 selected_modules 有值时，只处理 selected_modules 对应的模块策略
+        - 当 selected_modules 为 None 时，跳过所有模块策略，仅处理非模块策略
         
-        # ... (原有过滤逻辑保持不变)
+        :param diagnosis: 诊断分析结果
+        :param max_strategies: 最多返回的策略数量
+        :param selected_modules: 用户选择的模块ID列表
+        :param should_stop: 停止回调函数
+        :return: 策略实例列表（按推荐优先级排序）
+        """
+        candidates: List[tuple[float, BaseStrategy]] = []
+        
+        # 获取所有模块策略类型的集合（用于快速判断）
         all_module_strategy_types: set = set(MODULE_STRATEGY_MAP.values())
-        allowed_module_types: set = set()
+        
+        # 当 selected_modules 有值时，只处理选中的模块策略
         if selected_modules and len(selected_modules) > 0:
             for module_id in selected_modules:
-                strategy_type = MODULE_STRATEGY_MAP.get(module_id)
-                if strategy_type:
-                    allowed_module_types.add(strategy_type)
-        
-        for name, strategy_class in STRATEGY_CLASSES.items():
-            # 模块策略过滤逻辑：
-            # - 如果 selected_modules 为 None（未启用标准模块优化），跳过所有模块策略
-            # - 如果 selected_modules 是列表（启用了标准模块优化），只执行选中的模块策略
-            if name in all_module_strategy_types:
-                if selected_modules is None:
-                    # 未启用标准模块优化，跳过所有模块策略
+                strategy_type: str = MODULE_STRATEGY_MAP.get(module_id)
+                if strategy_type and strategy_type in STRATEGY_CLASSES:
+                    strategy_class = STRATEGY_CLASSES[strategy_type]
+                    strategy = strategy_class(
+                        llm_client=self.llm_client,
+                        model_config=self.model_config,
+                        semaphore=self.semaphore
+                    )
+                    if strategy.is_applicable(diagnosis):
+                        priority: float = strategy.get_priority(diagnosis)
+                        candidates.append((priority, strategy))
+        else:
+            # 未指定模块时，遍历所有非模块策略
+            for name, strategy_class in STRATEGY_CLASSES.items():
+                # 跳过所有模块策略
+                if name in all_module_strategy_types:
                     continue
-                elif len(selected_modules) > 0 and name not in allowed_module_types:
-                    # 启用了标准模块优化但该策略未被选中，跳过
-                    continue
-            
-            strategy = strategy_class(
-                llm_client=self.llm_client,
-                model_config=self.model_config,
-                semaphore=self.semaphore
-            )
-            
-            if strategy.is_applicable(diagnosis):
-                priority = strategy.get_priority(diagnosis)
-                candidates.append((priority, strategy))
+                
+                strategy = strategy_class(
+                    llm_client=self.llm_client,
+                    model_config=self.model_config,
+                    semaphore=self.semaphore
+                )
+                
+                if strategy.is_applicable(diagnosis):
+                    priority: float = strategy.get_priority(diagnosis)
+                    candidates.append((priority, strategy))
         
         # --- 动态评分逻辑 ---
-        # 如果有 LLM 客户端，且候选策略超过1个（否则不需要排序），则使用 LLM 评分
-        # 注意: match_strategies 现在是 async
+        # 如果有 LLM 客户端，且候选策略超过1个，则使用 LLM 评分
         if self.llm_client and len(candidates) > 1:
             try:
-                # 调用 LLM 评分 (替换原有的优先级)
                 candidates = await self.score_strategies(diagnosis, candidates, should_stop=should_stop)
             except Exception as e:
                 print(f"Error in dynamic scoring: {e}")

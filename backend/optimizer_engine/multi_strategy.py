@@ -683,10 +683,11 @@ class MultiStrategyOptimizer:
                 errors, 
                 min(actual_error_count, available_errors)
             )
-            # 标记为错误案例（便于评估时区分）
+            # 使用浅拷贝避免污染原始数据，并标记为错误案例
             for case in sampled_errors:
-                case['_is_error_case'] = True
-            validation_set.extend(sampled_errors)
+                case_copy: Dict[str, Any] = case.copy()
+                case_copy['_is_error_case'] = True
+                validation_set.append(case_copy)
         
         # 采样正确案例
         if actual_correct_count > 0 and available_correct > 0:
@@ -694,10 +695,11 @@ class MultiStrategyOptimizer:
                 correct_cases,
                 min(actual_correct_count, available_correct)
             )
-            # 标记为正确案例
+            # 使用浅拷贝避免污染原始数据，并标记为正确案例
             for case in sampled_correct:
-                case['_is_error_case'] = False
-            validation_set.extend(sampled_correct)
+                case_copy: Dict[str, Any] = case.copy()
+                case_copy['_is_error_case'] = False
+                validation_set.append(case_copy)
         
         # 7. 打乱验证集顺序
         random.shuffle(validation_set)
