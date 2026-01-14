@@ -1,5 +1,7 @@
 """策略匹配器 - 基于诊断结果匹配优化策略"""
 from typing import List, Dict, Any, Type
+import json
+import asyncio
 from .strategies.base import BaseStrategy
 from .strategies.boundary import BoundaryClarificationStrategy
 from .strategies.instruction import InstructionRefinementStrategy
@@ -115,31 +117,130 @@ class StrategyMatcher:
         self.model_config = model_config or {}
         self.semaphore = semaphore
     
-    def match_strategies(
+
+    async def score_strategies(
+        self,
+        diagnosis: Dict[str, Any],
+        candidates: List[Any]
+    ) -> List[tuple[float, BaseStrategy]]:
+        """
+        使用 LLM 对候选策略进行评分
+        
+        :param diagnosis: 诊断报告
+        :param candidates: 候选策略列表 (priority, strategy)
+        :return: 评分后的策略列表 [(score, strategy), ...]
+        """
+        if not self.llm_client or not candidates:
+            return candidates
+
+        # 1. 准备 Prompt
+        strategy_descriptions = []
+        for _, strategy in candidates:
+            desc = strategy.__class__.__doc__ or strategy.__class__.__name__
+            strategy_descriptions.append(f"- {strategy.strategy_name} ({strategy.__class__.__name__}): {desc.strip()}")
+        
+        strategies_text = "\n".join(strategy_descriptions)
+        
+        # 简化诊断报告，只提供关键信息
+        diagnosis_summary = {
+            "overall_metrics": diagnosis.get("overall_metrics", {}),
+            "error_patterns": diagnosis.get("error_patterns", {}),
+            "root_cause_analysis": diagnosis.get("root_cause_analysis", {}),
+            "prompt_analysis": diagnosis.get("prompt_analysis", {})
+        }
+        
+        prompt = f"""
+        你是一个提示词优化策略专家。请根据以下诊断报告和可用策略列表，为每个策略的适用性打分（0-10分）。
+        
+        【诊断报告摘要】
+        {json.dumps(diagnosis_summary, ensure_ascii=False, indent=2)}
+        
+        【可用策略列表】
+        {strategies_text}
+        
+        【评分标准】
+        - 10分：该策略直接解决核心问题，是最佳选择。
+        - 7-9分：该策略由于主要问题高度相关，建议采纳。
+        - 4-6分：该策略可能有效，但不是最优先的。
+        - 0-3分：该策略与当前问题关联度低。
+        
+        请以 JSON 格式返回评分结果，格式如下：
+        {{
+            "scores": [
+                {{
+                    "strategy_name": "策略名称(英文ID)",
+                    "score": 8.5,
+                    "reason": "评分理由"
+                }}
+            ]
+        }}
+        """
+
+        try:
+            # 2. 调用 LLM
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant specialized in prompt engineering."},
+                {"role": "user", "content": prompt}
+            ]
+            
+            # 使用 openai 库调用，需处理并发
+            if hasattr(self.llm_client, "chat"): # 兼容 AsyncOpenAI
+                 response = await self.llm_client.chat.completions.create(
+                    model=self.model_config.get("model", "gpt-3.5-turbo"),
+                    messages=messages,
+                    temperature=0.2,
+                    response_format={"type": "json_object"}
+                )
+                 content = response.choices[0].message.content
+            else:
+                 # 可能是同步 client 或其他封装
+                 # 这里假设是标准 pattern，如果不是需调整
+                 return candidates
+
+            # 3. 解析结果
+            result = json.loads(content)
+            scores_map = {item["strategy_name"]: item["score"] for item in result.get("scores", [])}
+            
+            # 4. 重新排序
+            scored_candidates = []
+            for _, strategy in candidates:
+                # 尝试用 strategy_name 或 class name 匹配
+                score = scores_map.get(strategy.strategy_name, 0)
+                # 如果没匹配到，尝试用 type name (需要策略类有 type 属性或类似)
+                # 这里暂时只用 strategy_name，需确保 LLM 返回的一致
+                
+                # 记录原来的优先级作为辅助参考
+                # new_score = score (LLM) vs priority (Hardcoded)
+                # 优先使用 LLM 分数
+                scored_candidates.append((float(score), strategy))
+                
+            return scored_candidates
+            
+        except Exception as e:
+            print(f"Warning: Strategy scoring failed: {e}")
+            return candidates # 降级回原优先级
+
+    async def match_strategies(
         self, 
         diagnosis: Dict[str, Any],
         max_strategies: int = 1,
         selected_modules: List[int] = None
     ) -> List[BaseStrategy]:
         """
-        基于诊断结果匹配合适的优化策略
+        基于诊断结果匹配合适的优化策略 (支持 LLM 动态评分)
         
         Args:
             diagnosis: 诊断分析结果
             max_strategies: 最多返回的策略数量
             selected_modules: 用户选择的模块ID列表。
-                              如果指定，则9个模块策略中只有选中的才会参与评估，
-                              其他非模块策略（如 meta_optimization）照常参与。
             
         Returns:
-            策略实例列表（按优先级排序）
+            策略实例列表（按推荐优先级排序）
         """
         candidates = []
         
-        # 获取所有模块策略的类型名称集合
+        # ... (原有过滤逻辑保持不变)
         all_module_strategy_types: set = set(MODULE_STRATEGY_MAP.values())
-        
-        # 如果用户指定了 selected_modules，则计算允许参与评估的模块策略类型
         allowed_module_types: set = set()
         if selected_modules and len(selected_modules) > 0:
             for module_id in selected_modules:
@@ -147,17 +248,11 @@ class StrategyMatcher:
                 if strategy_type:
                     allowed_module_types.add(strategy_type)
         
-        # 获取所有策略类并评估适用性
         for name, strategy_class in STRATEGY_CLASSES.items():
-            # 过滤逻辑：
-            # 如果当前策略是模块策略（属于9个模块之一）
             if name in all_module_strategy_types:
-                # 如果用户指定了 selected_modules, 则只允许选中的模块策略参与
                 if selected_modules and len(selected_modules) > 0:
                     if name not in allowed_module_types:
-                        # 未选中的模块策略，跳过
                         continue
-            # 非模块策略（如 meta_optimization）照常参与
             
             strategy = strategy_class(
                 llm_client=self.llm_client,
@@ -169,11 +264,23 @@ class StrategyMatcher:
                 priority = strategy.get_priority(diagnosis)
                 candidates.append((priority, strategy))
         
-        # 按优先级降序排序
+        # --- 动态评分逻辑 ---
+        # 如果有 LLM 客户端，且候选策略超过1个（否则不需要排序），则使用 LLM 评分
+        # 注意: match_strategies 现在是 async
+        if self.llm_client and len(candidates) > 1:
+            try:
+                # 调用 LLM 评分 (替换原有的优先级)
+                candidates = await self.score_strategies(diagnosis, candidates)
+            except Exception as e:
+                print(f"Error in dynamic scoring: {e}")
+                # 出错时保持原有优先级
+        
+        # 按分数/优先级降序排序
         candidates.sort(key=lambda x: x[0], reverse=True)
         
         # 返回前 N 个策略
         return [strategy for _, strategy in candidates[:max_strategies]]
+
     
     def get_preset_strategies(
         self, 

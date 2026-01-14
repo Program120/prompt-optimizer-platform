@@ -71,6 +71,12 @@ async def stop_task(task_id: str):
         return {"status": "success"}
     raise HTTPException(status_code=404, detail="Task not found")
 
+@router.delete("/{task_id}")
+async def delete_task_endpoint(task_id: str):
+    if storage.delete_task(task_id):
+        return {"status": "success"}
+    raise HTTPException(status_code=404, detail="Task not found")
+
 @router.get("/{task_id}/export")
 async def export_task_results(task_id: str):
     status = tm.get_task_status(task_id)

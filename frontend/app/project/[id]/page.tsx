@@ -707,6 +707,33 @@ export default function ProjectDetail() {
                         onSelectIteration={setSelectedIteration}
                         knowledgeRecords={knowledgeRecords}
                         onSelectKnowledge={setSelectedKnowledge}
+                        onDeleteTask={async (task) => {
+                            try {
+                                await axios.delete(`${API_BASE}/tasks/${task.id}`);
+                                showToast("运行记录已删除", "success");
+                                fetchTaskHistory();
+                            } catch (e) {
+                                showToast("删除记录失败", "error");
+                            }
+                        }}
+                        onDeleteIteration={async (iteration) => {
+                            try {
+                                await axios.delete(`${API_BASE}/projects/${id}/iterations?timestamp=${iteration.created_at}`);
+                                showToast("迭代记录已删除", "success");
+                                fetchProject();
+                            } catch (e) {
+                                showToast("删除记录失败", "error");
+                            }
+                        }}
+                        onDeleteKnowledge={async (record) => {
+                            try {
+                                await axios.delete(`${API_BASE}/projects/${id}/knowledge-base/${record.version}`);
+                                showToast("优化分析记录已删除", "success");
+                                fetchKnowledgeBase();
+                            } catch (e) {
+                                showToast("删除记录失败", "error");
+                            }
+                        }}
                     />
                 </div>
             </div>

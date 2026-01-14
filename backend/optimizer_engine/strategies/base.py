@@ -10,7 +10,11 @@ class BaseStrategy(ABC):
     name: str = "base"
     priority: int = 0
     description: str = ""
-    
+
+    @property
+    def strategy_name(self) -> str:
+        return self.name
+        
     def __init__(
         self, 
         llm_client=None, 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy, Layers, TrendingUp } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy, Layers, TrendingUp, Trash2 } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -12,9 +12,25 @@ interface HistoryPanelProps {
     // 知识库相关
     knowledgeRecords?: any[];
     onSelectKnowledge?: (record: any) => void;
+
+    // Delete handlers
+    onDeleteTask?: (task: any) => void;
+    onDeleteIteration?: (iteration: any) => void;
+    onDeleteKnowledge?: (record: any) => void;
 }
 
-export default function HistoryPanel({ taskStatus, project, runHistory, onSelectLog, onSelectIteration, knowledgeRecords, onSelectKnowledge }: HistoryPanelProps) {
+export default function HistoryPanel({
+    taskStatus,
+    project,
+    runHistory,
+    onSelectLog,
+    onSelectIteration,
+    knowledgeRecords,
+    onSelectKnowledge,
+    onDeleteTask,
+    onDeleteIteration,
+    onDeleteKnowledge
+}: HistoryPanelProps) {
     const [activeTab, setActiveTab] = useState("run"); // run, history, runHistory
     const [showPromptModal, setShowPromptModal] = useState(false);
     const [currentPrompt, setCurrentPrompt] = useState("");
@@ -75,6 +91,17 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [showPromptModal]);
+
+    const handleDelete = (e: React.MouseEvent, type: 'task' | 'iteration' | 'knowledge', item: any) => {
+        e.stopPropagation();
+        if (!window.confirm("确定要删除这条记录吗？删除后不可恢复。")) {
+            return;
+        }
+
+        if (type === 'task' && onDeleteTask) onDeleteTask(item);
+        if (type === 'iteration' && onDeleteIteration) onDeleteIteration(item);
+        if (type === 'knowledge' && onDeleteKnowledge) onDeleteKnowledge(item);
+    };
 
     return (
         <section className="glass rounded-2xl overflow-hidden h-[600px] flex flex-col relative">
@@ -142,7 +169,7 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
                         {runHistory?.map((task: any, idx: number) => (
                             <div
                                 key={task.id}
-                                className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+                                className="relative p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors group"
                             >
                                 {/* 头部: 时间和状态 */}
                                 <div className="flex justify-between items-center mb-2">
@@ -150,9 +177,20 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
                                         <Clock size={12} />
                                         <span>{formatTime(task.created_at)}</span>
                                     </div>
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${getStatusStyle(task.status)}`}>
-                                        {getStatusText(task.status)}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${getStatusStyle(task.status)}`}>
+                                            {getStatusText(task.status)}
+                                        </span>
+                                        {onDeleteTask && (
+                                            <button
+                                                onClick={(e) => handleDelete(e, 'task', task)}
+                                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
+                                                title="删除记录"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* 数据集信息 & 下载 */}
@@ -220,12 +258,23 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
                             <div
                                 key={idx}
                                 onClick={() => onSelectIteration(it)}
-                                className="relative pl-6 before:absolute before:left-0 before:top-2 before:bottom-0 before:w-[2px] before:bg-blue-500/30 cursor-pointer hover:opacity-80 transition-opacity"
+                                className="relative pl-6 before:absolute before:left-0 before:top-2 before:bottom-0 before:w-[2px] before:bg-blue-500/30 cursor-pointer hover:opacity-80 transition-opacity group"
                             >
                                 <div className="absolute left-[-4px] top-2 w-2 h-2 rounded-full bg-blue-500" />
                                 <div className="flex justify-between items-center mb-2">
                                     <span className="text-sm font-bold">迭代 #{project.iterations.length - idx}</span>
-                                    <span className="text-[10px] text-slate-600">{new Date(it.created_at).toLocaleString()}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-slate-600">{new Date(it.created_at).toLocaleString()}</span>
+                                        {onDeleteIteration && (
+                                            <button
+                                                onClick={(e) => handleDelete(e, 'iteration', it)}
+                                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
+                                                title="删除记录"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="text-xs bg-white/5 rounded-lg p-3 border border-white/5 hover:bg-white/10 transition-colors">
                                     <div className="flex justify-between items-start mb-1">
@@ -261,7 +310,7 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
                             <div
                                 key={record.version}
                                 onClick={() => onSelectKnowledge?.(record)}
-                                className="p-3 rounded-xl border border-purple-500/20 bg-gradient-to-br from-purple-600/5 to-blue-600/5 hover:from-purple-600/10 hover:to-blue-600/10 cursor-pointer transition-all"
+                                className="relative p-3 rounded-xl border border-purple-500/20 bg-gradient-to-br from-purple-600/5 to-blue-600/5 hover:from-purple-600/10 hover:to-blue-600/10 cursor-pointer transition-all group"
                             >
                                 {/* 头部: 版本号和时间 */}
                                 <div className="flex justify-between items-center mb-2">
@@ -271,9 +320,20 @@ export default function HistoryPanel({ taskStatus, project, runHistory, onSelect
                                         </div>
                                         <span className="text-sm font-bold text-white">v{record.version}</span>
                                     </div>
-                                    <span className="text-[10px] text-slate-500">
-                                        {new Date(record.timestamp).toLocaleString()}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-slate-500">
+                                            {new Date(record.timestamp).toLocaleString()}
+                                        </span>
+                                        {onDeleteKnowledge && (
+                                            <button
+                                                onClick={(e) => handleDelete(e, 'knowledge', record)}
+                                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
+                                                title="删除记录"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* 准确率变化 */}

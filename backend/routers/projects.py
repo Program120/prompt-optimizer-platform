@@ -50,6 +50,16 @@ async def get_project(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
     return p
 
+@router.delete("/{project_id}/iterations")
+async def delete_iteration(project_id: str, timestamp: str):
+    """
+    删除迭代记录 (不影响对应任务数据，只删除记录)
+    """
+    success = storage.delete_project_iteration(project_id, timestamp)
+    if not success:
+        raise HTTPException(status_code=404, detail="Iteration not found")
+    return {"status": "success"}
+
 @router.put("/{project_id}")
 async def update_project(
     project_id: str,

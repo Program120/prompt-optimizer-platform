@@ -329,14 +329,16 @@ class MultiStrategyOptimizer:
         # match_strategies 会自动过滤：
         # - 9个模块策略中只有选中的才会参与评估
         # - 其他非模块策略照常参与评估
+        # 4. 匹配优化策略
+        self.logger.info("正在匹配优化策略...")
         if hasattr(self.matcher, 'get_preset_strategies') and strategy_mode != 'auto':
             strategies = self.matcher.get_preset_strategies(strategy_mode)[:max_strategies]
             self.logger.info(f"根据预设模式 '{strategy_mode}' 匹配策略: {[s.name for s in strategies]}")
         else:
-            strategies = self.matcher.match_strategies(
-                diagnosis, 
-                max_strategies, 
-                selected_modules=selected_modules
+            strategies = await self.matcher.match_strategies(
+                diagnosis=diagnosis,
+                max_strategies=max_strategies,
+                selected_modules=selected_modules  # 传递用户选择的模块
             )
             if selected_modules and len(selected_modules) > 0:
                 self.logger.info(f"自动匹配策略（已过滤模块 {selected_modules}）: {[s.name for s in strategies]}")

@@ -227,6 +227,56 @@ def _save_global_models(models: List[Dict[str, Any]]) -> None:
         json.dump(models, f, indent=2, ensure_ascii=False)
 
 
+
+def delete_task(task_id: str) -> bool:
+    """
+    删除任务及相关文件
+    :param task_id: 任务ID
+    :return: 是否成功
+    """
+    success = False
+    # 删除任务文件
+    task_file = os.path.join(DATA_DIR, f"task_{task_id}.json")
+    if os.path.exists(task_file):
+        try:
+            os.remove(task_file)
+            success = True
+        except Exception as e:
+            print(f"Error deleting task file {task_file}: {e}")
+            
+    # 删除结果文件 (可能有多个，包括带进度的)
+    # results_{task_id}.xlsx 或 results_{task_id}_*.xlsx
+    for f in os.listdir(DATA_DIR):
+        if f.startswith(f"results_{task_id}") and f.endswith(".xlsx"):
+            try:
+                os.remove(os.path.join(DATA_DIR, f))
+            except Exception as e:
+                print(f"Error deleting result file {f}: {e}")
+                
+    return success
+
+def delete_project_iteration(project_id: str, timestamp: str) -> bool:
+    """
+    删除项目迭代记录
+    :param project_id: 项目ID
+    :param timestamp: 迭代创建时间 (created_at) 用于匹配
+    :return: 是否成功
+    """
+    projects = get_projects()
+    for i, p in enumerate(projects):
+        if p["id"] == project_id:
+            iterations = p.get("iterations", [])
+            initial_len = len(iterations)
+            # 过滤掉匹配的迭代
+            p["iterations"] = [it for it in iterations if it.get("created_at") != timestamp]
+            
+            if len(p["iterations"]) < initial_len:
+                p["updated_at"] = datetime.now().isoformat()
+                projects[i] = p
+                save_projects(projects)
+                return True
+    return False
+
 def create_global_model(model_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     创建新的公共模型配置
