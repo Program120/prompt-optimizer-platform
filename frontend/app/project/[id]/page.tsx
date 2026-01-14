@@ -606,6 +606,10 @@ export default function ProjectDetail() {
             formData.append("current_prompt", project.current_prompt);
             formData.append("query_col", config.query_col);
             formData.append("target_col", config.target_col);
+            // 确保 reason_col 也被保存 (如果 config 中存在)
+            if (config.reason_col) {
+                formData.append("reason_col", config.reason_col);
+            }
             formData.append("extract_field", extractField);
             // 保存文件信息
             if (fileInfo) {

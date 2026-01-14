@@ -67,6 +67,7 @@ async def update_project(
     name: Optional[str] = Form(None),
     query_col: Optional[str] = Form(None),
     target_col: Optional[str] = Form(None),
+    reason_col: Optional[str] = Form(None),
     extract_field: Optional[str] = Form(None),
     file_info: Optional[str] = Form(None),
     auto_iterate_config: Optional[str] = Form(None),
@@ -95,6 +96,9 @@ async def update_project(
         config["query_col"] = query_col
     if target_col is not None:
         config["target_col"] = target_col
+    if reason_col is not None:
+        # 如果是空字符串，表示清除
+        config["reason_col"] = reason_col if reason_col != "" else None
     if extract_field is not None:
         config["extract_field"] = extract_field
     if validation_limit is not None:
