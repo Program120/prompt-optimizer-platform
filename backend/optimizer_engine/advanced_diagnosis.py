@@ -8,7 +8,7 @@ import re
 import json
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from collections import Counter, defaultdict
-from .cancellation import run_with_cancellation
+from .cancellation import run_with_cancellation, gather_with_cancellation
 
 class AdvancedDiagnoser:
     """高级诊断器 - 执行深度定向分析"""
@@ -56,32 +56,22 @@ class AdvancedDiagnoser:
         
         self.logger.info(f"[并发优化] 开始并行运行 {len(keys)} 个高级诊断任务")
         
-        # 使用 create_task 创建任务，以便后续可取消
-        tasks: List[asyncio.Task] = [
-            asyncio.create_task(
-                self.analyze_context_capabilities(errors, should_stop)
-            ),
-            asyncio.create_task(
-                self.analyze_multi_intent(errors, should_stop)
-            ),
-            asyncio.create_task(
-                self.analyze_domain_confusion(errors, dataset_intents, should_stop)
-            ),
-            asyncio.create_task(
-                self.analyze_clarification(errors, should_stop)
-            ),
+        # 创建并发协程列表
+        coroutines = [
+            self.analyze_context_capabilities(errors, should_stop),
+            self.analyze_multi_intent(errors, should_stop),
+            self.analyze_domain_confusion(errors, dataset_intents, should_stop),
+            self.analyze_clarification(errors, should_stop),
         ]
         
-        # 使用 gather 真正并行等待所有任务
-        try:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-        except asyncio.CancelledError:
-            self.logger.info("高级诊断任务被取消，正在清理...")
-            # 取消所有未完成的任务
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-            return {}
+        # 使用可取消的 gather 执行所有诊断任务
+        # gather_with_cancellation 会定期检查 should_stop 信号并及时取消
+        results = await gather_with_cancellation(
+            *coroutines,
+            should_stop=should_stop,
+            check_interval=0.5,
+            return_exceptions=True
+        )
         
         # 构建最终结果
         final_results: Dict[str, Any] = {}

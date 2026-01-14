@@ -13,7 +13,7 @@ import re
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from collections import Counter, defaultdict
 from openai import AsyncOpenAI, OpenAI
-from .cancellation import run_with_cancellation
+from .cancellation import run_with_cancellation, gather_with_cancellation
 
 
 class IntentAnalyzer:
@@ -256,22 +256,17 @@ class IntentAnalyzer:
                     "analysis": f"分析失败: {str(e)}"
                 }
         
-        # 创建并发任务
-        tasks: List[asyncio.Task] = [
-            asyncio.create_task(analyze_single_failure(f)) 
-            for f in top_failures
-        ]
+        # 创建并发协程列表（不立即创建 Task，让 gather_with_cancellation 管理）
+        coroutines = [analyze_single_failure(f) for f in top_failures]
         
-        # 并发执行所有分析任务
-        try:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-        except asyncio.CancelledError:
-            self.logger.info("意图深度分析任务被取消")
-            # 取消所有未完成的任务
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-            return {"analyses": [], "summary": "用户取消"}
+        # 使用可取消的 gather 执行所有分析任务
+        # gather_with_cancellation 会定期检查 should_stop 信号并及时取消
+        results = await gather_with_cancellation(
+            *coroutines,
+            should_stop=should_stop,
+            check_interval=0.5,
+            return_exceptions=True
+        )
         
         # 收集有效结果
         analyses: List[Dict[str, Any]] = []

@@ -914,7 +914,7 @@ class MultiStrategyOptimizer:
                 errors=errors,
                 dataset=dataset, # 可以传全集，反正 few-shot selector 会自己挑
                 strategy_mode="precision_focus",
-                max_strategies=3
+                max_strategies=1
             )
             return {
                 "intent": intent,
