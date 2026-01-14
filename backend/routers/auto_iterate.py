@@ -246,7 +246,8 @@ async def start_auto_iterate(
                                 max_strategies=1,
                                 project_id=project_id,
                                 newly_failed_cases=regression_cases,
-                                should_stop=check_stop
+                                should_stop=check_stop,
+                                verification_config=model_config
                             ))
                         
                         # 优化完成后再次检查停止信号

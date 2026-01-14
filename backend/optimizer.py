@@ -129,20 +129,22 @@ async def multi_strategy_optimize(
     max_strategies: int = 1,
     project_id: str = None,
     should_stop: Any = None,
-    newly_failed_cases: list = None
+    newly_failed_cases: list = None,
+    verification_config: dict = None
 ) -> dict:
     """
     使用多策略优化引擎优化提示词
     
     :param old_prompt: 当前提示词
     :param errors: 错误样例列表
-    :param model_config: 模型配置（可选）
+    :param model_config: 模型配置（用于优化生成）
     :param dataset: 完整数据集（可选，用于few-shot选择）
     :param total_count: 总样本数（用于计算准确率）
     :param strategy_mode: 策略模式 (auto, initial, precision_focus, recall_focus, advanced)
     :param max_strategies: 最多应用的策略数量
     :param project_id: 项目ID（用于知识库记录，可选）
     :param newly_failed_cases: 新增的失败案例（可选）
+    :param verification_config: 验证模型配置（用于评估效果，可选）
     :return: 优化结果字典，包含 optimized_prompt, diagnosis, applied_strategies, message
     """
     if not errors:
@@ -157,13 +159,20 @@ async def multi_strategy_optimize(
     if not model_config:
         model_config = storage.get_model_config()
     
-    # 创建 LLM 客户端 (使用异步客户端以支持高并发)
+    # 创建主要 LLM 客户端 (优化用)
     client = LLMFactory.create_async_client(model_config)
+
+    # 创建验证专用 LLM 客户端 (如有)
+    verification_client = None
+    if verification_config:
+        verification_client = LLMFactory.create_async_client(verification_config)
     
     # 创建多策略优化器
     optimizer = MultiStrategyOptimizer(
         llm_client=client,
-        model_config=model_config
+        model_config=model_config,
+        verification_llm_client=verification_client,
+        verification_model_config=verification_config
     )
     
     # 执行优化（传入 project_id 以启用知识库功能）

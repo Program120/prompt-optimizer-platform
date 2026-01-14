@@ -158,7 +158,7 @@ async def get_project_tasks(project_id: str):
 # 格式: {project_id: {"status": "running"|"completed"|"failed", "message": "...", "result": {...}}}
 optimization_status = {}
 
-def background_optimize_task(project_id: str, task_id: str, strategy: str, model_config: dict, optimization_prompt: str, project: dict, task_status: dict):
+def background_optimize_task(project_id: str, task_id: str, strategy: str, model_config: dict, optimization_prompt: str, project: dict, task_status: dict, verification_config: dict = None):
     """后台优化任务"""
     import asyncio
     try:
@@ -206,7 +206,8 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
                 strategy_mode="auto",
                 max_strategies=1,
                 project_id=project_id,
-                should_stop=check_stop
+                should_stop=check_stop,
+                verification_config=verification_config
             ))
             new_prompt = result.get("optimized_prompt", project["current_prompt"])
             applied_strategies = result.get("applied_strategies", [])
@@ -304,6 +305,9 @@ async def optimize_project_prompt(project_id: str, task_id: str, strategy: str =
     if not model_config:
         model_config = project.get("model_config")
     
+    # 获取验证配置 (项目默认配置)
+    verification_config = project.get("model_config")
+    
     if not model_config or not model_config.get("api_key"):
         raise HTTPException(status_code=400, detail="请先在项目设置中配置提示词优化模型参数(API Key)")
     
@@ -316,7 +320,7 @@ async def optimize_project_prompt(project_id: str, task_id: str, strategy: str =
     # 启动后台线程
     thread = threading.Thread(
         target=background_optimize_task,
-        args=(project_id, task_id, strategy, model_config, optimization_prompt, project, task_status)
+        args=(project_id, task_id, strategy, model_config, optimization_prompt, project, task_status, verification_config)
     )
     thread.daemon = True
     thread.start()

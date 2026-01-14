@@ -29,17 +29,24 @@ class MultiStrategyOptimizer:
     def __init__(
         self, 
         llm_client=None, 
-        model_config: Dict[str, Any] = None
+        model_config: Dict[str, Any] = None,
+        verification_llm_client=None,
+        verification_model_config: Dict[str, Any] = None
     ):
         """
         初始化多策略优化器
         
-
         :param llm_client: LLM 客户端实例 (支持 AsyncOpenAI 或 OpenAI)
         :param model_config: 模型配置
+        :param verification_llm_client: 验证专用 LLM 客户端 (可选)
+        :param verification_model_config: 验证专用模型配置 (可选)
         """
         self.llm_client = llm_client
         self.model_config: Dict[str, Any] = model_config or {}
+        
+        # 验证专用配置
+        self.verification_llm_client = verification_llm_client
+        self.verification_model_config = verification_model_config
         
         # 初始化并发控制信号量
         # 默认并发度为 5，可通过 model_config['concurrency'] 配置
@@ -553,7 +560,9 @@ class MultiStrategyOptimizer:
         :param should_stop: 停止回调函数
         :return: 评估得分 (0-1)
         """
-        if not self.llm_client:
+        # 使用验证专用的 client，如果未提供则回退到主 client
+        client_to_use = self.verification_llm_client or self.llm_client
+        if not client_to_use:
             return 0.5
         
         # 检查停止信号
@@ -589,10 +598,13 @@ class MultiStrategyOptimizer:
                         eval_input = f"{prompt}\n\nInput: {query}"
                     
                     # 使用可取消的 LLM 调用
+                    # 传入验证专用的 client 和 config
                     response: str = await self._call_llm_with_cancellation(
                         eval_input,
                         should_stop=should_stop,
-                        task_name="快速评估"
+                        task_name="快速评估",
+                        override_client=self.verification_llm_client,
+                        override_config=self.verification_model_config
                     )
                     
                     # 简单匹配：只要包含目标值就算对 (模糊匹配)
@@ -629,29 +641,41 @@ class MultiStrategyOptimizer:
         # 如果最佳的分数还不如原始的好? (这里没测原始的，假设优化总比不优化好，或者设置阈值)
         return best
 
-    async def _call_llm_async(self, prompt: str) -> str:
+    async def _call_llm_async(
+        self, 
+        prompt: str,
+        override_client: Any = None,
+        override_config: Dict[str, Any] = None
+    ) -> str:
         """
         异步调用 LLM (支持 AsyncOpenAI 和 OpenAI 客户端)
         自动处理并发控制和超时
         
         :param prompt: 输入提示词
+        :param override_client: 覆盖使用的 LLM 客户端
+        :param override_config: 覆盖使用的模型配置
         :return: LLM 响应内容
         """
-        model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
-        temperature: float = float(self.model_config.get("temperature", 0.7))
-        max_tokens: int = int(self.model_config.get("max_tokens", 4000))
-        timeout: int = int(self.model_config.get("timeout", 60))
-        extra_body: Dict = self.model_config.get("extra_body", {})
+        # 确定使用的 config 和 client
+        config = override_config or self.model_config
+        client = override_client or self.llm_client
+        
+        model_name: str = config.get("model_name", "gpt-3.5-turbo")
+        temperature: float = float(config.get("temperature", 0.7))
+        max_tokens: int = int(config.get("max_tokens", 4000))
+        timeout: int = int(config.get("timeout", 60))
+        extra_body: Dict = config.get("extra_body", {})
         
         # 记录 LLM 请求输入日志
         self.logger.info(f"[LLM请求] 输入提示词长度: {len(prompt)} 字符 (Model: {model_name}, Timeout: {timeout}s)")
+
         self.logger.debug(f"[LLM请求] 输入内容: {prompt[:500]}...")
         
         async with self.semaphore:
             try:
                 # 情况 1: 异步客户端 (推荐)
-                if isinstance(self.llm_client, AsyncOpenAI):
-                    response = await self.llm_client.chat.completions.create(
+                if isinstance(client, AsyncOpenAI):
+                    response = await client.chat.completions.create(
                         model=model_name,
                         messages=[{"role": "user", "content": prompt}],
                         temperature=temperature,
@@ -667,7 +691,7 @@ class MultiStrategyOptimizer:
                     loop = asyncio.get_running_loop()
                     
                     def run_sync():
-                        return self.llm_client.chat.completions.create(
+                        return client.chat.completions.create(
                             model=model_name,
                             messages=[{"role": "user", "content": prompt}],
                             temperature=temperature,
@@ -700,7 +724,9 @@ class MultiStrategyOptimizer:
         prompt: str,
         should_stop: Callable[[], bool] = None,
         check_interval: float = 0.5,
-        task_name: str = "LLM调用"
+        task_name: str = "LLM调用",
+        override_client: Any = None,
+        override_config: Dict[str, Any] = None
     ) -> str:
         """
         可取消的 LLM 调用
@@ -711,6 +737,8 @@ class MultiStrategyOptimizer:
         :param should_stop: 停止回调函数
         :param check_interval: 检查停止信号的间隔（秒）
         :param task_name: 任务名称（用于日志）
+        :param override_client: 覆盖使用的 LLM 客户端
+        :param override_config: 覆盖使用的模型配置
         :return: LLM 响应内容
         """
         # 优先使用传入的回调，否则使用实例变量
@@ -718,11 +746,11 @@ class MultiStrategyOptimizer:
         
         if stop_func is None:
             # 没有停止回调，直接调用原始方法
-            return await self._call_llm_async(prompt)
+            return await self._call_llm_async(prompt, override_client, override_config)
         
         try:
             result: str = await run_with_cancellation(
-                self._call_llm_async(prompt),
+                self._call_llm_async(prompt, override_client, override_config),
                 should_stop=stop_func,
                 check_interval=check_interval,
                 task_name=task_name
