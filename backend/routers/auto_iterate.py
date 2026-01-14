@@ -248,7 +248,7 @@ async def start_auto_iterate(
                                 dataset=dataset,
                                 total_count=total_count,
                                 strategy_mode="auto",
-                                max_strategies=3,
+                                max_strategies=opt_model_config.get("max_strategy_count", 3),
                                 project_id=project_id,
                                 newly_failed_cases=regression_cases,
                                 should_stop=check_stop,

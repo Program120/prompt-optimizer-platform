@@ -89,7 +89,9 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         extra_body: "",
         default_headers: "",
         enable_standard_module: false,
-        selected_modules: [] as number[]
+
+        selected_modules: [] as number[],
+        max_strategy_count: 3
     });
     const [optPrompt, setOptPrompt] = useState("");
 
@@ -581,6 +583,29 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                                 placeholder="5"
                             />
                         </div>
+                        {!isVerification && (
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1.5">最大策略数</label>
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={cfg.max_strategy_count ?? 3}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        if (val === '' || /^\d*$/.test(val)) {
+                                            setCfg({ ...cfg, max_strategy_count: val === '' ? '' : parseInt(val) });
+                                        }
+                                    }}
+                                    onBlur={e => {
+                                        const val = parseInt(e.target.value);
+                                        const finalVal = isNaN(val) || val < 1 ? 3 : Math.min(val, 10);
+                                        setCfg({ ...cfg, max_strategy_count: finalVal });
+                                    }}
+                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                                    placeholder="3"
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
