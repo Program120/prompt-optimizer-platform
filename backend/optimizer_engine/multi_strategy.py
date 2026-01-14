@@ -351,14 +351,14 @@ class MultiStrategyOptimizer:
         # 检查是否应该强制使用负向优化融合策略
         # 条件：auto 模式 + 有深度分析结果 + 准确率低于 0.8
         use_negative_fusion: bool = False
-        if strategy_mode == 'auto' and deep_analysis.get("analyses"):
-            accuracy: float = metrics.get('accuracy', 0)
-            if accuracy < 0.5:
-                use_negative_fusion = True
-                self.logger.info(
-                    f"[负向融合策略] 深度分析完成，准确率 {accuracy:.2%} < 80%，"
-                    f"强制启用负向优化融合策略"
-                )
+        # if strategy_mode == 'auto' and deep_analysis.get("analyses"):
+        #     accuracy: float = metrics.get('accuracy', 0)
+        #     if accuracy < 0.8:
+        #         use_negative_fusion = True
+        #         self.logger.info(
+        #             f"[负向融合策略] 深度分析完成，准确率 {accuracy:.2%} < 80%，"
+        #             f"强制启用负向优化融合策略"
+        #         )
         
         # 策略匹配：将 selected_modules 传递给 match_strategies
         # match_strategies 会自动过滤：
