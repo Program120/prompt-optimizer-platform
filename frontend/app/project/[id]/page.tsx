@@ -50,7 +50,7 @@ export default function ProjectDetail() {
         enabled: false,
         maxRounds: 5,
         targetAccuracy: 95,
-        strategy: "simple"
+        strategy: "multi"
     });
     const [autoIterateStatus, setAutoIterateStatus] = useState<any>(null);
 
@@ -364,7 +364,7 @@ export default function ProjectDetail() {
         } catch (e) { console.error(e); }
     };
 
-    const [strategy, setStrategy] = useState<"multi" | "simple">("simple");
+    const [strategy, setStrategy] = useState<"multi" | "simple">("multi");
 
     // 优化状态轮询
     const isOptimizePollingRef = useRef(false);

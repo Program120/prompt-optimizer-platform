@@ -354,7 +354,7 @@ class OptimizationKnowledgeBase:
                     reason: str = str(case.get("reason", "")).strip()
                     
                     lines.append(f"  - Query: {query}")
-                    reason_text = f" | 原因: {reason}" if reason else " | 原因: 空"
+                    reason_text = f" | 原因: {reason}" if reason else ""
                     lines.append(f"    期望: {target}{reason_text} | 实际: {output}")
             
             lines.append("")

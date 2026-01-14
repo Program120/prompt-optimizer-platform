@@ -312,7 +312,7 @@ class IntentAnalyzer:
             
             lines.append(f"- 输入: {query}")
             # 如果有原因且不为空，显示原因
-            reason_text = f" | 原因: {reason}" if reason else " | 原因: 空"
+            reason_text = f" | 原因: {reason}" if reason else ""
             lines.append(f"  预期: {target}{reason_text} | 实际: {output}")
         return "\n".join(lines) if lines else "无错误样例"
         
