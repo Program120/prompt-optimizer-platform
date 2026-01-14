@@ -33,12 +33,12 @@ class ContextEnhancementStrategy(BaseStrategy):
             
         # 构建 Meta-Prompt
         optimization_instruction = (
-            "The current prompt fails to correctly handle context-dependent queries, specifically those using "
-            "referential terms (e.g., 'this', 'that', 'it'). \n"
-            "Please optimize the prompt by:\n"
-            "1. Adding explicit instructions to resolve coreferences using conversation history.\n"
-            "2. Emphasizing that the latest query should be interpreted in the context of previous turns.\n"
-            "3. Adding a few-shot example that demonstrates correct coreference resolution."
+            "当前提示词无法正确处理具有上下文依赖的查询，特别是在使用 "
+            "指代词（如‘这个’、‘那个’、‘它’）时。 \n"
+            "请通过以下方式优化提示词：\n"
+            "1. 添加显式指令，要求利用对话历史解决指代消解问题。\n"
+            "2. 强调应结合前序轮次的内容来理解最新的查询。\n"
+            "3. 添加一个演示正确指代消解的 few-shot 示例。"
         )
         
         return self._meta_optimize(

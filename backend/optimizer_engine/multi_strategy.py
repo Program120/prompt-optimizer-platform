@@ -210,8 +210,8 @@ class MultiStrategyOptimizer:
             should_stop=should_stop
         )
         if deep_analysis.get("analyses"):
-            for root_cause in deep_analysis["analyses"]:
-                self.logger.info(f"意图 '{root_cause.get('intent')}' 根因分析: {root_cause.get('root_cause', '无')[:100]}...")
+            for intent_res in deep_analysis["analyses"]:
+                self.logger.info(f"意图 '{intent_res.get('intent')}' 根因分析: {intent_res.get('analysis', '无')[:100]}...")
         
         # 将分析结果注入 diagnosis
         diagnosis["intent_analysis"] = intent_analysis

@@ -4,65 +4,131 @@ from typing import List, Dict, Any, Optional
 from .base import BaseStrategy
 
 
-META_OPTIMIZATION_PROMPT: str = """你是一个提示词优化专家。请优化以下意图分类提示词：
+META_OPTIMIZATION_PROMPT: str = """# 角色：提示词优化架构师
+你专门优化意图分类提示词，采用**增量、精准、非重复**的优化策略。
 
-## 当前提示词
+# 当前待优化提示词
 {prompt}
 
-## 性能诊断结果
-1. 整体准确率：{accuracy:.1%}
-2. 主要混淆类别对：{confusion_pairs}
-3. 指令清晰度评分：{instruction_clarity}/1.0
-4. 困难案例数量：{hard_cases_count}
+# 性能诊断报告
+## 核心指标
+- 整体准确率：{accuracy:.1%}
+- 主要混淆对：{confusion_pairs}
+- 指令清晰度：{instruction_clarity}/1.0
+- 困难案例：{hard_cases_count}个
 
-## 按意图错误率分析
+## 按意图错误分析
 {intent_error_analysis}
 
-## Top 失败意图深度分析
+## Top失败案例深度分析
 {top_failures_analysis}
 
-## 历史优化经验
+## 历史优化记录
 {optimization_history}
 
-## 典型错误案例
+## 典型错误样本
 {error_samples}
 
-## 优化要求
-请提供一个优化版本，综合解决以下问题：
-1. 解决意图混淆问题（添加区分规则）
-2. 提高指令清晰度和可执行性
-3. 优化示例选择和格式
-4. 添加边界条件说明
-5. 针对高失败率意图进行重点优化
-6. 参考历史优化经验，避免重复错误
-7. **强化 CoT (思维链)**: 确保提示词引导模型进行 Step-by-Step 的推理分析
+# 优化目标（优先级排序）
+1. **首要目标**：解决{confusion_pairs}的混淆问题
+2. **次要目标**：针对高错误率意图（{intent_error_analysis}）添加区分规则
+3. **架构目标**：提升指令的清晰度和可执行性
+4. **预防目标**：避免重复添加已存在的模块
 
-## 重要约束 (稳步迭代模式)
-- 必须保留原有的 {{}} 模板变量（如 {{input}}, {{context}}）
-- 禁止翻译或修改变量名
-- **严禁重写整个提示词**：仅针对上述问题点进行增量修改
-- **保持结构一致性**：保留原有的格式、语气和示例（除非示例显然错误）
-- **Use Diff Format**: Output strictly in Search/Replace block format.
+# 严格约束（避免重复的核心规则）
+## 结构完整性约束
+- **禁止重写整个提示词**：每次只修改1-3个具体问题点
+- **禁止重复添加模块**：如果"思维链"已存在，只能优化现有内容，不能新增
+- **保留所有{{}}变量**：不得修改或删除任何变量占位符
+- **格式一致性**：保持原有的章节标题和缩进风格
 
-## Output Format
-1. **Step-by-Step Analysis**:
-   - Analyze the confusion pairs and error patterns.
-   - Identify which sections of the prompt need modification.
-   - Plan the specific text changes.
+## 模块检查清单（优化前必须核对）
+检查当前提示词是否已包含以下模块，避免重复：
+- [ ] 角色定义
+- [ ] 意图定义列表
+- [ ] 输出格式规范
+- [ ] 思维链/CoT指令
+- [ ] Few-shot示例
+- [ ] 边界条件说明
+- [ ] 实体抽取规则
+- [ ] 澄清策略
 
-2. **Git Diff Blocks**:
+# 优化策略指导
+## 针对混淆问题
+- 在意图定义中增加**对比说明**："意图A vs 意图B: 当出现[X]时属于A，出现[Y]时属于B"
+- 在示例中添加**混淆边界案例**
+
+## 针对思维链优化
+如果已存在CoT模块：
+- 细化推理步骤（如：实体识别→意图匹配→置信度评估）
+- 添加**检查步骤**："最后检查是否有意图冲突"
+如果不存在CoT模块：
+- 在合适位置添加**单次**的CoT指令
+
+## 针对指令清晰度
+- 将长段落拆分为带编号的步骤
+- 使用**动作动词开头**："首先提取实体"，"然后匹配意图"
+- 添加**正例和反例**说明
+
+# 输出规范（防止错误的关键）
+## 第一步：变更分析报告
+用以下格式分析需要修改的部分：
+
+**变更分析**
+1. 问题定位：{混淆对/错误模式的具体描述}
+2. 影响范围：{会影响哪些意图/模块}
+3. 修改策略：{具体如何修改}
+4. 重复检查：{确认要修改的模块是否已存在}
+
+## 第二步：精准Git Diff
+**格式要求**
+- SEARCH块必须包含**完整的原段落**（从标题到内容结束）
+- REPLACE块必须是**完整的替换段落**
+- 如果添加新内容，SEARCH块必须是**空段落**或**明确位置标记**
+
+**正确示例：**
 <<<<<<< SEARCH
-[Exact text to be replaced]
+# 思维链要求
+请逐步推理。
 =======
-[New text]
+# 思维链要求
+请按以下步骤推理：
+1. 识别query中的关键实体
+2. 匹配最可能的意图标签
+3. 检查是否有混淆意图
+4. 输出最终判断
 >>>>>>>
 
-Do NOT output the full prompt. Only the modified sections.
+**错误示例（会导致重复）：**
+<<<<<<< SEARCH
+# 输出格式
+{
+  "intent": ""
+}
+=======
+# 输出格式
+{
+  "intent": ""
+}
 
-**IMPORTANT - To Avoid Duplication**:
-- If you want to modify an existing section (e.g. Reasoning Step), you MUST copy the ENTIRE existing section into the SEARCH block.
-- Do NOT just Search for a nearby header and Insert the new section next to it. That will cause duplicates.
-- ALWAYS check if the section you want to add already exists in the prompt.
+# 思维链要求  ← 错误！在另一个模块旁添加新模块
+请逐步推理。
+>>>>>>>
+
+## 第三步：变更影响评估
+- 预期准确率提升：{估计值}
+- 可能引入的新风险：{风险评估}
+- 是否需要后续优化：{是/否}
+
+# 最后检查清单
+在输出前确认：
+- [ ] SEARCH块的内容在当前提示词中**精确存在**
+- [ ] 没有重复添加已存在的模块
+- [ ] 所有{{}}变量保持不变
+- [ ] 修改点不超过3个
+- [ ] 变更针对具体诊断问题
+
+**重要提醒**：如果你发现当前提示词已包含清晰的思维链模块，请优化它而不是新增。重复的CoT指令会降低模型性能。
 """
 
 

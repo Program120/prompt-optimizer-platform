@@ -333,8 +333,8 @@ SEARCH/REPLACE 规则：
         lines = []
         for e in errors[:5]:
             query = str(e.get('query', ''))[:200]
-            lines.append(f"- Input: {query}")
-            lines.append(f"  Expected: {e.get('target', '')} | Actual: {e.get('output', '')}\n")
+            lines.append(f"- 输入: {query}")
+            lines.append(f"  预期: {e.get('target', '')} | 实际: {e.get('output', '')}\n")
         return "\n".join(lines)
 
     def _call_llm(self, prompt: str) -> str:

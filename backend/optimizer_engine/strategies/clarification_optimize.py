@@ -26,20 +26,19 @@ class ClarificationMechanismStrategy(BaseStrategy):
         missing_rate = clar_analysis.get("missing_rate", 0)
         
         instruction_parts = [
-            "The current prompt has issues with its clarification mechanism."
+            "当前提示词的澄清触发机制存在问题。"
         ]
         
         if unnecessary_rate > missing_rate:
             instruction_parts.append(
-                "It asks for clarification too often (Unnecessary Clarification). "
-                "Please relax the constraints and allow the model to infer intent from context "
-                "unless the ambiguity is critical."
+                "它过于频繁地请求澄清（过度澄清）。"
+                "请放宽约束，允许模型从上下文推断意图，"
+                "除非歧义性非常关键。"
             )
         else:
             instruction_parts.append(
-                "It fails to ask for clarification when needed (Missing Clarification). "
-                "Please add rules to explicitly request clarification when crucial information "
-                "(like account type, specific product) is missing."
+                "它在需要时未能请求澄清（缺失澄清）。"
+                "请添加规则，在关键信息（如账户类型、具体产品）缺失时，明确要求请求澄清。"
             )
             
         optimization_instruction = "\n".join(instruction_parts)

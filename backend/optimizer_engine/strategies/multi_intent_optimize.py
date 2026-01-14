@@ -27,22 +27,22 @@ class MultiIntentStrategy(BaseStrategy):
         fn_rate = mi_analysis.get("false_negative_rate", 0)
         
         instruction_parts = [
-            "The current prompt struggles with multi-intent recognition."
+            "当前提示词在多意图识别方面存在困难。"
         ]
         
         if fn_rate > fp_rate:
             instruction_parts.append(
-                "It tends to miss multiple intents (False Negative). "
-                "Please strengthen the instructions to detect ALL distinct intents in the user query."
+                "它倾向于遗漏多个意图（漏判）。"
+                "请加强指令，识别用户查询中所有独立且明确的意图。"
             )
         else:
             instruction_parts.append(
-                "It tends to hallucinate multiple intents (False Positive). "
-                "Please clarify that multiple intents should ONLY be predicted when distinct actions are explicitly requested."
+                "它倾向于虚构多个意图（误判）。"
+                "请明确指示，仅在显式请求了多个独立操作时才应预测多意图。"
             )
             
         instruction_parts.append(
-            "Ensure the output format clearly separates intents using the specified delimiter."
+            "确保输出格式使用指定的分隔符清晰地分离各个意图。"
         )
         
         optimization_instruction = "\n".join(instruction_parts)
