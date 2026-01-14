@@ -224,6 +224,8 @@ export default function ProjectDetail() {
                     isPollingRef.current = false;
                     // 完成后刷新项目以获取最新 prompt 和 iterations
                     fetchProject();
+                    // 刷新知识库以显示回填的准确率
+                    fetchKnowledgeBase();
                 }
             } catch (e: any) {
                 console.error("Auto-iterate polling error:", e);
