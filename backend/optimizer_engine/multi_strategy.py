@@ -9,11 +9,12 @@ from .fewshot_selector import FewShotSelector
 from .knowledge_base import OptimizationKnowledgeBase
 from .intent_analyzer import IntentAnalyzer
 from .advanced_diagnosis import AdvancedDiagnoser
-from .cancellation import run_with_cancellation, gather_with_cancellation
-import json
-import re
-from openai import AsyncOpenAI, OpenAI
-from prompts import PROMPT_SPLIT_INTENT, PROMPT_MERGE_INTENTS, PROMPT_VALIDATE_OPTIMIZATION
+from .cancellation import gather_with_cancellation
+# 新增模块导入
+from .llm_helper import LLMHelper
+from .validation import PromptValidator
+from .multi_intent_optimizer import MultiIntentOptimizer
+from openai import AsyncOpenAI
 
 
 class MultiStrategyOptimizer:
@@ -77,6 +78,26 @@ class MultiStrategyOptimizer:
         self.advanced_diagnoser: AdvancedDiagnoser = AdvancedDiagnoser(
             llm_client,
             model_config
+        )
+        
+        # 初始化 LLM 辅助类
+        self.llm_helper: LLMHelper = LLMHelper(
+            llm_client=llm_client,
+            model_config=model_config,
+            semaphore=self.semaphore
+        )
+        
+        # 初始化验证模块（使用验证专用配置）
+        verification_helper: LLMHelper = LLMHelper(
+            llm_client=verification_llm_client or llm_client,
+            model_config=verification_model_config or model_config,
+            semaphore=self.semaphore
+        )
+        self.validator: PromptValidator = PromptValidator(verification_helper)
+        
+        # 初始化多意图优化器
+        self.multi_intent_optimizer: MultiIntentOptimizer = MultiIntentOptimizer(
+            llm_helper=self.llm_helper
         )
         
         # 知识库延迟初始化（需要 project_id）
@@ -299,7 +320,9 @@ class MultiStrategyOptimizer:
 
         # 如果触发多意图优化，执行独立流程
         if is_multi_intent:
-            return await self._optimize_multi_intent_flow(
+            # 设置优化回调函数（防止递归死循环）
+            self.multi_intent_optimizer.set_optimizer_callback(self.optimize)
+            return await self.multi_intent_optimizer.optimize_multi_intent_flow(
                 prompt, errors, dataset, diagnosis
             )
 
@@ -325,21 +348,52 @@ class MultiStrategyOptimizer:
         # 阶段 4：策略匹配
         self.logger.info("步骤 4: 策略匹配...")
         
+        # 检查是否应该强制使用负向优化融合策略
+        # 条件：auto 模式 + 有深度分析结果 + 准确率低于 0.8
+        use_negative_fusion: bool = False
+        if strategy_mode == 'auto' and deep_analysis.get("analyses"):
+            accuracy: float = metrics.get('accuracy', 0)
+            if accuracy < 0.8:
+                use_negative_fusion = True
+                self.logger.info(
+                    f"[负向融合策略] 深度分析完成，准确率 {accuracy:.2%} < 80%，"
+                    f"强制启用负向优化融合策略"
+                )
+        
         # 策略匹配：将 selected_modules 传递给 match_strategies
         # match_strategies 会自动过滤：
         # - 9个模块策略中只有选中的才会参与评估
         # - 其他非模块策略照常参与评估
-        # 4. 匹配优化策略
         self.logger.info("正在匹配优化策略...")
-        if hasattr(self.matcher, 'get_preset_strategies') and strategy_mode != 'auto':
+        
+        if use_negative_fusion:
+            # 强制使用负向优化融合策略
+            from .strategy_matcher import STRATEGY_CLASSES
+            negative_fusion_class = STRATEGY_CLASSES.get("negative_fusion_optimization")
+            if negative_fusion_class:
+                strategies = [negative_fusion_class(
+                    llm_client=self.llm_client,
+                    model_config=self.model_config,
+                    semaphore=self.semaphore
+                )]
+                self.logger.info(f"[负向融合策略] 已强制选中: {[s.name for s in strategies]}")
+            else:
+                self.logger.warning("[负向融合策略] 未找到负向优化融合策略类，回退到自动匹配")
+                strategies = await self.matcher.match_strategies(
+                    diagnosis=diagnosis,
+                    max_strategies=max_strategies,
+                    selected_modules=selected_modules,
+                    should_stop=self._should_stop
+                )
+        elif hasattr(self.matcher, 'get_preset_strategies') and strategy_mode != 'auto':
             strategies = self.matcher.get_preset_strategies(strategy_mode)[:max_strategies]
             self.logger.info(f"根据预设模式 '{strategy_mode}' 匹配策略: {[s.name for s in strategies]}")
         else:
             strategies = await self.matcher.match_strategies(
                 diagnosis=diagnosis,
                 max_strategies=max_strategies,
-                selected_modules=selected_modules,  # 传递用户选择的模块
-                should_stop=self._should_stop      # 传递停止回调
+                selected_modules=selected_modules,
+                should_stop=self._should_stop
             )
             if selected_modules and len(selected_modules) > 0:
                 self.logger.info(f"自动匹配策略（已过滤模块 {selected_modules}）: {[s.name for s in strategies]}")
@@ -371,9 +425,25 @@ class MultiStrategyOptimizer:
         
         # 阶段 6：选择最佳方案
         self.logger.info("步骤 6: 选择最佳方案...")
-        best_result: Dict[str, Any] = self._select_best_candidate(
-            filtered_candidates, prompt
-        )
+        
+        # 优化：检查是否可以跳过选择步骤
+        skip_selection: bool = False
+        skip_reason: str = ""
+        
+        if len(filtered_candidates) == 1:
+            skip_selection = True
+            skip_reason = f"仅 1 个候选方案 ({filtered_candidates[0]['strategy']})"
+        elif use_negative_fusion and filtered_candidates:
+            skip_selection = True
+            skip_reason = f"负向优化融合策略模式 ({filtered_candidates[0]['strategy']})"
+        
+        if skip_selection and filtered_candidates:
+            self.logger.info(f"[选择最佳方案] {skip_reason}，跳过选择步骤，直接使用")
+            best_result: Dict[str, Any] = filtered_candidates[0]
+        else:
+            best_result: Dict[str, Any] = self._select_best_candidate(
+                filtered_candidates, prompt
+            )
         
         # 阶段 7：记录到知识库
         if self.knowledge_base and best_result.get("prompt") != prompt:
@@ -408,7 +478,8 @@ class MultiStrategyOptimizer:
         self.logger.info(f"最终提示词摘要: {best_result['prompt'][:100]}... (总长度: {len(best_result['prompt'])})")
         
         # 阶段 8: 验证优化后的提示词
-        validation_result: Dict[str, Any] = await self._validate_optimized_prompt(
+        self.logger.info("步骤 8: 验证优化后的提示词...")
+        validation_result: Dict[str, Any] = await self.validator.validate_optimized_prompt(
             prompt,
             best_result["prompt"],
             should_stop
@@ -552,8 +623,30 @@ class MultiStrategyOptimizer:
         :param should_stop: 停止回调函数
         :return: 评估后的候选方案列表
         """
-        if not validation_set:
+        # 优化：无候选时直接返回
+        if not candidates:
+            self.logger.info("[快速筛选] 无候选方案，跳过筛选")
             return candidates
+        
+        # 优化：仅一个候选时无须筛选，直接返回
+        if len(candidates) == 1:
+            self.logger.info(
+                f"[快速筛选] 仅有 1 个候选方案 ({candidates[0]['strategy']})，"
+                f"跳过筛选步骤"
+            )
+            # 给单个候选设置默认分数
+            candidates[0]["score"] = 1.0
+            return candidates
+        
+        # 优化：无验证集时直接返回
+        if not validation_set:
+            self.logger.info("[快速筛选] 无验证集，跳过筛选")
+            return candidates
+        
+        self.logger.info(
+            f"[快速筛选] 开始评估 {len(candidates)} 个候选方案，"
+            f"验证集大小: {len(validation_set)}"
+        )
         
         # 使用实例变量的停止回调
         stop_func: Callable[[], bool] = should_stop or self._should_stop
@@ -562,11 +655,11 @@ class MultiStrategyOptimizer:
         for cand in candidates:
             # 每次评估前检查停止信号
             if stop_func and stop_func():
-                self.logger.info("快速评估阶段被手动中止")
+                self.logger.info("[快速筛选] 评估阶段被手动中止")
                 break
                 
             score: float = await self._evaluate_prompt(cand["prompt"], validation_set, stop_func)
-            self.logger.info(f"策略评估完毕 {cand['strategy']}: 得分 = {score:.4f}")
+            self.logger.info(f"[快速筛选] 策略 '{cand['strategy']}' 评估完毕: 得分 = {score:.4f}")
             cand["score"] = score
             evaluated.append(cand)
             
@@ -660,136 +753,24 @@ class MultiStrategyOptimizer:
         return sum(valid_results) / total if total > 0 else 0
 
     def _select_best_candidate(self, candidates: List[Dict], original_prompt: str) -> Dict:
-        """选择最佳候选"""
+        """
+        选择最佳候选方案
+        
+        :param candidates: 候选方案列表（已按分数排序）
+        :param original_prompt: 原始提示词（用于回退）
+        :return: 最佳候选方案
+        """
         if not candidates:
+            self.logger.info("[选择最佳方案] 无候选方案，返回原始提示词")
             return {"prompt": original_prompt, "strategy": "none", "score": 0}
-            
-        best = candidates[0]
-        self.logger.info(f"最终选定最佳策略: {best['strategy']} (评估得分: {best.get('score', 0):.4f})")
-        # 如果最佳的分数还不如原始的好? (这里没测原始的，假设优化总比不优化好，或者设置阈值)
+        
+        best: Dict = candidates[0]
+        self.logger.info(
+            f"[选择最佳方案] 最终选定: '{best['strategy']}' "
+            f"(评估得分: {best.get('score', 0):.4f})"
+        )
         return best
 
-    async def _call_llm_async(
-        self, 
-        prompt: str,
-        override_client: Any = None,
-        override_config: Dict[str, Any] = None
-    ) -> str:
-        """
-        异步调用 LLM (支持 AsyncOpenAI 和 OpenAI 客户端)
-        自动处理并发控制和超时
-        
-        :param prompt: 输入提示词
-        :param override_client: 覆盖使用的 LLM 客户端
-        :param override_config: 覆盖使用的模型配置
-        :return: LLM 响应内容
-        """
-        # 确定使用的 config 和 client
-        config = override_config or self.model_config
-        client = override_client or self.llm_client
-        
-        model_name: str = config.get("model_name", "gpt-3.5-turbo")
-        temperature: float = float(config.get("temperature", 0.7))
-        max_tokens: int = int(config.get("max_tokens", 4000))
-        timeout: int = int(config.get("timeout", 60))
-        extra_body: Dict = config.get("extra_body", {})
-        
-        # 记录 LLM 请求输入日志
-        self.logger.info(f"[LLM请求] 输入提示词长度: {len(prompt)} 字符 (Model: {model_name}, Timeout: {timeout}s)")
-
-        self.logger.debug(f"[LLM请求] 输入内容: {prompt[:500]}...")
-        
-        async with self.semaphore:
-            try:
-                # 情况 1: 异步客户端 (推荐)
-                if isinstance(client, AsyncOpenAI):
-                    response = await client.chat.completions.create(
-                        model=model_name,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        timeout=timeout,
-                        extra_body=extra_body
-                    )
-                    result: str = response.choices[0].message.content.strip()
-                    
-                # 情况 2: 同步客户端 (兼容旧代码)
-                else:
-                    import functools
-                    loop = asyncio.get_running_loop()
-                    
-                    def run_sync():
-                        return client.chat.completions.create(
-                            model=model_name,
-                            messages=[{"role": "user", "content": prompt}],
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            timeout=timeout, # 显式传递 timeout
-                            extra_body=extra_body
-                        )
-                    
-                    response = await loop.run_in_executor(None, run_sync)
-                    result: str = response.choices[0].message.content.strip()
-
-                # Process <think> tags for reasoning models globally
-                result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL).strip()
-                
-                # 记录 LLM 响应输出日志
-                self.logger.info(f"[LLM响应] 输出长度: {len(result)} 字符")
-                self.logger.debug(f"[LLM响应] 输出内容: {result[:500]}...")
-                
-                return result
-
-            except Exception as e:
-                self.logger.error(f"[LLM请求] 调用失败: {e}")
-                # Optionally check for timeout specifically to log a clearer warning
-                if "timeout" in str(e).lower():
-                     self.logger.error(f"LLM 请求超时 ({timeout}s). 请考虑在模型配置中增加 timeout 值或检查网络。")
-                return ""
-
-    async def _call_llm_with_cancellation(
-        self, 
-        prompt: str,
-        should_stop: Callable[[], bool] = None,
-        check_interval: float = 0.5,
-        task_name: str = "LLM调用",
-        override_client: Any = None,
-        override_config: Dict[str, Any] = None
-    ) -> str:
-        """
-        可取消的 LLM 调用
-        
-        使用 run_with_cancellation 包装 LLM 调用，使其能够在收到停止信号后立即响应
-        
-        :param prompt: 输入提示词
-        :param should_stop: 停止回调函数
-        :param check_interval: 检查停止信号的间隔（秒）
-        :param task_name: 任务名称（用于日志）
-        :param override_client: 覆盖使用的 LLM 客户端
-        :param override_config: 覆盖使用的模型配置
-        :return: LLM 响应内容
-        """
-        # 优先使用传入的回调，否则使用实例变量
-        stop_func: Callable[[], bool] = should_stop or self._should_stop
-        
-        if stop_func is None:
-            # 没有停止回调，直接调用原始方法
-            return await self._call_llm_async(prompt, override_client, override_config)
-        
-        try:
-            result: str = await run_with_cancellation(
-                self._call_llm_async(prompt, override_client, override_config),
-                should_stop=stop_func,
-                check_interval=check_interval,
-                task_name=task_name
-            )
-            return result
-        except asyncio.CancelledError:
-            self.logger.info(f"[LLM调用] {task_name} 被用户取消")
-            return ""
-        except Exception as e:
-            self.logger.error(f"[LLM调用] {task_name} 失败: {e}")
-            return ""
 
 
     def diagnose(
@@ -872,288 +853,4 @@ class MultiStrategyOptimizer:
         
         
         return " ".join(lines)
-    
-    async def _validate_optimized_prompt(
-        self,
-        original_prompt: str,
-        optimized_prompt: str,
-        should_stop: Any = None
-    ) -> Dict[str, Any]:
-        """
-        验证优化后的提示词是否存在异常
-        
-        通过调用大模型对比原始提示词与优化后提示词，检测是否存在：
-        - 格式破坏（截断、乱码、语法错误）
-        - 核心意图丢失
-        - 模板变量丢失
-        - 严重语义偏离
-        - 无意义重复内容
-        
-        :param original_prompt: 原始提示词
-        :param optimized_prompt: 优化后的提示词
-        :param should_stop: 停止回调函数
-        :return: 验证结果字典，包含 is_valid, issues, severity, failure_reason
-        """
-        self.logger.info("步骤 8: 验证优化后的提示词...")
-        
-        # 如果优化后的提示词与原始提示词相同，则无需验证
-        if original_prompt == optimized_prompt:
-            self.logger.info("优化后的提示词与原始提示词相同，跳过验证")
-            return {
-                "is_valid": True,
-                "issues": [],
-                "severity": "none",
-                "failure_reason": ""
-            }
-        
-        # 构造验证请求
-        validation_input: str = PROMPT_VALIDATE_OPTIMIZATION.replace(
-            "{original_prompt}", original_prompt
-        ).replace(
-            "{optimized_prompt}", optimized_prompt
-        )
-        
-        try:
-            # 调用 LLM 进行验证
-            response: str = await self._call_llm_with_cancellation(
-                validation_input,
-                should_stop=should_stop,
-                task_name="提示词验证"
-            )
-            
-            if not response:
-                self.logger.warning("验证 LLM 返回为空，默认通过验证")
-                return {
-                    "is_valid": True,
-                    "issues": [],
-                    "severity": "none",
-                    "failure_reason": ""
-                }
-            
-            # 解析 JSON 响应
-            # 尝试提取 json 块
-            match = re.search(r'```json\s*([\s\S]*?)\s*```', response)
-            if match:
-                json_str: str = match.group(1)
-            else:
-                json_str = response
-            
-            result: Dict[str, Any] = json.loads(json_str)
-            
-            is_valid: bool = result.get("is_valid", True)
-            issues: List[str] = result.get("issues", [])
-            severity: str = result.get("severity", "none")
-            
-            self.logger.info(f"验证结果: is_valid={is_valid}, severity={severity}")
-            if issues:
-                self.logger.warning(f"检测到的问题: {issues}")
-            
-            # 如果严重程度为 "high"，则标记为验证失败
-            if severity == "high":
-                failure_reason: str = "优化失败, 模型输出格式异常"
-                if issues:
-                    failure_reason += f" (详情: {'; '.join(issues[:2])})"
-                return {
-                    "is_valid": False,
-                    "issues": issues,
-                    "severity": severity,
-                    "failure_reason": failure_reason
-                }
-            
-            return {
-                "is_valid": True,
-                "issues": issues,
-                "severity": severity,
-                "failure_reason": ""
-            }
-            
-        except json.JSONDecodeError as e:
-            self.logger.error(f"验证响应 JSON 解析失败: {e}")
-            # JSON 解析失败时，默认通过验证（避免误杀）
-            return {
-                "is_valid": True,
-                "issues": ["验证响应格式异常"],
-                "severity": "low",
-                "failure_reason": ""
-            }
-        except Exception as e:
-            self.logger.error(f"验证过程发生错误: {e}")
-            # 其他错误时，默认通过验证
-            return {
-                "is_valid": True,
-                "issues": [f"验证出错: {str(e)}"],
-                "severity": "low",
-                "failure_reason": ""
-            }
-
-    async def _optimize_multi_intent_flow(
-        self,
-        prompt: str,
-        errors: List[Dict[str, Any]],
-        dataset: List[Dict[str, Any]],
-        diagnosis: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        执行多意图优化流程 (Split-Optimize-Merge)
-        """
-        self.logger.info("=== 进入多意图优化流程 ===")
-        
-        # 1. 获取意图列表
-        intent_analysis = diagnosis.get("intent_analysis", {})
-        # 从错误分布中获取所有出现过的意图 (不仅仅是 top failures)
-        all_intents = list(intent_analysis.get("error_rate_by_intent", {}).keys())
-        if not all_intents:
-             # 如果没有意图信息，回退到普通优化
-             self.logger.warning("未识别到明确意图，回退到普通优化流程")
-             # 这里简单起见，递归调用自己，但在 optimize 入口处要避免死循环
-             # 由于我们是在 optimize 内部调用的这个方法，为了避免修改 optimize 签名增加递归锁，
-             # 我们这里直接抛出异常或者返回当前 prompt，或者只做单次 simple optimize
-             # 实际上，代码逻辑走到这里说明是有 errors 的，意图分析应该会有结果。
-             # 如果真的空，可能是 parsing 问题。
-             return {
-                 "optimized_prompt": prompt,
-                 "diagnosis": diagnosis,
-                 "message": "无法识别意图，跳过多意图优化"
-             }
-
-        self.logger.info(f"识别到的意图列表: {all_intents}")
-        
-        # 2. 拆分 Prompt
-        self.logger.info("Step 1: 拆分 Prompt 为子意图 Prompt...")
-        sub_prompts = await self._split_prompt_by_intents(prompt, all_intents)
-        if not sub_prompts:
-             self.logger.error("各意图 Prompt 拆分失败，放弃多意图优化")
-             return {"optimized_prompt": prompt, "message": "Prompt 拆分失败"}
-             
-        # 3. 独立优化每个子 Prompt
-        self.logger.info(f"Step 2: 并行优化 {len(sub_prompts)} 个子意图...")
-        optimized_sub_prompts = []
-        
-        # 准备任务
-        tasks = []
-        for item in sub_prompts:
-            intent = item["intent"]
-            sub_p = item["sub_prompt"]
-            
-            # 筛选该意图相关的 errors
-            # 严格匹配 target == intent
-            intent_errors = [e for e in errors if str(e.get("target")) == intent]
-            
-            if not intent_errors:
-                self.logger.info(f"意图 '{intent}' 无错误样例，跳过优化，保留原样")
-                optimized_sub_prompts.append(item)
-                continue
-                
-            self.logger.info(f"意图 '{intent}' 关联 {len(intent_errors)} 个错误，准备优化...")
-            
-            # 创建新的优化任务
-            # 注意: 这里递归调用 optimize 可能导致死循环，如果 strategy_mode 还是 multi_intent
-            # 我们需要一种方式告诉 optimize "不要再进 multi_intent 了"
-            # 可以在这里实例化一个新的 optimizer 或者传参
-            # 最简单的是：直接调用 matcher -> candidates -> selection 这一套逻辑，复用已有方法
-            # 但那样代码重复多。
-            # 方案：递归调用 optimize，但强制 strategy_mode="auto" 且 max_strategies=1 (保持轻量)
-            # 并且通过逻辑保证 optimize 内部判断 multi_intent 时，检查是否已经 split 过 (难)
-            # 或者：在 optimize 传参增加 invalid_strategies=['multi_intent']?
-            # 简单方案：直接用 _generate_candidates + _select_best_candidate 对该 sub prompt 进行一次 "precision_focus" 优化
-            
-            tasks.append(self._optimize_sub_intent(intent, sub_p, intent_errors, dataset))
-
-        results = await asyncio.gather(*tasks)
-        
-        # 收集结果
-        # results 顺序对应 tasks 顺序，但我们需要把跳过的插回去
-        # 重新整理
-        task_result_map = {res["intent"]: res for res in results}
-        
-        final_sub_prompts_map = []
-        for item in sub_prompts:
-            intent = item["intent"]
-            if intent in task_result_map:
-                res = task_result_map[intent]
-                final_sub_prompts_map.append({
-                    "intent": intent,
-                    "sub_prompt": res["optimized_prompt"]
-                })
-            else:
-                # 没优化的（无错误样例）
-                final_sub_prompts_map.append(item)
-                
-        # 4. 合并 Prompt
-        self.logger.info("Step 3: 合并优化后的子 Prompt...")
-        merged_prompt = await self._merge_sub_prompts(prompt, final_sub_prompts_map)
-        
-        return {
-            "optimized_prompt": merged_prompt,
-            "diagnosis": diagnosis,
-            "intent_analysis": intent_analysis,
-            "applied_strategies": [{"name": "multi_intent_split_merge", "success": True}],
-            "best_strategy": "multi_intent_recursion",
-            "message": "多意图优化完成"
-        }
-
-    async def _optimize_sub_intent(self, intent, prompt, errors, dataset):
-        """辅助方法：优化单个意图"""
-        try:
-            # 复用 optimize 方法，但强制 strategy_mode="precision_focus" 防止递归死循环
-            # 且只用 1 个策略，快速收敛
-            res = await self.optimize(
-                prompt=prompt,
-                errors=errors,
-                dataset=dataset, # 可以传全集，反正 few-shot selector 会自己挑
-                strategy_mode="precision_focus",
-                max_strategies=1
-            )
-            return {
-                "intent": intent,
-                "optimized_prompt": res["optimized_prompt"]
-            }
-        except Exception as e:
-            self.logger.error(f"优化子意图 '{intent}' 失败: {e}")
-            return {
-                "intent": intent,
-                "optimized_prompt": prompt # 回退
-            }
-
-    async def _split_prompt_by_intents(self, prompt: str, intents: List[str]) -> List[Dict]:
-        """LLM 拆分 Prompt"""
-        try:
-            input_text = PROMPT_SPLIT_INTENT.replace("{original_prompt}", prompt) \
-                .replace("{intent_list}", json.dumps(intents, ensure_ascii=False)) \
-                .replace("{count}", str(len(intents)))
-                
-            response = await self._call_llm_async(input_text)
-            
-            # 解析 JSON
-            # 尝试提取 json 块
-            match = re.search(r'```json\s*([\s\S]*?)\s*```', response)
-            if match:
-                json_str = match.group(1)
-            else:
-                json_str = response
-                
-            res = json.loads(json_str)
-            if isinstance(res, list):
-                return res
-            return []
-        except Exception as e:
-            self.logger.error(f"拆分 Prompt 失败: {e}")
-            return []
-
-    async def _merge_sub_prompts(self, original_prompt: str, sub_prompts: List[Dict]) -> str:
-        """LLM 合并 Prompts"""
-        try:
-            input_text = PROMPT_MERGE_INTENTS.replace("{sub_prompts_json}", json.dumps(sub_prompts, ensure_ascii=False))
-            
-            response = await self._call_llm_async(input_text)
-            
-            # 清理可能的 markdown 标记
-            clean_res = re.sub(r'^```markdown\s*', '', response)
-            clean_res = re.sub(r'^```\s*', '', clean_res)
-            clean_res = re.sub(r'\s*```$', '', clean_res)
-            
-            return clean_res.strip()
-        except Exception as e:
-            self.logger.error(f"合并 Prompt 失败: {e}")
-            return original_prompt
 

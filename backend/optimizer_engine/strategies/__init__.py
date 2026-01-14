@@ -14,6 +14,7 @@ from .custom_data_optimize import CustomDataOptimizationStrategy
 from .global_constraint_optimize import GlobalConstraintOptimizationStrategy
 from .intent_definition_optimize import IntentDefinitionOptimizationStrategy
 from .query_rewrite_optimize import QueryRewriteOptimizationStrategy
+from .negative_fusion_optimize import NegativeFusionOptimizationStrategy
 
 __all__ = [
     "BaseStrategy",
@@ -31,5 +32,6 @@ __all__ = [
     "GlobalConstraintOptimizationStrategy",
     "IntentDefinitionOptimizationStrategy",
     "QueryRewriteOptimizationStrategy",
+    "NegativeFusionOptimizationStrategy",
 ]
 

@@ -19,6 +19,7 @@ from .strategies.intent_definition_optimize import IntentDefinitionOptimizationS
 from .strategies.query_rewrite_optimize import QueryRewriteOptimizationStrategy
 from .strategies.role_task_definition_optimize import RoleTaskDefinitionStrategy
 from .strategies.output_format_optimize import OutputFormatOptimizationStrategy
+from .strategies.negative_fusion_optimize import NegativeFusionOptimizationStrategy
 
 
 # 策略组合预设
@@ -78,7 +79,9 @@ STRATEGY_CLASSES: Dict[str, Type[BaseStrategy]] = {
     "intent_definition_optimization": IntentDefinitionOptimizationStrategy,
     "query_rewrite_optimization": QueryRewriteOptimizationStrategy,
     "role_task_definition": RoleTaskDefinitionStrategy,
-    "output_format_optimization": OutputFormatOptimizationStrategy
+    "output_format_optimization": OutputFormatOptimizationStrategy,
+    # 负向优化融合策略
+    "negative_fusion_optimization": NegativeFusionOptimizationStrategy
 }
 
 # 模块ID到策略类型的映射
