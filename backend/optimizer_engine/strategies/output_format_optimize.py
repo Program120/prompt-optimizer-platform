@@ -114,43 +114,45 @@ class OutputFormatOptimizationStrategy(BaseStrategy):
 如果提示词中没有具体的字段约束，请使用以下标准结构：
 ```json
 {{
+    "rewritten_query": "重写后的查询语句",
     "intent": ["意图1", "意图2"],
     "confidence": 0.95,
-    "clarify": null,
-    "reasoning": "判断依据..."
+    "clarify": null
 }}
 ```
-**注意**: 如果提示词中已有特定输出格式约束，请**保持原样不变**！只需整理格式，不要修改字段名。
+**注意**: 如果提示词中已有特定输出格式约束，请**保持原样不变**！只需整理格式, 调整json字段的顺序，不要修改字段名。
 
 ### 4. 各场景输出模板
 
 **单意图场景**:
 ```json
-{{"intent": ["查询订单状态"], "confidence": 0.92, "clarify": null}}
+{{"rewritten_query": "重写后的查询语句", "intent": ["查询订单状态"], "confidence": 0.92, "clarify": null}}
 ```
 
 **多意图场景**:
 ```json
-{{"intent": ["退款申请", "查询物流"], "confidence": 0.88, "clarify": null}}
+{{"rewritten_query": "重写后的查询语句", "intent": ["退款申请", "查询物流"], "confidence": 0.88, "clarify": null}}
 ```
 
 **需要澄清场景**:
 ```json
-{{"intent": [], "confidence": 0.0, "clarify": "请问您是想查询哪个订单的状态？"}}
+{{"rewritten_query": "重写后的查询语句", "intent": [], "confidence": 0.0, "clarify": "请问您是想查询哪个订单的状态？"}}
 ```
 
 **无意图场景**:
 ```json
-{{"intent": ["无意图"], "confidence": 0.95, "clarify": null}}
+{{"rewritten_query": "重写后的查询语句", "intent": ["无意图"], "confidence": 0.95, "clarify": null}}
 ```
 
-### 5. 格式要求
+### 5. 格式要求 (Strict Mode)
 - 必须严格使用 `SEARCH/REPLACE` 格式输出修改内容。
+- **重要限制**: SEARCH 块中的内容必须与原提示词**完全一致**（精确到空格和换行）。
+- **禁止**: 不要修改 SEARCH 块中的任何字符，否则会导致匹配失败。
 
 示例：
 ```text
 <<<<<<< SEARCH
-(原有的输出格式内容)
+(原有的输出格式内容 - 必须逐字复制原文)
 =======
 (优化后的输出格式内容)
 >>>>>>> REPLACE

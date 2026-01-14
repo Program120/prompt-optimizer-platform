@@ -171,9 +171,10 @@ class BaseStrategy(ABC):
 >>>>>>>
 
 SEARCH/REPLACE 规则：
-1. SEARCH 块必须包含与"当前提示词"完全一致的文本，包括空格和换行符。
-2. 如果要插入文本，请 SEARCH 相邻的行，并在 REPLACE 中包含它以及你的新文本。
-3. 要删除文本，请将 REPLACE 块留空（但保留行结构以便于定位）。
+1. **严格限制**: SEARCH 块中的内容必须**逐字逐句**地存在于"当前提示词"中，包括所有的空格、换行符和特殊字符。如果 SEARCH 内容找不到，Diff 将无法应用。
+2. 严禁修改 SEARCH 块中的内容去"匹配"你想修改的地方，你必须复制原文。
+3. 如果要插入文本，请 SEARCH 邻近的现有行，并在 REPLACE 中包含该行以及你的新文本。
+4. 要删除文本，请将 REPLACE 块留空。
 """
         
         logger.info(f"[元优化] 构造优化 Prompt 完成，总长度: {len(optimization_prompt)} 字符")

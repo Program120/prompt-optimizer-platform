@@ -269,6 +269,42 @@ async def start_auto_iterate(
                         
                         new_prompt = result.get("optimized_prompt", current_prompt)
                         applied_strategies = result.get("applied_strategies", [])
+                        
+                        # 检查优化结果是否验证失败
+                        validation_failed = result.get("validation_failed", False)
+                        failure_reason = result.get("failure_reason", "")
+                        
+                        if validation_failed:
+                            # 验证失败：记录失败的迭代记录，但不更新提示词
+                            logging.warning(f"[AutoIterate {project_id}] 优化验证失败: {failure_reason}")
+                            status["message"] = f"第 {round_num}/{max_rounds} 轮: {failure_reason}"
+                            
+                            # 保存失败的迭代记录
+                            project = storage.get_project(project_id)
+                            if project:
+                                project["iterations"].append({
+                                    "old_prompt": current_prompt,
+                                    "new_prompt": new_prompt,
+                                    "task_id": task_id,
+                                    "accuracy": accuracy,
+                                    "round": round_num,
+                                    "created_at": datetime.now().isoformat(),
+                                    "is_failed": True,
+                                    "failure_reason": failure_reason,
+                                    "applied_strategies": [s.get("name") for s in applied_strategies if s.get("success")]
+                                })
+                                # 不更新 current_prompt，保持原提示词
+                                projects = storage.get_projects()
+                                for idx, p in enumerate(projects):
+                                    if p["id"] == project_id:
+                                        projects[idx] = project
+                                        break
+                                storage.save_projects(projects)
+                            
+                            storage.save_auto_iterate_status(project_id, status)
+                            # 继续下一轮迭代
+                            continue
+                        
                         logging.info(f"[AutoIterate {project_id}] Prompt optimized successfully, strategies: {[s.get('name') for s in applied_strategies if s.get('success')]}")
                         
                         # 保存迭代记录

@@ -233,6 +233,10 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
             applied_strategies = result.get("applied_strategies", [])
             diagnosis = result.get("diagnosis")
             
+            # 检查优化结果是否验证失败
+            validation_failed = result.get("validation_failed", False)
+            failure_reason = result.get("failure_reason", "")
+            
         # 检查是否被停止
         if optimization_status.get(project_id, {}).get("should_stop"):
              optimization_status[project_id] = {
@@ -259,11 +263,19 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
             "created_at": datetime.now().isoformat()
         }
         
+        # 如果验证失败，标记迭代记录
+        if validation_failed:
+            iteration_record["is_failed"] = True
+            iteration_record["failure_reason"] = failure_reason
+
         # 重新获取项目以避免并发覆盖 (虽然这里还是有风险，但比直接用旧对象好)
         curr_project = storage.get_project(project_id)
         if curr_project:
             curr_project["iterations"].append(iteration_record)
-            curr_project["current_prompt"] = new_prompt
+            
+            # 只有验证通过时才更新 current_prompt
+            if not validation_failed:
+                curr_project["current_prompt"] = new_prompt
             
             projects = storage.get_projects()
             for idx, p in enumerate(projects):
@@ -271,6 +283,21 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
                     projects[idx] = curr_project
                     break
             storage.save_projects(projects)
+        
+        # 如果验证失败，返回失败状态
+        if validation_failed:
+            optimization_status[project_id] = {
+                "status": "failed",
+                "message": failure_reason,
+                "result": {
+                    "new_prompt": new_prompt,
+                    "applied_strategies": applied_strategies,
+                    "diagnosis": diagnosis,
+                    "validation_failed": True,
+                    "failure_reason": failure_reason
+                }
+            }
+            return
             
         # 更新状态为完成
         optimization_status[project_id] = {

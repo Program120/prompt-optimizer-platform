@@ -138,13 +138,15 @@ class QueryRewriteOptimizationStrategy(BaseStrategy):
 3. **Step 3**: 补全省略的主语/宾语
 4. **Step 4**: 输出标准化后的 Query 用于后续意图识别
 
-### 6. 格式要求
+### 6. 格式要求 (Strict Mode)
 - 必须严格使用 `SEARCH/REPLACE` 格式输出修改内容。
+- **重要限制**: SEARCH 块中的内容必须与原提示词**完全一致**（精确到空格和换行）。
+- **禁止**: 不要修改 SEARCH 块中的任何字符，否则会导致匹配失败。
 
 示例：
 ```text
 <<<<<<< SEARCH
-(原有的预处理规则内容)
+(原有的预处理规则内容 - 必须逐字复制原文)
 =======
 (优化后的预处理规则内容)
 >>>>>>> REPLACE

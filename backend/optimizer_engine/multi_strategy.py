@@ -13,7 +13,7 @@ from .cancellation import run_with_cancellation, gather_with_cancellation
 import json
 import re
 from openai import AsyncOpenAI, OpenAI
-from prompts import PROMPT_SPLIT_INTENT, PROMPT_MERGE_INTENTS
+from prompts import PROMPT_SPLIT_INTENT, PROMPT_MERGE_INTENTS, PROMPT_VALIDATE_OPTIMIZATION
 
 
 class MultiStrategyOptimizer:
@@ -407,7 +407,15 @@ class MultiStrategyOptimizer:
         self.logger.info(f"优化任务结束。最终胜出策略: {best_result.get('strategy')}, 预估提升分数: {best_result.get('score', 0):.4f}")
         self.logger.info(f"最终提示词摘要: {best_result['prompt'][:100]}... (总长度: {len(best_result['prompt'])})")
         
-        return {
+        # 阶段 8: 验证优化后的提示词
+        validation_result: Dict[str, Any] = await self._validate_optimized_prompt(
+            prompt,
+            best_result["prompt"],
+            should_stop
+        )
+        
+        # 构建返回结果
+        result: Dict[str, Any] = {
             "optimized_prompt": best_result["prompt"],
             "diagnosis": diagnosis,
             "intent_analysis": intent_analysis,
@@ -423,6 +431,22 @@ class MultiStrategyOptimizer:
                 for c in filtered_candidates
             ]
         }
+        
+        # 如果验证失败，添加失败标记
+        if not validation_result.get("is_valid", True):
+            self.logger.warning(f"优化结果验证失败: {validation_result.get('failure_reason')}")
+            result["validation_failed"] = True
+            result["failure_reason"] = validation_result.get("failure_reason", "优化失败, 模型输出格式异常")
+            result["validation_issues"] = validation_result.get("issues", [])
+            
+            # 标记所有策略为验证失败
+            for strategy_result in result["applied_strategies"]:
+                strategy_result["validation_failed"] = True
+        else:
+            result["validation_failed"] = False
+            result["failure_reason"] = ""
+        
+        return result
         
     async def _generate_candidates(
         self, 
@@ -848,6 +872,119 @@ class MultiStrategyOptimizer:
         
         
         return " ".join(lines)
+    
+    async def _validate_optimized_prompt(
+        self,
+        original_prompt: str,
+        optimized_prompt: str,
+        should_stop: Any = None
+    ) -> Dict[str, Any]:
+        """
+        验证优化后的提示词是否存在异常
+        
+        通过调用大模型对比原始提示词与优化后提示词，检测是否存在：
+        - 格式破坏（截断、乱码、语法错误）
+        - 核心意图丢失
+        - 模板变量丢失
+        - 严重语义偏离
+        - 无意义重复内容
+        
+        :param original_prompt: 原始提示词
+        :param optimized_prompt: 优化后的提示词
+        :param should_stop: 停止回调函数
+        :return: 验证结果字典，包含 is_valid, issues, severity, failure_reason
+        """
+        self.logger.info("步骤 8: 验证优化后的提示词...")
+        
+        # 如果优化后的提示词与原始提示词相同，则无需验证
+        if original_prompt == optimized_prompt:
+            self.logger.info("优化后的提示词与原始提示词相同，跳过验证")
+            return {
+                "is_valid": True,
+                "issues": [],
+                "severity": "none",
+                "failure_reason": ""
+            }
+        
+        # 构造验证请求
+        validation_input: str = PROMPT_VALIDATE_OPTIMIZATION.replace(
+            "{original_prompt}", original_prompt
+        ).replace(
+            "{optimized_prompt}", optimized_prompt
+        )
+        
+        try:
+            # 调用 LLM 进行验证
+            response: str = await self._call_llm_with_cancellation(
+                validation_input,
+                should_stop=should_stop,
+                task_name="提示词验证"
+            )
+            
+            if not response:
+                self.logger.warning("验证 LLM 返回为空，默认通过验证")
+                return {
+                    "is_valid": True,
+                    "issues": [],
+                    "severity": "none",
+                    "failure_reason": ""
+                }
+            
+            # 解析 JSON 响应
+            # 尝试提取 json 块
+            match = re.search(r'```json\s*([\s\S]*?)\s*```', response)
+            if match:
+                json_str: str = match.group(1)
+            else:
+                json_str = response
+            
+            result: Dict[str, Any] = json.loads(json_str)
+            
+            is_valid: bool = result.get("is_valid", True)
+            issues: List[str] = result.get("issues", [])
+            severity: str = result.get("severity", "none")
+            
+            self.logger.info(f"验证结果: is_valid={is_valid}, severity={severity}")
+            if issues:
+                self.logger.warning(f"检测到的问题: {issues}")
+            
+            # 如果严重程度为 "high"，则标记为验证失败
+            if severity == "high":
+                failure_reason: str = "优化失败, 模型输出格式异常"
+                if issues:
+                    failure_reason += f" (详情: {'; '.join(issues[:2])})"
+                return {
+                    "is_valid": False,
+                    "issues": issues,
+                    "severity": severity,
+                    "failure_reason": failure_reason
+                }
+            
+            return {
+                "is_valid": True,
+                "issues": issues,
+                "severity": severity,
+                "failure_reason": ""
+            }
+            
+        except json.JSONDecodeError as e:
+            self.logger.error(f"验证响应 JSON 解析失败: {e}")
+            # JSON 解析失败时，默认通过验证（避免误杀）
+            return {
+                "is_valid": True,
+                "issues": ["验证响应格式异常"],
+                "severity": "low",
+                "failure_reason": ""
+            }
+        except Exception as e:
+            self.logger.error(f"验证过程发生错误: {e}")
+            # 其他错误时，默认通过验证
+            return {
+                "is_valid": True,
+                "issues": [f"验证出错: {str(e)}"],
+                "severity": "low",
+                "failure_reason": ""
+            }
 
     async def _optimize_multi_intent_flow(
         self,
