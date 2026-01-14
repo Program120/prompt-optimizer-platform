@@ -219,7 +219,7 @@ class MultiStrategyOptimizer:
             run_intent_analysis()
         )
 
-        logging.info(f"诊断分析结果: {diagnosis}")
+        # logging.info(f"诊断分析结果: {diagnosis}")
         # 记录诊断结果
         metrics = diagnosis.get('overall_metrics', {})
         error_patterns = diagnosis.get('error_patterns', {})
