@@ -342,7 +342,7 @@ export default function ExecutionPanel({
                                 className="h-full bg-gradient-to-r from-blue-500 to-emerald-500"
                             />
                         </div>
-                        {taskStatus.status === "completed" && (
+                        {(taskStatus.status === "completed" || (taskStatus.status === "stopped" && taskStatus.results?.length > 0)) && (
                             <div className="space-y-3">
                                 <div className="flex gap-4">
                                     {isOptimizing ? (
