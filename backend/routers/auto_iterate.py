@@ -143,6 +143,8 @@ async def start_auto_iterate(
                 else:
                     accuracy = 0
                 
+                # 注意：知识库准确率回填已在 task_manager.py 中统一处理
+                
                 # --- 新增失败案例检测逻辑 START ---
                 # 1. 计算当前成功的索引集合
                 current_error_indices = {e["index"] for e in current_errors}

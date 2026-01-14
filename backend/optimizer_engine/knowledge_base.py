@@ -197,6 +197,40 @@ class OptimizationKnowledgeBase:
                 return True
                 
         return False
+    
+    def update_latest_accuracy_after(
+        self,
+        accuracy_after: float
+    ) -> bool:
+        """
+        更新最新一条 accuracy_after 为 null 的记录
+        
+        此方法用于在任务完成后回填准确率：
+        当一次任务执行完成后，用当前准确率更新上一条优化分析记录的 accuracy_after
+        
+        :param accuracy_after: 优化后准确率
+        :return: 是否更新成功（如果没有待更新的记录则返回 False）
+        """
+        history: List[Dict[str, Any]] = self._load_history()
+        
+        if not history:
+            return False
+        
+        # 按版本倒序排列，找到最新一条 accuracy_after 为 null 的记录
+        history.sort(key=lambda x: x.get("version", 0), reverse=True)
+        
+        for record in history:
+            if record.get("accuracy_after") is None:
+                record["accuracy_after"] = accuracy_after
+                record["updated_at"] = datetime.now().isoformat()
+                self._save_history(history)
+                self.logger.info(
+                    f"已回填知识库版本 {record.get('version')} 的优化后准确率: {accuracy_after:.1%}"
+                )
+                return True
+        
+        # 没有找到待更新的记录（所有记录都已有 accuracy_after）
+        return False
         
     def get_history(self, limit: int = 10) -> List[Dict[str, Any]]:
         """

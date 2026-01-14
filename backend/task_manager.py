@@ -285,6 +285,24 @@ class TaskManager:
         
         if info["current_index"] == info["total_count"]:
             info["status"] = "completed"
+            
+            # --- 回填知识库准确率 ---
+            # 当任务完成后，用当前准确率更新上一条优化分析记录的 accuracy_after
+            try:
+                results = info.get("results", [])
+                errors = info.get("errors", [])
+                if results:
+                    accuracy = (len(results) - len(errors)) / len(results)
+                    
+                    # 导入知识库模块并更新
+                    from optimizer_engine.knowledge_base import OptimizationKnowledgeBase
+                    project_id = info.get("project_id")
+                    if project_id:
+                        kb = OptimizationKnowledgeBase(project_id)
+                        if kb.update_latest_accuracy_after(accuracy):
+                            logging.info(f"[Task {task_id}] 已回填知识库的 accuracy_after: {accuracy*100:.1f}%")
+            except Exception as kb_err:
+                logging.warning(f"[Task {task_id}] 回填知识库准确率失败: {kb_err}")
         
         storage.save_task_status(info["project_id"], task_id, info)
 
