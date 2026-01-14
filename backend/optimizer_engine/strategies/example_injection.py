@@ -70,7 +70,11 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
 
 请按照以下要点完善提示词的 Few-Shot 场景示例部分：
 
-### 1. 示例类型覆盖
+### 1. 明确位置（Module Order: 8）
+- **先识别**原提示词中 Few-Shot 场景示例的具体位置。
+- 本模块必须位于**CoT 思维链引导之后**（第8个模块）。如果不在此位置，请将其移动到正确位置。
+
+### 2. 示例类型覆盖
 必须包含以下四类场景的示例，缺一不可：
 
 **单意图示例**:
@@ -98,7 +102,7 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
 - 判断依据: 问候语，不属于业务意图
 - 输出: {{"intent": ["无意图"], "confidence": 0.99}}
 
-### 2. 示例结构要求
+### 3. 示例结构要求
 每个示例必须包含：
 - Query（用户输入）
 - 上下文（如有）
@@ -106,12 +110,22 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
 - 判断依据（简要说明）
 - 输出结果（标准JSON格式）
 
-### 3. 示例质量要求
+### 4. 示例质量要求
 - 示例需贴合实际业务场景
 - 避免极端或罕见场景
 - 优先选择边界案例作为示例
 
-请使用 SEARCH/REPLACE 格式输出修改内容。
+### 5. 格式要求
+- 必须严格使用 `SEARCH/REPLACE` 格式输出修改内容。
+
+示例：
+```text
+<<<<<<< SEARCH
+(原有的示例内容)
+=======
+(优化后的示例内容)
+>>>>>>> REPLACE
+```
 """
         
         # 使用通用元优化方法（获得知识库历史支持）

@@ -354,7 +354,7 @@ class MultiStrategyOptimizer:
         
         # 阶段 5.1：快速筛选
         self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)})")
-        filtered_candidates = await self._rapid_evaluation(candidates, errors[:10], should_stop)
+        filtered_candidates = await self._rapid_evaluation(candidates, errors[:50], should_stop)
         if filtered_candidates:
             self.logger.info(f"筛选后的候选方案及其评分: {[(c['strategy'], round(c.get('score', 0), 4)) for c in filtered_candidates]}")
         
