@@ -135,7 +135,6 @@ class OptimizationKnowledgeBase:
             "applied_strategies": applied_strategies,
             "accuracy_before": accuracy_before,
             "accuracy_after": accuracy_after,
-            "accuracy_after": accuracy_after,
             "newly_failed_cases": newly_failed_cases,
             "diff": self._compute_diff(original_prompt, optimized_prompt)
         }
@@ -337,12 +336,12 @@ class OptimizationKnowledgeBase:
             lines.append(f"- 优化总结: {summary}")
             
             # 添加 Diff 信息
-            diff_content = record.get("diff", "")
-            if diff_content:
-                lines.append("- 修改 Diff:")
-                # 简单缩进显示
-                for d_line in diff_content.split('\n'):
-                    lines.append(f"  {d_line}")
+            # diff_content = record.get("diff", "")
+            # if diff_content:
+            #     lines.append("- 修改 Diff:")
+            #     # 简单缩进显示
+            #     for d_line in diff_content.split('\n'):
+            #         lines.append(f"  {d_line}")
             
             # 添加新增失败案例（去空格后原样输出）
             if newly_failed and len(newly_failed) > 0:
