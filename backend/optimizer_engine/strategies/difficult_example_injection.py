@@ -1,27 +1,9 @@
 """困难案例注入策略 - 将困难案例注入到few-shot示例中"""
-import re
+
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
 
-EXAMPLE_INJECTION_PROMPT = """你是提示词优化专家。当前提示词在处理一些困难案例时表现不佳。
-
-## 当前提示词
-{prompt}
-
-## 困难案例分析
-以下是模型难以正确处理的典型案例：
-{hard_cases}
-
-## 优化任务
-请在提示词中注入这些困难案例作为示例，帮助模型学会正确处理类似情况：
-
-1. **选择性注入**: 选择最具代表性的困难案例作为 few-shot 示例
-2. **格式统一**: 确保新增示例与原有示例格式一致
-3. **添加解释**: 可适当添加为什么这样分类的简短说明
-4. **保持模板变量**: 必须保留原有的 {{}} 模板变量
-
-请直接输出优化后的完整提示词："""
 
 
 class DifficultExampleInjectionStrategy(BaseStrategy):

@@ -260,10 +260,16 @@ class StrategyMatcher:
                     allowed_module_types.add(strategy_type)
         
         for name, strategy_class in STRATEGY_CLASSES.items():
+            # 模块策略过滤逻辑：
+            # - 如果 selected_modules 为 None（未启用标准模块优化），跳过所有模块策略
+            # - 如果 selected_modules 是列表（启用了标准模块优化），只执行选中的模块策略
             if name in all_module_strategy_types:
-                if selected_modules and len(selected_modules) > 0:
-                    if name not in allowed_module_types:
-                        continue
+                if selected_modules is None:
+                    # 未启用标准模块优化，跳过所有模块策略
+                    continue
+                elif len(selected_modules) > 0 and name not in allowed_module_types:
+                    # 启用了标准模块优化但该策略未被选中，跳过
+                    continue
             
             strategy = strategy_class(
                 llm_client=self.llm_client,
