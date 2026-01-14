@@ -13,6 +13,7 @@ import HistoryPanel from "./_components/HistoryPanel";
 import LogDetailModal from "./_components/LogDetailModal";
 import IterationDetailModal from "./_components/IterationDetailModal";
 import KnowledgeDetailModal from "./_components/KnowledgeDetailModal";
+import TestOutputModal from "@/app/components/TestOutputModal";
 
 // 统一使用相对路径
 const API_BASE = "/api";
@@ -27,6 +28,7 @@ export default function ProjectDetail() {
     const [showConfig, setShowConfig] = useState(false);
     const [configTab, setConfigTab] = useState<"verification" | "optimization">("verification");
     const [extractField, setExtractField] = useState("");
+    const [showTestModal, setShowTestModal] = useState(false);
     const [selectedLog, setSelectedLog] = useState<any>(null);
     const [isSaving, setIsSaving] = useState(false);
     // taskHistory is fetched but not used in the render? Ah, it was used to "restore recent task".
@@ -660,6 +662,7 @@ export default function ProjectDetail() {
                     setConfigTab("verification");
                     setShowConfig(true);
                 }}
+                onTest={() => setShowTestModal(true)}
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -767,6 +770,14 @@ export default function ProjectDetail() {
                 onUpdate={fetchKnowledgeBase}
                 showToast={showToast}
             />
+
+            {showTestModal && (
+                <TestOutputModal
+                    initialPrompt={project.current_prompt}
+                    initialModelConfig={project.model_config} // Pass verification model config
+                    onClose={() => setShowTestModal(false)}
+                />
+            )}
         </div>
     );
 }

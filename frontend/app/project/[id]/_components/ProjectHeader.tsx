@@ -8,6 +8,7 @@ interface ProjectHeaderProps {
     isSaving: boolean;
     onSave: () => void;
     onOpenConfig: () => void;
+    onTest: () => void;
 }
 
 export default function ProjectHeader({
@@ -15,7 +16,8 @@ export default function ProjectHeader({
     onNameChange,
     isSaving,
     onSave,
-    onOpenConfig
+    onOpenConfig,
+    onTest
 }: ProjectHeaderProps) {
     const [isEditingName, setIsEditingName] = useState(false);
 
@@ -45,6 +47,13 @@ export default function ProjectHeader({
                 )}
             </div>
             <div className="flex items-center gap-3">
+                <button
+                    onClick={onTest}
+                    className="flex items-center gap-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 border border-purple-500/30 px-4 py-2 rounded-xl transition-colors text-sm font-medium"
+                >
+                    <Activity size={18} />
+                    测试 Prompt
+                </button>
                 <button
                     onClick={onSave}
                     disabled={isSaving}

@@ -5,6 +5,7 @@ import axios from "axios";
 import { Plus, Rocket, FileText, ChevronRight, Activity, Settings, Trash2, Database } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import GlobalModelsConfig from "./components/GlobalModelsConfig";
+import TestOutputModal from "./components/TestOutputModal";
 
 // 统一使用相对路径，由 Next.js rewrites 转发到后端
 const API_BASE = "/api";
@@ -19,6 +20,7 @@ export default function Home() {
   const [password, setPassword] = useState("");
   // 公共模型配置弹窗状态
   const [showGlobalModels, setShowGlobalModels] = useState<boolean>(false);
+  const [showTestModal, setShowTestModal] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -75,6 +77,13 @@ export default function Home() {
           <p className="text-slate-400 mt-2">智能提示词优化与意图识别评测平台</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowTestModal(true)}
+            className="flex items-center gap-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 transition-colors px-4 py-3 rounded-xl font-medium border border-purple-500/30"
+          >
+            <Activity size={18} />
+            测试 Playground
+          </button>
           <button
             onClick={() => setShowGlobalModels(true)}
             className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 transition-colors px-4 py-3 rounded-xl font-medium border border-slate-600"
@@ -237,6 +246,10 @@ export default function Home() {
       {/* Global Models Config Modal */}
       {showGlobalModels && (
         <GlobalModelsConfig onClose={() => setShowGlobalModels(false)} />
+      )}
+
+      {showTestModal && (
+        <TestOutputModal onClose={() => setShowTestModal(false)} />
       )}
     </div>
   );
