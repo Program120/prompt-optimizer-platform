@@ -269,6 +269,9 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
         if validation_failed:
             iteration_record["is_failed"] = True
             iteration_record["failure_reason"] = failure_reason
+            iteration_record["not_applied"] = True
+            # 添加备注说明未应用提示词及原因
+            iteration_record["note"] = f"未应用提示词, 原因: {failure_reason}"
 
         # 重新获取项目以避免并发覆盖 (虽然这里还是有风险，但比直接用旧对象好)
         curr_project = storage.get_project(project_id)

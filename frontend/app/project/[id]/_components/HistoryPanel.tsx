@@ -407,7 +407,15 @@ export default function HistoryPanel({
                             >
                                 <div className="absolute left-[-4px] top-2 w-2 h-2 rounded-full bg-blue-500" />
                                 <div className="flex justify-between items-center mb-2">
-                                    <span className="text-sm font-bold">迭代 #{project.iterations.length - idx}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold">迭代 #{project.iterations.length - idx}</span>
+                                        {/* 未应用提示词标识 */}
+                                        {(it.not_applied || it.is_failed) && (
+                                            <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-[10px] rounded border border-orange-500/30">
+                                                未应用
+                                            </span>
+                                        )}
+                                    </div>
                                     <div className="flex items-center gap-2">
                                         <span className="text-[10px] text-slate-600">{new Date(it.created_at).toLocaleString()}</span>
                                         {onDeleteIteration && (
@@ -421,9 +429,9 @@ export default function HistoryPanel({
                                         )}
                                     </div>
                                 </div>
-                                <div className="text-xs bg-white/5 rounded-lg p-3 border border-white/5 hover:bg-white/10 transition-colors">
+                                <div className={`text-xs rounded-lg p-3 border transition-colors ${it.not_applied || it.is_failed ? "bg-orange-500/5 border-orange-500/20 hover:bg-orange-500/10" : "bg-white/5 border-white/5 hover:bg-white/10"}`}>
                                     <div className="flex justify-between items-start mb-1">
-                                        <div className="text-emerald-400 font-bold">准确率: {(it.accuracy * 100).toFixed(1)}%</div>
+                                        <div className={it.not_applied || it.is_failed ? "text-orange-400 font-bold" : "text-emerald-400 font-bold"}>准确率: {(it.accuracy * 100).toFixed(1)}%</div>
                                         {it.dataset_name && (
                                             <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded-full truncate max-w-[120px]" title={it.dataset_name}>
                                                 {it.dataset_name}

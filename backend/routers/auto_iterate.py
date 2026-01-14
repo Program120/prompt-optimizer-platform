@@ -279,9 +279,12 @@ async def start_auto_iterate(
                             logging.warning(f"[AutoIterate {project_id}] 优化验证失败: {failure_reason}")
                             status["message"] = f"第 {round_num}/{max_rounds} 轮: {failure_reason}"
                             
-                            # 保存失败的迭代记录
+                            # 保存失败的迭代记录（包含备注说明）
                             project = storage.get_project(project_id)
                             if project:
+                                # 构建备注内容：未应用提示词及原因
+                                not_applied_note = f"未应用提示词, 原因: {failure_reason}"
+                                
                                 project["iterations"].append({
                                     "old_prompt": current_prompt,
                                     "new_prompt": new_prompt,
@@ -291,6 +294,8 @@ async def start_auto_iterate(
                                     "created_at": datetime.now().isoformat(),
                                     "is_failed": True,
                                     "failure_reason": failure_reason,
+                                    "not_applied": True,
+                                    "note": not_applied_note,
                                     "applied_strategies": [s.get("name") for s in applied_strategies if s.get("success")]
                                 })
                                 # 不更新 current_prompt，保持原提示词
