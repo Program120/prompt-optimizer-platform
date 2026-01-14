@@ -10,8 +10,8 @@ const API_BASE = "/api";
 interface ExecutionPanelProps {
     taskStatus: any;
     fileInfo: any;
-    config: { query_col: string; target_col: string };
-    setConfig: (config: { query_col: string; target_col: string }) => void;
+    config: { query_col: string; target_col: string; reason_col?: string };
+    setConfig: (config: { query_col: string; target_col: string; reason_col?: string }) => void;
     extractField: string;
     setExtractField: (field: string) => void;
     autoIterateConfig: { enabled: boolean; maxRounds: number | ""; targetAccuracy: number | ""; strategy: "simple" | "multi" };
@@ -108,6 +108,7 @@ export default function ExecutionPanel({
                 </div>
             </div>
 
+
             {/* 第一行：数据导入 + 列映射配置 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {/* 数据导入卡片 */}
@@ -127,7 +128,7 @@ export default function ExecutionPanel({
                 {/* 列映射配置卡片 */}
                 <div className="bg-slate-800/40 border border-white/5 rounded-xl p-4">
                     <label className="block text-sm font-medium text-slate-400 mb-3">列映射配置</label>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1">
                             <label className="block text-xs text-blue-400 font-medium">Query 输入列</label>
                             <select
@@ -147,6 +148,17 @@ export default function ExecutionPanel({
                                 className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
                             >
                                 <option value="">选择列...</option>
+                                {fileInfo?.columns.map((c: string) => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="block text-xs text-slate-400 font-medium">原因列 (可选)</label>
+                            <select
+                                value={config.reason_col || ""}
+                                onChange={e => setConfig({ ...config, reason_col: e.target.value })}
+                                className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-slate-500 appearance-none cursor-pointer"
+                            >
+                                <option value="">无</option>
                                 {fileInfo?.columns.map((c: string) => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>

@@ -21,7 +21,7 @@ export default function ProjectDetail() {
     const { id } = useParams();
     const [project, setProject] = useState<any>(null);
     const [fileInfo, setFileInfo] = useState<any>(null);
-    const [config, setConfig] = useState({ query_col: "", target_col: "" });
+    const [config, setConfig] = useState<{ query_col: string; target_col: string; reason_col?: string }>({ query_col: "", target_col: "", reason_col: "" });
     const [taskStatus, setTaskStatus] = useState<any>(null);
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
@@ -131,7 +131,8 @@ export default function ProjectDetail() {
             if (res.data.config) {
                 setConfig({
                     query_col: res.data.config.query_col || "",
-                    target_col: res.data.config.target_col || ""
+                    target_col: res.data.config.target_col || "",
+                    reason_col: res.data.config.reason_col || ""
                 });
                 setExtractField(res.data.config.extract_field || "");
 
@@ -330,6 +331,7 @@ export default function ProjectDetail() {
         formData.append("file_id", fileInfo.file_id);
         formData.append("query_col", config.query_col);
         formData.append("target_col", config.target_col);
+        if (config.reason_col) formData.append("reason_col", config.reason_col);
         formData.append("prompt", project.current_prompt);
         if (extractField) formData.append("extract_field", extractField);
         if (validationLimit) formData.append("validation_limit", validationLimit.toString());

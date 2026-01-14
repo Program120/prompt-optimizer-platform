@@ -351,8 +351,11 @@ class OptimizationKnowledgeBase:
                     query: str = str(case.get("query", "")).strip()
                     target: str = str(case.get("target", "")).strip()
                     output: str = str(case.get("output", "")).strip()
+                    reason: str = str(case.get("reason", "")).strip()
+                    
                     lines.append(f"  - Query: {query}")
-                    lines.append(f"    Expected: {target} | Actual: {output}")
+                    reason_text = f" | 原因: {reason}" if reason else " | 原因: 空"
+                    lines.append(f"    期望: {target}{reason_text} | 实际: {output}")
             
             lines.append("")
         

@@ -15,6 +15,7 @@ async def start_task(
     file_id: str = Form(...),
     query_col: str = Form(...),
     target_col: str = Form(...),
+    reason_col: Optional[str] = Form(None),
     prompt: str = Form(...),
     extract_field: Optional[str] = Form(None),
     original_filename: Optional[str] = Form(None),
@@ -43,7 +44,7 @@ async def start_task(
     if not is_interface_mode and (not model_config or not model_config.get("api_key")):
         raise HTTPException(status_code=400, detail="请先在项目设置中配置模型参数(API Key)")
 
-    task_id = tm.create_task(project_id, file_path, query_col, target_col, prompt, model_config, extract_field, original_filename, validation_limit)
+    task_id = tm.create_task(project_id, file_path, query_col, target_col, prompt, model_config, extract_field, original_filename, validation_limit, reason_col=reason_col)
     return {"task_id": task_id}
 
 @router.get("/{task_id}")

@@ -308,8 +308,12 @@ class IntentAnalyzer:
             query: str = str(err.get("query", ""))
             target: str = str(err.get("target", ""))
             output: str = str(err.get("output", ""))
+            reason: str = str(err.get("reason", ""))
+            
             lines.append(f"- 输入: {query}")
-            lines.append(f"  预期: {target} | 实际: {output}")
+            # 如果有原因且不为空，显示原因
+            reason_text = f" | 原因: {reason}" if reason else " | 原因: 空"
+            lines.append(f"  预期: {target}{reason_text} | 实际: {output}")
         return "\n".join(lines) if lines else "无错误样例"
         
     def _generate_overall_summary(

@@ -20,7 +20,7 @@ class TaskManager:
                     cls._instance.tasks = {} # task_id -> {status, thread, stop_event, pause_event}
         return cls._instance
 
-    def create_task(self, project_id: str, file_path: str, query_col: str, target_col: str, prompt: str, model_config: Dict[str, str], extract_field: Optional[str] = None, original_filename: Optional[str] = None, validation_limit: Optional[int] = None):
+    def create_task(self, project_id: str, file_path: str, query_col: str, target_col: str, prompt: str, model_config: Dict[str, str], extract_field: Optional[str] = None, original_filename: Optional[str] = None, validation_limit: Optional[int] = None, reason_col: Optional[str] = None):
         task_id = f"task_{int(time.time())}"
         
         # 加载数据以校验
@@ -38,6 +38,7 @@ class TaskManager:
             "total_count": len(df),
             "query_col": query_col,
             "target_col": target_col,
+            "reason_col": reason_col,
             "prompt": prompt,
             "extract_field": extract_field, # 保存需要提取的字段名
             "model_config": model_config,   # 保存模型配置
@@ -85,6 +86,7 @@ class TaskManager:
         
         query_col = info["query_col"]
         target_col = info["target_col"]
+        reason_col = info.get("reason_col")
         prompt = info["prompt"]
         extract_field = info.get("extract_field")
         model_config = info.get("model_config", {"base_url": "https://api.openai.com/v1", "api_key": ""})
@@ -141,11 +143,16 @@ class TaskManager:
             # 获取原始值
             raw_query = df.iloc[i][query_col]
             raw_target = df.iloc[i][target_col]
-            
+            # 获取原因列的值 (如果配置了)
+            raw_reason = None
+            if reason_col and reason_col in df.columns:
+                raw_reason = df.iloc[i][reason_col]
+
             # 处理 NaN 值：Pandas 读取空单元格时会产生 float('nan')
             # 使用 pd.isna() 检测并转换为空字符串，避免 str(nan) 产生 "nan" 字符串
             query = "" if pd.isna(raw_query) else str(raw_query)
             target = "" if pd.isna(raw_target) else str(raw_target)
+            reason = "" if pd.isna(raw_reason) else str(raw_reason)
             
             try:
                 validation_mode = model_config.get("validation_mode", "llm")
@@ -229,6 +236,7 @@ class TaskManager:
                     "index": i,
                     "query": query,
                     "target": target,
+                    "reason": reason,
                     "output": output,
                     "is_correct": self._check_match(output, target, extract_field)
                 }
@@ -238,6 +246,7 @@ class TaskManager:
                     "index": i,
                     "query": query,
                     "target": target,
+                    "reason": reason,
                     "output": f"ERROR: {str(e)}",
                     "is_correct": False
                 }

@@ -24,6 +24,7 @@ async def start_auto_iterate(
     file_id: str = Form(...),
     query_col: str = Form(...),
     target_col: str = Form(...),
+    reason_col: Optional[str] = Form(None),
     prompt: str = Form(...),
     max_rounds: int = Form(5),
     target_accuracy: float = Form(0.95),
@@ -57,6 +58,7 @@ async def start_auto_iterate(
         "file_id": file_id,
         "query_col": query_col,
         "target_col": target_col,
+        "reason_col": reason_col,
         "prompt": prompt,
         "extract_field": extract_field,
         "file_path": file_path,
@@ -100,7 +102,7 @@ async def start_auto_iterate(
                 if not model_config:
                     model_config = storage.get_model_config()
                     
-                task_id = tm.create_task(project_id, path, query_col, target_col, current_prompt, model_config, extract_field, validation_limit=validation_limit)
+                task_id = tm.create_task(project_id, path, query_col, status.get("target_col"), current_prompt, model_config, extract_field, validation_limit=validation_limit, reason_col=status.get("reason_col"))
                 
                 status["task_id"] = task_id
                 storage.save_auto_iterate_status(project_id, status)
