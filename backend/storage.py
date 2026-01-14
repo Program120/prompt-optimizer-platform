@@ -210,6 +210,7 @@ def create_global_model(model_data: Dict[str, Any]) -> Dict[str, Any]:
         "max_tokens": model_data.get("max_tokens", 2000),
         "temperature": model_data.get("temperature", 0.0),
         "timeout": model_data.get("timeout", 60),
+        "concurrency": model_data.get("concurrency", 5),
         "extra_body": model_data.get("extra_body", None),
         "default_headers": model_data.get("default_headers", None),
         "created_at": datetime.now().isoformat(),
@@ -235,7 +236,7 @@ def update_global_model(model_id: str, updates: Dict[str, Any]) -> Optional[Dict
             # 更新允许的字段
             allowed_fields: List[str] = [
                 "name", "base_url", "api_key", "model_name", 
-                "max_tokens", "temperature", "timeout",
+                "max_tokens", "temperature", "timeout", "concurrency",
                 "extra_body", "default_headers"
             ]
             for field in allowed_fields:

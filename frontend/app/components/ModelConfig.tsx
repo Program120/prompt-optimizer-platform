@@ -72,6 +72,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         max_tokens: 2000,
         timeout: 180,  // 优化任务需要更长的超时时间
         model_name: "gpt-3.5-turbo",
+        concurrency: 5,
         temperature: 0.7,
         extra_body: "",
         default_headers: ""
@@ -151,6 +152,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 max_tokens: model.max_tokens,
                 temperature: model.temperature,
                 timeout: model.timeout,
+                concurrency: model.concurrency || 5,
                 extra_body: model.extra_body ? JSON.stringify(model.extra_body, null, 2) : "",
                 default_headers: model.default_headers ? JSON.stringify(model.default_headers, null, 2) : ""
             }));
@@ -174,6 +176,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 max_tokens: model.max_tokens,
                 temperature: model.temperature,
                 timeout: model.timeout,
+                concurrency: model.concurrency || 5,
                 extra_body: model.extra_body ? JSON.stringify(model.extra_body, null, 2) : "",
                 default_headers: model.default_headers ? JSON.stringify(model.default_headers, null, 2) : ""
             }));
@@ -543,29 +546,27 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                                 placeholder="60"
                             />
                         </div>
-                        {isVerification && (
-                            <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1.5">并发度</label>
-                                <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={cfg.concurrency}
-                                    onChange={e => {
-                                        const val = e.target.value;
-                                        if (val === '' || /^\d*$/.test(val)) {
-                                            setCfg({ ...cfg, concurrency: val === '' ? '' : parseInt(val) });
-                                        }
-                                    }}
-                                    onBlur={e => {
-                                        const val = parseInt(e.target.value);
-                                        const finalVal = isNaN(val) || val < 1 ? 5 : Math.min(val, 50);
-                                        setCfg({ ...cfg, concurrency: finalVal });
-                                    }}
-                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
-                                    placeholder="5"
-                                />
-                            </div>
-                        )}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">并发度</label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                value={cfg.concurrency}
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    if (val === '' || /^\d*$/.test(val)) {
+                                        setCfg({ ...cfg, concurrency: val === '' ? '' : parseInt(val) });
+                                    }
+                                }}
+                                onBlur={e => {
+                                    const val = parseInt(e.target.value);
+                                    const finalVal = isNaN(val) || val < 1 ? 5 : Math.min(val, 50);
+                                    setCfg({ ...cfg, concurrency: finalVal });
+                                }}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                                placeholder="5"
+                            />
+                        </div>
                     </div>
                 </div>
             )}

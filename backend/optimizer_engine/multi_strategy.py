@@ -42,8 +42,8 @@ class MultiStrategyOptimizer:
         self.model_config: Dict[str, Any] = model_config or {}
         
         # 初始化并发控制信号量
-        # 默认并发度为 5，可通过 model_config['max_concurrency'] 配置
-        max_concurrency = int(self.model_config.get("max_concurrency", 5))
+        # 默认并发度为 5，可通过 model_config['concurrency'] 配置
+        max_concurrency = int(self.model_config.get("concurrency", 5))
         self.semaphore = asyncio.Semaphore(max_concurrency)
         self.logger: logging.Logger = logging.getLogger(__name__)
         
