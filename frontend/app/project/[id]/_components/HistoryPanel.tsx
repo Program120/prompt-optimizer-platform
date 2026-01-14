@@ -42,6 +42,11 @@ export default function HistoryPanel({
     // Note editing state
     const [editingNote, setEditingNote] = useState<{ type: 'task' | 'iteration' | 'knowledge', id: string, value: string } | null>(null);
 
+    // Optimistic UI state for notes: stores { [key]: noteValue }
+    // Key format: `${type}_${id}`
+    // This allows immediate feedback while background refresh happens
+    const [localNotes, setLocalNotes] = useState<Record<string, string>>({});
+
     // 格式化时间戳
     const formatTime = (timestamp: string) => {
         if (!timestamp) return "未知";
@@ -111,27 +116,38 @@ export default function HistoryPanel({
 
     const startEditingNote = (e: React.MouseEvent, type: 'task' | 'iteration' | 'knowledge', id: string, currentNote: string) => {
         e.stopPropagation();
-        setEditingNote({ type, id, value: currentNote || "" });
+        // Use local note if available for most up-to-date value
+        const key = `${type}_${id}`;
+        const noteValue = localNotes[key] !== undefined ? localNotes[key] : (currentNote || "");
+        setEditingNote({ type, id, value: noteValue });
     };
 
     const saveNote = async (e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
         if (!editingNote) return;
 
+        const { type, id, value } = editingNote;
+        const key = `${type}_${id}`;
+        const previousValue = localNotes[key];
+
+        // Optimistic update
+        setLocalNotes(prev => ({ ...prev, [key]: value }));
+        setEditingNote(null);
+
         try {
             let url = "";
             let method = "PUT";
             let body = {};
 
-            if (editingNote.type === 'task') {
-                url = `${API_BASE}/projects/${project.id}/tasks/${editingNote.id}/note`;
-                body = { note: editingNote.value };
-            } else if (editingNote.type === 'iteration') {
-                url = `${API_BASE}/projects/${project.id}/iterations/${editingNote.id}/note`;
-                body = { note: editingNote.value };
-            } else if (editingNote.type === 'knowledge') {
-                url = `${API_BASE}/projects/${project.id}/knowledge-base/${editingNote.id}`;
-                body = { note: editingNote.value };
+            if (type === 'task') {
+                url = `${API_BASE}/projects/${project.id}/tasks/${id}/note`;
+                body = { note: value };
+            } else if (type === 'iteration') {
+                url = `${API_BASE}/projects/${project.id}/iterations/${id}/note`;
+                body = { note: value };
+            } else if (type === 'knowledge') {
+                url = `${API_BASE}/projects/${project.id}/knowledge-base/${id}`;
+                body = { note: value };
             }
 
             const response = await fetch(url, {
@@ -141,20 +157,40 @@ export default function HistoryPanel({
             });
 
             if (response.ok) {
-                setEditingNote(null);
                 if (onRefresh) onRefresh();
             } else {
+                // Revert on failure
+                setLocalNotes(prev => {
+                    const newState = { ...prev };
+                    if (previousValue !== undefined) {
+                        newState[key] = previousValue;
+                    } else {
+                        delete newState[key];
+                    }
+                    return newState;
+                });
                 alert("保存备注失败");
             }
         } catch (err) {
             console.error(err);
+            // Revert on error
+            setLocalNotes(prev => {
+                const newState = { ...prev };
+                if (previousValue !== undefined) {
+                    newState[key] = previousValue;
+                } else {
+                    delete newState[key];
+                }
+                return newState;
+            });
             alert("保存备注出错");
         }
     };
 
     const renderNoteSection = (item: any, type: 'task' | 'iteration' | 'knowledge', id: string) => {
         const isEditing = editingNote?.type === type && editingNote?.id === id;
-        const note = item.note || "";
+        const key = `${type}_${id}`;
+        const note = localNotes[key] !== undefined ? localNotes[key] : (item.note || "");
 
         return (
             <div className="mt-2 pt-2 border-t border-white/5" onClick={e => e.stopPropagation()}>
