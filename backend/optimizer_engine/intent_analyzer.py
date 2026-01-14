@@ -40,12 +40,15 @@ class IntentAnalyzer:
 ## 主要混淆目标
 {confusion_targets}
 
-请分析：
+请根据以上错误案例进行分析，回答：
 1. 这些错误的共同特征是什么？
 2. 为什么模型会将这些输入错误分类？
 3. 提供 2-3 条针对性的改进建议
 
-请用专业、详尽的文字回答，充分分析错误模式和改进方向。"""
+【重要约束】
+- 请用简洁、专业的语言总结
+- 总结必须控制在 1000 字以内
+- 聚焦核心问题，不要冗余描述"""
 
     def __init__(
         self, 
@@ -126,6 +129,7 @@ class IntentAnalyzer:
                 intent_confusion[intent].most_common(3)
             )
             
+            # 保留该意图的所有错误案例（最多 50 个），供深度分析使用
             top_failing_intents.append({
                 "intent": intent,
                 "error_count": count,
@@ -133,7 +137,7 @@ class IntentAnalyzer:
                 "confusion_targets": [
                     {"target": t, "count": c} for t, c in confusion_targets
                 ],
-                "sample_errors": intent_errors[intent][:5]
+                "sample_errors": intent_errors[intent][:50]
             })
             
         return {
@@ -149,16 +153,22 @@ class IntentAnalyzer:
     async def deep_analyze_top_failures(
         self,
         errors: List[Dict[str, Any]],
-        top_n: int = 10,
+        top_n: int = 3,
         should_stop: Any = None
     ) -> Dict[str, Any]:
         """
         对 Top N 失败意图进行 LLM 深度分析 (并发版本)
         
+        功能说明：
+        1. 选取错误数最多的 top_n（默认 3）个意图
+        2. 每个意图最多选取 50 个错误案例
+        3. 以 markdown 表格格式（期望、实际、原因列）拼接到提示词中
+        4. 让模型对每个意图的错误案例做简短总结（不超过 1000 字）
+        
         使用 asyncio.gather 并发执行所有意图分析，利用信号量控制并发数
         
         :param errors: 错误样例列表
-        :param top_n: 分析的失败意图数量
+        :param top_n: 分析的失败意图数量，默认 3
         :param should_stop: 停止回调函数
         :return: 深度分析结果
         """
@@ -297,25 +307,62 @@ class IntentAnalyzer:
         max_samples: int = 50
     ) -> str:
         """
-        格式化错误样例
+        格式化错误样例为 markdown 表格
+        
+        表格列: 期望(Target)、实际(Output)、原因(Reason)
         
         :param errors: 错误样例列表
-        :param max_samples: 最大样例数
-        :return: 格式化的错误样例文本
+        :param max_samples: 最大样例数，默认 50
+        :return: markdown 表格格式的错误样例文本
         """
-        lines: List[str] = []
-        for err in errors[:max_samples]:
-            query: str = str(err.get("query", ""))
-            target: str = str(err.get("target", ""))
-            output: str = str(err.get("output", ""))
-            reason: str = str(err.get("reason", ""))
-            
-            lines.append(f"- 输入: {query}")
-            # 如果有原因且不为空，显示原因
-            reason_text = f" | 原因: {reason}" if reason else ""
-            lines.append(f"  预期: {target}{reason_text} | 实际: {output}")
-        return "\n".join(lines) if lines else "无错误样例"
+        if not errors:
+            return "无错误样例"
         
+        # 构建 markdown 表格
+        lines: List[str] = []
+        
+        # 表头
+        lines.append("| 期望 | 实际 | 原因 |")
+        lines.append("|:---|:---|:---|")
+        
+        # 表格内容（最多 max_samples 个）
+        for err in errors[:max_samples]:
+            target: str = str(err.get("target", "")).replace("|", "\\|").strip()
+            output_raw: str = str(err.get("output", "")).strip()
+            reason: str = str(err.get("reason", "-")).replace("|", "\\|").strip()
+            
+            # 尝试对 output 做 JSON 压缩（去除空格和换行）
+            output: str = self._compress_json_output(output_raw).replace("|", "\\|")
+            
+            # 如果原因为空，显示占位符
+            if not reason or reason == "None":
+                reason = "-"
+            
+            lines.append(f"| {target} | {output} | {reason} |")
+        
+        return "\n".join(lines)
+    
+    def _compress_json_output(self, output_raw: str) -> str:
+        """
+        压缩 JSON 格式的输出，去除空格和换行
+        
+        :param output_raw: 原始输出字符串
+        :return: 压缩后的字符串
+        """
+        import json
+        
+        # 如果不是 JSON 格式，直接返回
+        if not output_raw.strip().startswith("{"):
+            return output_raw
+        
+        try:
+            # 解析并重新序列化，使用 separators 去除空格
+            data: Dict[str, Any] = json.loads(output_raw)
+            return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        except json.JSONDecodeError:
+            # JSON 解析失败，手动去除换行和多余空格
+            return " ".join(output_raw.split())
+    
     def _generate_overall_summary(
         self, 
         analyses: List[Dict[str, Any]]

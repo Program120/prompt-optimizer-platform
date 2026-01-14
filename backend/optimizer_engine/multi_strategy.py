@@ -265,11 +265,12 @@ class MultiStrategyOptimizer:
             return {"optimized_prompt": prompt, "message": "Stopped"}
         
         # 阶段 3：Top 失败意图深度分析
+        # 选取错误数最多的 top 3 个意图，每个意图最多 50 个错误案例
         self.logger.info("步骤 3: Top 失败意图深度分析...")
-        self.logger.info(f"开始分析 Top 失败意图，错误样本数: {len(errors)}, 最大分析数: 50")
+        self.logger.info(f"开始分析 Top 3 失败意图，错误样本数: {len(errors)}")
         deep_analysis: Dict[str, Any] = await self.intent_analyzer.deep_analyze_top_failures(
             errors, 
-            top_n=50,
+            top_n=3,
             should_stop=should_stop
         )
         
