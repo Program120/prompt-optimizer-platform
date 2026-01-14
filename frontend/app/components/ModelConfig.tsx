@@ -46,6 +46,18 @@ const formatJSON = (obj: any): string => {
     }
 };
 
+const STANDARD_MODULES = [
+    { id: 1, name: "角色与任务定义", desc: "明确专家身份、识别边界与场景范围" },
+    { id: 2, name: "全局约束规则", desc: "设定多意图、歧义处理及红线规则" },
+    { id: 3, name: "Query 预处理", desc: "黑话转换、纠错及口语补全" },
+    { id: 4, name: "意图体系定义", desc: "标准意图字典与核心判断标准" },
+    { id: 5, name: "上下文与指代", desc: "多轮对话补全与代词解析规则" },
+    { id: 6, name: "业务专属数据", desc: "注入订单/商品/政策等业务字典" },
+    { id: 7, name: "CoT 思维链", desc: "强制输出判断逻辑，提升可解释性" },
+    { id: 8, name: "Few-Shot 示例", desc: "覆盖单/多意图及澄清场景的典型案例" },
+    { id: 9, name: "标准化输出", desc: "统一 JSON 格式与字段定义" }
+];
+
 export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "verification" }: { onClose: () => void; projectId?: string; onSave?: () => void; defaultTab?: "verification" | "optimization" }) {
     const { success, error, toast } = useToast();
     const [activeTab, setActiveTab] = useState<"verification" | "optimization">(defaultTab);
@@ -75,7 +87,9 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         concurrency: 5,
         temperature: 0.7,
         extra_body: "",
-        default_headers: ""
+        default_headers: "",
+        enable_standard_module: false,
+        selected_modules: [] as number[]
     });
     const [optPrompt, setOptPrompt] = useState("");
 
@@ -724,7 +738,106 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                             </h3>
                             {activeTab === "verification"
                                 ? renderConfigForm(config, setConfig, true)
-                                : renderConfigForm(optConfig, setOptConfig, false)
+                                : (
+                                    <>
+                                        {/* 优化范围配置 */}
+                                        <div className="space-y-4 mb-6 pb-6 border-b border-white/10">
+                                            <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                                                <span className="w-1.5 h-1.5 bg-pink-500 rounded-full"></span>
+                                                优化范围配置
+                                            </h3>
+
+                                            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="pt-1">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={optConfig.enable_standard_module || false}
+                                                            onChange={(e) => setOptConfig({ ...optConfig, enable_standard_module: e.target.checked })}
+                                                            className="w-4 h-4 rounded border-slate-600/50 bg-slate-700/50 text-blue-500 focus:ring-offset-0 focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <label className="text-sm font-medium text-slate-200">
+                                                                标准意图识别模块优化
+                                                            </label>
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                                                推荐
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-400 leading-relaxed mb-3">
+                                                            基于行业最佳实践，自动构建和优化包含以下9大核心模块的标准化意图识别系统。
+                                                        </p>
+
+                                                        {/* 模块详情折叠面板 */}
+                                                        <details className="group" open={optConfig.enable_standard_module}>
+                                                            <summary className="text-xs text-blue-400 cursor-pointer hover:text-blue-300 transition-colors flex items-center gap-1 select-none mt-2">
+                                                                <ChevronDown size={14} className="transform group-open:rotate-180 transition-transform" />
+                                                                配置包含的 9 大标准模块
+                                                            </summary>
+                                                            <div className="mt-3 space-y-2 pl-1 border-l-2 border-white/5">
+                                                                <div className="flex gap-2 mb-2">
+                                                                    <button
+                                                                        onClick={() => setOptConfig({
+                                                                            ...optConfig,
+                                                                            selected_modules: STANDARD_MODULES.map(m => m.id)
+                                                                        })}
+                                                                        disabled={!optConfig.enable_standard_module}
+                                                                        className="text-[10px] px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                                                                    >
+                                                                        全选
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setOptConfig({ ...optConfig, selected_modules: [] })}
+                                                                        disabled={!optConfig.enable_standard_module}
+                                                                        className="text-[10px] px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                                                                    >
+                                                                        清空
+                                                                    </button>
+                                                                </div>
+                                                                {STANDARD_MODULES.map(item => (
+                                                                    <div key={item.id} className={`flex items-start gap-2 text-xs p-1.5 rounded-lg transition-colors ${optConfig.enable_standard_module ? "hover:bg-white/5 cursor-pointer" : "opacity-50"}`}
+                                                                        onClick={() => {
+                                                                            if (!optConfig.enable_standard_module) return;
+                                                                            const current = optConfig.selected_modules || [];
+                                                                            const isSelected = current.includes(item.id);
+                                                                            let newSelected;
+                                                                            if (isSelected) {
+                                                                                newSelected = current.filter(id => id !== item.id);
+                                                                            } else {
+                                                                                newSelected = [...current, item.id];
+                                                                            }
+                                                                            setOptConfig({ ...optConfig, selected_modules: newSelected });
+                                                                        }}
+                                                                    >
+                                                                        <div className="pt-0.5">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={optConfig.selected_modules?.includes(item.id) || false}
+                                                                                onChange={() => { }} // Handled by div click
+                                                                                disabled={!optConfig.enable_standard_module}
+                                                                                className="w-3.5 h-3.5 rounded border-slate-600/50 bg-slate-700/50 text-blue-500 focus:ring-offset-0 focus:ring-1 focus:ring-blue-500 cursor-pointer pointer-events-none"
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className={`font-medium mr-1.5 ${optConfig.selected_modules?.includes(item.id) ? "text-blue-300" : "text-slate-400"}`}>
+                                                                                {item.id}. {item.name}
+                                                                            </span>
+                                                                            <span className="text-slate-500 block mt-0.5 transform scale-95 origin-top-left">- {item.desc}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </details>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {renderConfigForm(optConfig, setOptConfig, false)}
+                                    </>
+                                )
                             }
                         </div>
 

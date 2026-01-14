@@ -102,7 +102,8 @@ class MultiStrategyOptimizer:
         max_strategies: int = 1,
         project_id: Optional[str] = None,
         should_stop: Any = None,
-        newly_failed_cases: Optional[List[Dict[str, Any]]] = None
+        newly_failed_cases: Optional[List[Dict[str, Any]]] = None,
+        selected_modules: Optional[List[int]] = None
     ) -> Dict[str, Any]:
         """
         执行多策略优化（增强版七阶段工作流）
@@ -123,6 +124,7 @@ class MultiStrategyOptimizer:
         :param max_strategies: 最多应用的策略数量
         :param project_id: 项目ID（用于知识库）
         :param newly_failed_cases: 新增的失败案例（上一轮成功，本轮失败）
+        :param selected_modules: 用户选择的标准模块ID列表（对应前端 STANDARD_MODULES 的 id）
         :return: 优化结果字典
         """
         if not errors:
@@ -314,10 +316,24 @@ class MultiStrategyOptimizer:
         
         # 阶段 4：策略匹配
         self.logger.info("步骤 4: 策略匹配...")
-        strategies = self.matcher.match_strategies(diagnosis, max_strategies)
-        self.logger.info(f"匹配到的策略: {[s.name for s in strategies]}")
+        
+        # 策略匹配：将 selected_modules 传递给 match_strategies
+        # match_strategies 会自动过滤：
+        # - 9个模块策略中只有选中的才会参与评估
+        # - 其他非模块策略照常参与评估
         if hasattr(self.matcher, 'get_preset_strategies') and strategy_mode != 'auto':
-             strategies = self.matcher.get_preset_strategies(strategy_mode)[:max_strategies]
+            strategies = self.matcher.get_preset_strategies(strategy_mode)[:max_strategies]
+            self.logger.info(f"根据预设模式 '{strategy_mode}' 匹配策略: {[s.name for s in strategies]}")
+        else:
+            strategies = self.matcher.match_strategies(
+                diagnosis, 
+                max_strategies, 
+                selected_modules=selected_modules
+            )
+            if selected_modules and len(selected_modules) > 0:
+                self.logger.info(f"自动匹配策略（已过滤模块 {selected_modules}）: {[s.name for s in strategies]}")
+            else:
+                self.logger.info(f"自动匹配策略: {[s.name for s in strategies]}")
         
         # 检查停止信号
         if self._is_stopped(should_stop, "步骤 4 完成后"): 

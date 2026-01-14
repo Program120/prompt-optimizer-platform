@@ -15,6 +15,8 @@ from .strategies.custom_data_optimize import CustomDataOptimizationStrategy
 from .strategies.global_constraint_optimize import GlobalConstraintOptimizationStrategy
 from .strategies.intent_definition_optimize import IntentDefinitionOptimizationStrategy
 from .strategies.query_rewrite_optimize import QueryRewriteOptimizationStrategy
+from .strategies.role_task_definition_optimize import RoleTaskDefinitionStrategy
+from .strategies.output_format_optimize import OutputFormatOptimizationStrategy
 
 
 # 策略组合预设
@@ -72,7 +74,23 @@ STRATEGY_CLASSES: Dict[str, Type[BaseStrategy]] = {
     "custom_data_optimization": CustomDataOptimizationStrategy,
     "global_constraint_optimization": GlobalConstraintOptimizationStrategy,
     "intent_definition_optimization": IntentDefinitionOptimizationStrategy,
-    "query_rewrite_optimization": QueryRewriteOptimizationStrategy
+    "query_rewrite_optimization": QueryRewriteOptimizationStrategy,
+    "role_task_definition": RoleTaskDefinitionStrategy,
+    "output_format_optimization": OutputFormatOptimizationStrategy
+}
+
+# 模块ID到策略类型的映射
+# 这个映射对应前端 ModelConfig.tsx 中 STANDARD_MODULES 的定义
+MODULE_STRATEGY_MAP: Dict[int, str] = {
+    1: "role_task_definition",           # 角色与任务定义
+    2: "global_constraint_optimization", # 全局约束规则
+    3: "query_rewrite_optimization",     # Query 预处理
+    4: "intent_definition_optimization", # 意图体系定义
+    5: "context_enhancement",            # 上下文与指代
+    6: "custom_data_optimization",       # 业务专属数据
+    7: "cot_reasoning",                  # CoT 思维链
+    8: "difficult_example_injection",    # Few-Shot 示例
+    9: "output_format_optimization"      # 标准化输出
 }
 
 
@@ -100,7 +118,8 @@ class StrategyMatcher:
     def match_strategies(
         self, 
         diagnosis: Dict[str, Any],
-        max_strategies: int = 1
+        max_strategies: int = 1,
+        selected_modules: List[int] = None
     ) -> List[BaseStrategy]:
         """
         基于诊断结果匹配合适的优化策略
@@ -108,14 +127,38 @@ class StrategyMatcher:
         Args:
             diagnosis: 诊断分析结果
             max_strategies: 最多返回的策略数量
+            selected_modules: 用户选择的模块ID列表。
+                              如果指定，则9个模块策略中只有选中的才会参与评估，
+                              其他非模块策略（如 meta_optimization）照常参与。
             
         Returns:
             策略实例列表（按优先级排序）
         """
         candidates = []
         
+        # 获取所有模块策略的类型名称集合
+        all_module_strategy_types: set = set(MODULE_STRATEGY_MAP.values())
+        
+        # 如果用户指定了 selected_modules，则计算允许参与评估的模块策略类型
+        allowed_module_types: set = set()
+        if selected_modules and len(selected_modules) > 0:
+            for module_id in selected_modules:
+                strategy_type = MODULE_STRATEGY_MAP.get(module_id)
+                if strategy_type:
+                    allowed_module_types.add(strategy_type)
+        
         # 获取所有策略类并评估适用性
         for name, strategy_class in STRATEGY_CLASSES.items():
+            # 过滤逻辑：
+            # 如果当前策略是模块策略（属于9个模块之一）
+            if name in all_module_strategy_types:
+                # 如果用户指定了 selected_modules, 则只允许选中的模块策略参与
+                if selected_modules and len(selected_modules) > 0:
+                    if name not in allowed_module_types:
+                        # 未选中的模块策略，跳过
+                        continue
+            # 非模块策略（如 meta_optimization）照常参与
+            
             strategy = strategy_class(
                 llm_client=self.llm_client,
                 model_config=self.model_config,
@@ -175,3 +218,30 @@ class StrategyMatcher:
             return "initial"  # 指令不清晰
         else:
             return "advanced"  # 高级优化
+    
+    def get_module_strategies(
+        self, 
+        selected_modules: List[int]
+    ) -> List[BaseStrategy]:
+        """
+        根据用户选择的模块ID列表返回对应的策略实例
+        
+        用于「标准意图识别模块优化」模式，只执行用户勾选的模块对应的策略
+        
+        :param selected_modules: 用户选择的模块ID列表（对应前端 STANDARD_MODULES 的 id）
+        :return: 策略实例列表（按模块ID顺序排列）
+        """
+        strategies: List[BaseStrategy] = []
+        
+        for module_id in selected_modules:
+            strategy_type: str = MODULE_STRATEGY_MAP.get(module_id)
+            if strategy_type and strategy_type in STRATEGY_CLASSES:
+                strategy = STRATEGY_CLASSES[strategy_type](
+                    llm_client=self.llm_client,
+                    model_config=self.model_config,
+                    semaphore=self.semaphore
+                )
+                strategies.append(strategy)
+        
+        return strategies
+

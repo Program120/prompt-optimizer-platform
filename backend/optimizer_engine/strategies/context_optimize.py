@@ -1,45 +1,106 @@
+"""
+上下文与指代处理优化策略
+
+针对指代消解错误和上下文依赖丢失，增加显式指令和示例。
+"""
 from typing import List, Dict, Any
 from .base import BaseStrategy
+
 
 class ContextEnhancementStrategy(BaseStrategy):
     """
     上下文增强策略
+    
     针对指代消解错误和上下文依赖丢失，增加显式指令和示例。
+    对应模块5：上下文与指代处理规则
     """
     
-    @property
-    def name(self) -> str:
-        return "context_enhancement"
+    name: str = "context_enhancement"
+    priority: int = 85
+    description: str = "上下文增强策略：解决多轮对话中的语义断裂和指代消解问题"
         
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
-        adv_diag = diagnosis.get("advanced_diagnosis", {})
+        """
+        判断策略是否适用
+        
+        :param diagnosis: 诊断分析结果
+        :return: 是否适用
+        """
+        adv_diag: Dict[str, Any] = diagnosis.get("advanced_diagnosis", {})
         return adv_diag.get("context_analysis", {}).get("has_issue", False)
 
     def get_priority(self, diagnosis: Dict[str, Any]) -> int:
-        return 85 # 高优先级
+        """
+        获取策略优先级
+        
+        :param diagnosis: 诊断分析结果
+        :return: 优先级分数
+        """
+        return 85
 
-    def apply(self, prompt: str, errors: List[Dict[str, Any]], diagnosis: Dict[str, Any]) -> str:
+    def apply(
+        self, 
+        prompt: str, 
+        errors: List[Dict[str, Any]], 
+        diagnosis: Dict[str, Any]
+    ) -> str:
+        """
+        应用上下文增强策略
+        
+        :param prompt: 当前提示词
+        :param errors: 错误样例列表
+        :param diagnosis: 诊断分析结果
+        :return: 优化后的提示词
+        """
         # 获取高级诊断结果
-        adv_diag = diagnosis.get("advanced_diagnosis", {})
-        ctx_analysis = adv_diag.get("context_analysis", {})
+        adv_diag: Dict[str, Any] = diagnosis.get("advanced_diagnosis", {})
+        ctx_analysis: Dict[str, Any] = adv_diag.get("context_analysis", {})
         
-        # 如果没有显著的上下文问题，直接返回原 Prompt 或仅做轻微优化
-        # 但为保证策略有效性，我们假设既然被选中了，就强制执行优化
-        
-        referential_cases = ctx_analysis.get("sample_cases", [])
+        # 获取指代相关的错误案例
+        referential_cases: List[Dict[str, Any]] = ctx_analysis.get("sample_cases", [])
         if not referential_cases:
-            # Fallback to general errors if no specific referential cases found in analysis
+            # 如果没有找到特定的指代案例，使用通用错误案例
             referential_cases = errors[:3]
             
-        # 构建 Meta-Prompt
-        optimization_instruction = (
-            "当前提示词无法正确处理具有上下文依赖的查询，特别是在使用 "
-            "指代词（如‘这个’、‘那个’、‘它’）时。 \n"
-            "请通过以下方式优化提示词：\n"
-            "1. 添加显式指令，要求利用对话历史解决指代消解问题。\n"
-            "2. 强调应结合前序轮次的内容来理解最新的查询。\n"
-            "3. 添加一个演示正确指代消解的 few-shot 示例。"
-        )
+        # 构建优化指令
+        optimization_instruction: str = """当前提示词在处理上下文依赖和指代消解方面存在不足，需要完善多轮对话的语义补全能力。
+
+## 优化要求
+
+请按照以下要点完善提示词的上下文与指代处理规则部分：
+
+### 1. 上下文补全规则
+当预处理后的 query 仍不完整时，需结合历史对话补全语义：
+- **补全时机**: 当前 query 缺少主语/宾语/关键信息时
+- **补全来源**: 优先从最近 3 轮对话中寻找相关信息
+- **补全示例**:
+  - 历史: "我买的那个蓝牙耳机" → 当前: "能退吗" → 补全后: "我买的蓝牙耳机能退吗"
+
+### 2. 指代解析规则
+针对代词（它/这个/那个/上面说的），明确指代对象的判断方法：
+- **指代词列表**: 它、这个、那个、这件、那件、刚才说的、上面的、前面提到的
+- **解析优先级**: 
+  1. 最近一轮提到的实体
+  2. 对话主题相关的核心实体
+  3. 无法确定时请求澄清
+
+### 3. 示例佐证
+添加具体案例强化模型对规则的理解：
+
+**案例 1 - 指代消解**:
+- 用户轮1: "我想看看那个199的充电宝"
+- 用户轮2: "这个有货吗"
+- 解析: "这个" 指代 "199的充电宝"
+- 输出意图: 【查询库存】
+
+**案例 2 - 上下文补全**:
+- 用户轮1: "帮我查下订单"
+- 系统: "您有3个订单，请问查哪个？"
+- 用户轮2: "第二个"
+- 补全后: "查询第二个订单的详情"
+
+请使用 SEARCH/REPLACE 格式输出修改内容。
+"""
         
         return self._meta_optimize(
             prompt, referential_cases, optimization_instruction, diagnosis=diagnosis
