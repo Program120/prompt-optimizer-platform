@@ -419,9 +419,16 @@ class MultiStrategyOptimizer:
             prompt, strategies, errors, diagnosis, dataset, should_stop
         )
         
-        # 阶段 5.1：快速筛选
-        self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)})")
-        filtered_candidates = await self._rapid_evaluation(candidates, errors[:50], should_stop)
+        # 阶段 5.1：构建混合验证集并快速筛选
+        # 验证集由正确案例和错误案例组成，比例为 3:2
+        validation_set: List[Dict[str, Any]] = self._build_validation_set(
+            errors=errors,
+            dataset=dataset,
+            target_error_count=20,
+            correct_error_ratio=1.5
+        )
+        self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)}, 验证集大小: {len(validation_set)})")
+        filtered_candidates = await self._rapid_evaluation(candidates, validation_set, should_stop)
         if filtered_candidates:
             self.logger.info(f"筛选后的候选方案及其评分: {[(c['strategy'], round(c.get('score', 0), 4)) for c in filtered_candidates]}")
         
@@ -610,6 +617,101 @@ class MultiStrategyOptimizer:
         except Exception as e:
             self.logger.error(f"应用策略 {strategy.name} 时发生错误: {e}")
             raise e
+
+    def _build_validation_set(
+        self,
+        errors: List[Dict[str, Any]],
+        dataset: List[Dict[str, Any]],
+        target_error_count: int = 20,
+        correct_error_ratio: float = 1.5
+    ) -> List[Dict[str, Any]]:
+        """
+        构建混合验证集，包含正确案例和错误案例
+        
+        验证集设计原则：
+        - 正确案例与错误案例比例为 3:2 (correct_error_ratio=1.5)
+        - 当数据不足时，按实际可用数量构建
+        - 确保验证集不会包含重复数据
+        
+        :param errors: 错误案例列表
+        :param dataset: 完整数据集（包含正确和错误案例）
+        :param target_error_count: 目标错误案例数量（默认20）
+        :param correct_error_ratio: 正确案例与错误案例的比例（默认1.5，即3:2）
+        :return: 混合验证集
+        """
+        import random
+        
+        validation_set: List[Dict[str, Any]] = []
+        
+        # 1. 获取错误集合
+        # 获取错误案例的唯一标识（使用 query 字段作为 key）
+        error_queries: set = {e.get('query', '') for e in errors}
+        
+        # 2. 从 dataset 中筛选出正确案例
+        # 正确案例 = 完整数据集中不在错误集合里的案例
+        correct_cases: List[Dict[str, Any]] = [
+            item for item in dataset 
+            if item.get('query', '') not in error_queries
+        ]
+        
+        # 3. 计算实际可用的案例数量
+        available_errors: int = len(errors)
+        available_correct: int = len(correct_cases)
+        
+        # 4. 计算目标数量（考虑数据不足的情况）
+        # 期望的错误案例数
+        actual_error_count: int = min(target_error_count, available_errors)
+        
+        # 期望的正确案例数 = 错误案例数 * 比例
+        target_correct_count: int = int(actual_error_count * correct_error_ratio)
+        actual_correct_count: int = min(target_correct_count, available_correct)
+        
+        # 5. 如果正确案例不足，重新调整错误案例数量以保持比例
+        if actual_correct_count < target_correct_count and actual_correct_count > 0:
+            # 根据实际正确案例反推错误案例数量
+            adjusted_error_count: int = int(actual_correct_count / correct_error_ratio)
+            actual_error_count = max(1, min(adjusted_error_count, actual_error_count))
+            self.logger.info(
+                f"[验证集构建] 正确案例不足，调整比例: "
+                f"正确={actual_correct_count}, 错误={actual_error_count}"
+            )
+        
+        # 6. 随机采样
+        # 采样错误案例
+        if actual_error_count > 0 and available_errors > 0:
+            sampled_errors: List[Dict[str, Any]] = random.sample(
+                errors, 
+                min(actual_error_count, available_errors)
+            )
+            # 标记为错误案例（便于评估时区分）
+            for case in sampled_errors:
+                case['_is_error_case'] = True
+            validation_set.extend(sampled_errors)
+        
+        # 采样正确案例
+        if actual_correct_count > 0 and available_correct > 0:
+            sampled_correct: List[Dict[str, Any]] = random.sample(
+                correct_cases,
+                min(actual_correct_count, available_correct)
+            )
+            # 标记为正确案例
+            for case in sampled_correct:
+                case['_is_error_case'] = False
+            validation_set.extend(sampled_correct)
+        
+        # 7. 打乱验证集顺序
+        random.shuffle(validation_set)
+        
+        # 8. 记录日志
+        error_count: int = sum(1 for c in validation_set if c.get('_is_error_case', False))
+        correct_count: int = len(validation_set) - error_count
+        self.logger.info(
+            f"[验证集构建] 完成: 总计={len(validation_set)} "
+            f"(正确={correct_count}, 错误={error_count}, "
+            f"比例={correct_count / error_count if error_count > 0 else 'N/A':.2f})"
+        )
+        
+        return validation_set
 
     async def _rapid_evaluation(
         self, 
