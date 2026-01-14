@@ -338,7 +338,8 @@ class MultiStrategyOptimizer:
             strategies = await self.matcher.match_strategies(
                 diagnosis=diagnosis,
                 max_strategies=max_strategies,
-                selected_modules=selected_modules  # 传递用户选择的模块
+                selected_modules=selected_modules,  # 传递用户选择的模块
+                should_stop=self._should_stop      # 传递停止回调
             )
             if selected_modules and len(selected_modules) > 0:
                 self.logger.info(f"自动匹配策略（已过滤模块 {selected_modules}）: {[s.name for s in strategies]}")

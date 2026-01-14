@@ -121,15 +121,20 @@ class StrategyMatcher:
     async def score_strategies(
         self,
         diagnosis: Dict[str, Any],
-        candidates: List[Any]
+        candidates: List[Any],
+        should_stop: Any = None
     ) -> List[tuple[float, BaseStrategy]]:
         """
         使用 LLM 对候选策略进行评分
         
         :param diagnosis: 诊断报告
         :param candidates: 候选策略列表 (priority, strategy)
+        :param should_stop: 停止回调函数
         :return: 评分后的策略列表 [(score, strategy), ...]
         """
+        if should_stop and should_stop():
+            return candidates
+
         if not self.llm_client or not candidates:
             return candidates
 
@@ -177,6 +182,10 @@ class StrategyMatcher:
         """
 
         try:
+            # 再次检查停止信号
+            if should_stop and should_stop():
+                return candidates
+
             # 2. 调用 LLM
             messages = [
                 {"role": "system", "content": "You are a helpful assistant specialized in prompt engineering."},
@@ -224,7 +233,8 @@ class StrategyMatcher:
         self, 
         diagnosis: Dict[str, Any],
         max_strategies: int = 1,
-        selected_modules: List[int] = None
+        selected_modules: List[int] = None,
+        should_stop: Any = None
     ) -> List[BaseStrategy]:
         """
         基于诊断结果匹配合适的优化策略 (支持 LLM 动态评分)
@@ -233,6 +243,7 @@ class StrategyMatcher:
             diagnosis: 诊断分析结果
             max_strategies: 最多返回的策略数量
             selected_modules: 用户选择的模块ID列表。
+            should_stop: 停止回调函数
             
         Returns:
             策略实例列表（按推荐优先级排序）
@@ -270,7 +281,7 @@ class StrategyMatcher:
         if self.llm_client and len(candidates) > 1:
             try:
                 # 调用 LLM 评分 (替换原有的优先级)
-                candidates = await self.score_strategies(diagnosis, candidates)
+                candidates = await self.score_strategies(diagnosis, candidates, should_stop=should_stop)
             except Exception as e:
                 print(f"Error in dynamic scoring: {e}")
                 # 出错时保持原有优先级
