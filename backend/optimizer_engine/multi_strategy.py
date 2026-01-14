@@ -824,9 +824,9 @@ class MultiStrategyOptimizer:
                     if eval_input == prompt:
                         eval_input = f"{prompt}\n\nInput: {query}"
                     
-                    # 使用可取消的 LLM 调用
+                    # 使用 LLM Helper 进行可取消的 LLM 调用
                     # 传入验证专用的 client 和 config
-                    response: str = await self._call_llm_with_cancellation(
+                    response: str = await self.llm_helper.call_llm_with_cancellation(
                         eval_input,
                         should_stop=should_stop,
                         task_name="快速评估",
