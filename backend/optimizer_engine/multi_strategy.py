@@ -424,7 +424,7 @@ class MultiStrategyOptimizer:
         validation_set: List[Dict[str, Any]] = self._build_validation_set(
             errors=errors,
             dataset=dataset,
-            target_error_count=20,
+            target_error_count=40,
             correct_error_ratio=1.5
         )
         self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)}, 验证集大小: {len(validation_set)})")
