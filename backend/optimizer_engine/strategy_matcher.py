@@ -5,7 +5,7 @@ import asyncio
 from .strategies.base import BaseStrategy
 from .strategies.boundary import BoundaryClarificationStrategy
 from .strategies.instruction import InstructionRefinementStrategy
-from .strategies.example_injection import DifficultExampleInjectionStrategy
+from .strategies.difficult_example_injection import DifficultExampleInjectionStrategy
 from .strategies.meta_optimize import MetaOptimizationStrategy
 from .strategies.context_optimize import ContextEnhancementStrategy
 from .strategies.multi_intent_optimize import MultiIntentStrategy
