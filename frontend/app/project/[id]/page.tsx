@@ -272,10 +272,12 @@ export default function ProjectDetail() {
             const newData = res.data;
             setTaskStatus(newData);
 
-            // 如果任务状态变为完成/停止，刷新历史列表
+            // 如果任务状态变为完成/停止，刷新历史列表和知识库
             // 注意：这里利用闭包中的 taskStatus (它是 running) 来判断状态变化
             if (taskStatus.status === "running" && ["completed", "stopped", "failed"].includes(newData.status)) {
                 fetchTaskHistory();
+                // 刷新知识库以显示回填的准确率
+                fetchKnowledgeBase();
             }
         } catch (e) { console.error(e); }
     };
