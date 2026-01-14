@@ -27,6 +27,8 @@ class KnowledgeBaseUpdateRequest(BaseModel):
     applied_strategies: Optional[List[str]] = None
     # 优化后准确率
     accuracy_after: Optional[float] = None
+    # 手动标记
+    note: Optional[str] = None
 
 
 @router.get("/{project_id}/knowledge-base")
@@ -120,6 +122,8 @@ async def update_knowledge_base_record(
                     record["applied_strategies"] = update_data.applied_strategies
                 if update_data.accuracy_after is not None:
                     record["accuracy_after"] = update_data.accuracy_after
+                if update_data.note is not None:
+                    record["note"] = update_data.note
                     
                 # 添加更新时间戳
                 from datetime import datetime

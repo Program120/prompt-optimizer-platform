@@ -4,6 +4,8 @@ from datetime import datetime
 import storage
 from task_manager import TaskManager
 from optimizer import optimize_prompt, generate_optimize_context, multi_strategy_optimize
+from pydantic import BaseModel
+
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 tm = TaskManager()
@@ -440,3 +442,28 @@ async def get_optimize_context(project_id: str, task_id: str):
     )
     
     return {"context": context, "error_count": len(errors)}
+
+
+class NoteUpdate(BaseModel):
+    note: str
+
+@router.put("/{project_id}/tasks/{task_id}/note")
+async def update_task_note(project_id: str, task_id: str, update: NoteUpdate):
+    """
+    更新任务备注
+    """
+    success = storage.update_task_note(task_id, update.note)
+    if not success:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"status": "success", "note": update.note}
+
+
+@router.put("/{project_id}/iterations/{timestamp}/note")
+async def update_iteration_note(project_id: str, timestamp: str, update: NoteUpdate):
+    """
+    更新迭代记录备注
+    """
+    success = storage.update_project_iteration_note(project_id, timestamp, update.note)
+    if not success:
+        raise HTTPException(status_code=404, detail="Iteration not found")
+    return {"status": "success", "note": update.note}

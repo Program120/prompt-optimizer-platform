@@ -743,6 +743,7 @@ export default function ProjectDetail() {
                                 showToast("删除记录失败", "error");
                             }
                         }}
+                        onRefresh={fetchProject}
                     />
                 </div>
             </div>

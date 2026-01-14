@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy, Layers, TrendingUp, Trash2 } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy, Layers, TrendingUp, Trash2, Edit3, Save } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -17,6 +17,9 @@ interface HistoryPanelProps {
     onDeleteTask?: (task: any) => void;
     onDeleteIteration?: (iteration: any) => void;
     onDeleteKnowledge?: (record: any) => void;
+
+    // Refresh handler
+    onRefresh?: () => void;
 }
 
 export default function HistoryPanel({
@@ -29,11 +32,15 @@ export default function HistoryPanel({
     onSelectKnowledge,
     onDeleteTask,
     onDeleteIteration,
-    onDeleteKnowledge
+    onDeleteKnowledge,
+    onRefresh
 }: HistoryPanelProps) {
     const [activeTab, setActiveTab] = useState("run"); // run, history, runHistory
     const [showPromptModal, setShowPromptModal] = useState(false);
     const [currentPrompt, setCurrentPrompt] = useState("");
+
+    // Note editing state
+    const [editingNote, setEditingNote] = useState<{ type: 'task' | 'iteration' | 'knowledge', id: string, value: string } | null>(null);
 
     // 格式化时间戳
     const formatTime = (timestamp: string) => {
@@ -78,7 +85,6 @@ export default function HistoryPanel({
 
     const copyPrompt = () => {
         navigator.clipboard.writeText(currentPrompt);
-        // 可以添加一个简单的 toast 提示，但这儿为了简单先省略
     };
 
     // 监听 ESC 键关闭
@@ -101,6 +107,103 @@ export default function HistoryPanel({
         if (type === 'task' && onDeleteTask) onDeleteTask(item);
         if (type === 'iteration' && onDeleteIteration) onDeleteIteration(item);
         if (type === 'knowledge' && onDeleteKnowledge) onDeleteKnowledge(item);
+    };
+
+    const startEditingNote = (e: React.MouseEvent, type: 'task' | 'iteration' | 'knowledge', id: string, currentNote: string) => {
+        e.stopPropagation();
+        setEditingNote({ type, id, value: currentNote || "" });
+    };
+
+    const saveNote = async (e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        if (!editingNote) return;
+
+        try {
+            let url = "";
+            let method = "PUT";
+            let body = {};
+
+            if (editingNote.type === 'task') {
+                url = `${API_BASE}/projects/${project.id}/tasks/${editingNote.id}/note`;
+                body = { note: editingNote.value };
+            } else if (editingNote.type === 'iteration') {
+                url = `${API_BASE}/projects/${project.id}/iterations/${editingNote.id}/note`;
+                body = { note: editingNote.value };
+            } else if (editingNote.type === 'knowledge') {
+                url = `${API_BASE}/projects/${project.id}/knowledge-base/${editingNote.id}`;
+                body = { note: editingNote.value };
+            }
+
+            const response = await fetch(url, {
+                method,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body)
+            });
+
+            if (response.ok) {
+                setEditingNote(null);
+                if (onRefresh) onRefresh();
+            } else {
+                alert("保存备注失败");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("保存备注出错");
+        }
+    };
+
+    const renderNoteSection = (item: any, type: 'task' | 'iteration' | 'knowledge', id: string) => {
+        const isEditing = editingNote?.type === type && editingNote?.id === id;
+        const note = item.note || "";
+
+        return (
+            <div className="mt-2 pt-2 border-t border-white/5" onClick={e => e.stopPropagation()}>
+                {isEditing ? (
+                    <div className="flex gap-2 items-start">
+                        <textarea
+                            className="flex-1 bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
+                            rows={2}
+                            value={editingNote.value}
+                            onChange={(e) => setEditingNote({ ...editingNote, value: e.target.value })}
+                            placeholder="添加备注..."
+                            autoFocus
+                        />
+                        <div className="flex flex-col gap-1">
+                            <button
+                                onClick={(e) => saveNote(e)}
+                                className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
+                            >
+                                <Save size={12} />
+                            </button>
+                            <button
+                                onClick={() => setEditingNote(null)}
+                                className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex justify-between items-start group/note">
+                        <div className="flex-1 text-xs">
+                            <span className="text-slate-500 mr-2 font-medium">备注:</span>
+                            {note ? (
+                                <span className="text-slate-300">{note}</span>
+                            ) : (
+                                <span className="text-slate-600 italic">无</span>
+                            )}
+                        </div>
+                        <button
+                            onClick={(e) => startEditingNote(e, type, id, note)}
+                            className={`p-1 text-slate-500 hover:text-blue-400 transition-colors ${!note ? 'opacity-0 group-hover/note:opacity-100' : ''}`}
+                            title="编辑备注"
+                        >
+                            <Edit3 size={12} />
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (
@@ -247,6 +350,9 @@ export default function HistoryPanel({
                                         下载结果
                                     </a>
                                 </div>
+
+                                {/* 备注区域 */}
+                                {renderNoteSection(task, 'task', task.id)}
                             </div>
                         ))}
                         {!runHistory?.length && <p className="text-center text-slate-600 mt-20">暂无运行历史</p>}
@@ -298,6 +404,9 @@ export default function HistoryPanel({
                                             <Download size={12} /> 下载验证结果
                                         </a>
                                     </div>
+
+                                    {/* 备注区域 */}
+                                    {renderNoteSection(it, 'iteration', it.created_at)}
                                 </div>
                             </div>
                         ))}
@@ -372,6 +481,9 @@ export default function HistoryPanel({
                                 <p className="text-[11px] text-slate-400 line-clamp-2">
                                     {record.analysis_summary || "暂无优化总结"}
                                 </p>
+
+                                {/* 备注区域 */}
+                                {renderNoteSection(record, 'knowledge', record.version)}
                             </div>
                         ))}
                         {!knowledgeRecords?.length && (

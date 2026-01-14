@@ -146,7 +146,8 @@ def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
                         "accuracy": accuracy,
                         "prompt": task_data.get("prompt", ""),
                         "dataset_name": dataset_name,
-                        "created_at": timestamp
+                        "created_at": timestamp,
+                        "note": task_data.get("note", "")
                     })
     # 按任务ID排序（最新的在前）
     tasks.sort(key=lambda x: x["id"], reverse=True)
@@ -305,6 +306,48 @@ def create_global_model(model_data: Dict[str, Any]) -> Dict[str, Any]:
     models.append(new_model)
     _save_global_models(models)
     return new_model
+
+
+def update_task_note(task_id: str, note: str) -> bool:
+    """
+    更新任务备注
+    :param task_id: 任务ID
+    :param note: 备注内容
+    :return: 是否成功
+    """
+    task_status = get_task_status(task_id)
+    if task_status:
+        task_status["note"] = note
+        save_task_status(task_status.get("project_id", ""), task_id, task_status)
+        return True
+    return False
+
+
+def update_project_iteration_note(project_id: str, timestamp: str, note: str) -> bool:
+    """
+    更新项目迭代记录备注
+    :param project_id: 项目ID
+    :param timestamp: 迭代创建时间 (created_at) 用于匹配
+    :param note: 备注内容
+    :return: 是否成功
+    """
+    projects = get_projects()
+    for i, p in enumerate(projects):
+        if p["id"] == project_id:
+            iterations = p.get("iterations", [])
+            updated = False
+            for it in iterations:
+                if it.get("created_at") == timestamp:
+                    it["note"] = note
+                    updated = True
+                    break
+            
+            if updated:
+                p["updated_at"] = datetime.now().isoformat()
+                projects[i] = p
+                save_projects(projects)
+                return True
+    return False
 
 
 def update_global_model(model_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
