@@ -206,6 +206,11 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
                 status = optimization_status.get(project_id, {})
                 return status.get("should_stop", False) or status.get("status") == "stopped"
 
+            # 提取 selected_modules (如果启用了标准模块优化)
+            selected_modules = None
+            if model_config.get("enable_standard_module", False):
+                selected_modules = model_config.get("selected_modules", [])
+
             # 在后台线程中运行 async 函数需要 new loop 或者 asyncio.run
             result = asyncio.run(multi_strategy_optimize(
                 project["current_prompt"], 
@@ -217,7 +222,8 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
                 max_strategies=1,
                 project_id=project_id,
                 should_stop=check_stop,
-                verification_config=verification_config
+                verification_config=verification_config,
+                selected_modules=selected_modules
             ))
             new_prompt = result.get("optimized_prompt", project["current_prompt"])
             applied_strategies = result.get("applied_strategies", [])

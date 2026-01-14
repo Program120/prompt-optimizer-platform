@@ -236,6 +236,11 @@ async def start_auto_iterate(
                             total_count = len(task_status.get("results", []))
                             dataset = task_status.get("results", [])
                             
+                            # 提取 selected_modules (如果启用了标准模块优化)
+                            selected_modules = None
+                            if opt_model_config.get("enable_standard_module", False):
+                                selected_modules = opt_model_config.get("selected_modules", [])
+                            
                             result = asyncio.run(multi_strategy_optimize(
                                 current_prompt, 
                                 task_status["errors"], 
@@ -247,7 +252,8 @@ async def start_auto_iterate(
                                 project_id=project_id,
                                 newly_failed_cases=regression_cases,
                                 should_stop=check_stop,
-                                verification_config=model_config
+                                verification_config=model_config,
+                                selected_modules=selected_modules
                             ))
                         
                         # 优化完成后再次检查停止信号

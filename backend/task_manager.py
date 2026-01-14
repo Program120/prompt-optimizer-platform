@@ -128,13 +128,24 @@ class TaskManager:
         index_lock = threading.Lock()
         
         def process_single_query(i):
-            """处理单个查询"""
+            """
+            处理单个查询
+            
+            :param i: 数据行索引
+            :return: 查询结果字典或 None
+            """
             if stop_event.is_set():
                 return None
             pause_event.wait()
             
-            query = str(df.iloc[i][query_col])
-            target = str(df.iloc[i][target_col])
+            # 获取原始值
+            raw_query = df.iloc[i][query_col]
+            raw_target = df.iloc[i][target_col]
+            
+            # 处理 NaN 值：Pandas 读取空单元格时会产生 float('nan')
+            # 使用 pd.isna() 检测并转换为空字符串，避免 str(nan) 产生 "nan" 字符串
+            query = "" if pd.isna(raw_query) else str(raw_query)
+            target = "" if pd.isna(raw_target) else str(raw_target)
             
             try:
                 validation_mode = model_config.get("validation_mode", "llm")

@@ -130,7 +130,8 @@ async def multi_strategy_optimize(
     project_id: str = None,
     should_stop: Any = None,
     newly_failed_cases: list = None,
-    verification_config: dict = None
+    verification_config: dict = None,
+    selected_modules: list = None
 ) -> dict:
     """
     使用多策略优化引擎优化提示词
@@ -145,6 +146,7 @@ async def multi_strategy_optimize(
     :param project_id: 项目ID（用于知识库记录，可选）
     :param newly_failed_cases: 新增的失败案例（可选）
     :param verification_config: 验证模型配置（用于评估效果，可选）
+    :param selected_modules: 用户选择的标准模块ID列表（可选）
     :return: 优化结果字典，包含 optimized_prompt, diagnosis, applied_strategies, message
     """
     if not errors:
@@ -185,7 +187,8 @@ async def multi_strategy_optimize(
         max_strategies=max_strategies,
         project_id=project_id,
         should_stop=should_stop,
-        newly_failed_cases=newly_failed_cases
+        newly_failed_cases=newly_failed_cases,
+        selected_modules=selected_modules
     )
     
     return result
