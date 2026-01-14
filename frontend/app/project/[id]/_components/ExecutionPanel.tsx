@@ -14,7 +14,7 @@ interface ExecutionPanelProps {
     setConfig: (config: { query_col: string; target_col: string }) => void;
     extractField: string;
     setExtractField: (field: string) => void;
-    autoIterateConfig: { enabled: boolean; maxRounds: number; targetAccuracy: number; strategy: "simple" | "multi" };
+    autoIterateConfig: { enabled: boolean; maxRounds: number | ""; targetAccuracy: number | ""; strategy: "simple" | "multi" };
     setAutoIterateConfig: (config: any) => void;
     autoIterateStatus: any;
     isAutoIterating: boolean;
@@ -265,9 +265,11 @@ export default function ExecutionPanel({
                                     <input
                                         type="number"
                                         min={1}
-                                        max={20}
                                         value={autoIterateConfig.maxRounds}
-                                        onChange={e => setAutoIterateConfig({ ...autoIterateConfig, maxRounds: parseInt(e.target.value) || 5 })}
+                                        onChange={e => {
+                                            const val = parseInt(e.target.value);
+                                            setAutoIterateConfig({ ...autoIterateConfig, maxRounds: isNaN(val) ? "" : val });
+                                        }}
                                         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm"
                                     />
                                 </div>
@@ -275,10 +277,13 @@ export default function ExecutionPanel({
                                     <label className="block text-xs text-slate-400 mb-1">目标准确率 (%)</label>
                                     <input
                                         type="number"
-                                        min={50}
+                                        min={1}
                                         max={100}
                                         value={autoIterateConfig.targetAccuracy}
-                                        onChange={e => setAutoIterateConfig({ ...autoIterateConfig, targetAccuracy: parseInt(e.target.value) || 95 })}
+                                        onChange={e => {
+                                            const val = parseInt(e.target.value);
+                                            setAutoIterateConfig({ ...autoIterateConfig, targetAccuracy: isNaN(val) ? "" : val });
+                                        }}
                                         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm"
                                     />
                                 </div>

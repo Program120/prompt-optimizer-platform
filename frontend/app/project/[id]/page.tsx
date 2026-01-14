@@ -43,8 +43,8 @@ export default function ProjectDetail() {
     // Auto-iterate config
     const [autoIterateConfig, setAutoIterateConfig] = useState<{
         enabled: boolean;
-        maxRounds: number;
-        targetAccuracy: number;
+        maxRounds: number | "";
+        targetAccuracy: number | "";
         strategy: "simple" | "multi";
     }>({
         enabled: false,
@@ -484,8 +484,8 @@ export default function ProjectDetail() {
         formData.append("query_col", config.query_col);
         formData.append("target_col", config.target_col);
         formData.append("prompt", project.current_prompt);
-        formData.append("max_rounds", autoIterateConfig.maxRounds.toString());
-        formData.append("target_accuracy", (autoIterateConfig.targetAccuracy / 100).toString());
+        formData.append("max_rounds", (autoIterateConfig.maxRounds || 5).toString());
+        formData.append("target_accuracy", ((Number(autoIterateConfig.targetAccuracy) || 95) / 100).toString());
         formData.append("strategy", autoIterateConfig.strategy || "multi");
         if (validationLimit) formData.append("validation_limit", validationLimit.toString());
         if (extractField) formData.append("extract_field", extractField);

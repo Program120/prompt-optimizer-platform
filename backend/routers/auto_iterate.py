@@ -248,7 +248,7 @@ async def start_auto_iterate(
                                 dataset=dataset,
                                 total_count=total_count,
                                 strategy_mode="auto",
-                                max_strategies=1,
+                                max_strategies=3,
                                 project_id=project_id,
                                 newly_failed_cases=regression_cases,
                                 should_stop=check_stop,

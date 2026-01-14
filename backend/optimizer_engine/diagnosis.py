@@ -12,7 +12,8 @@ def diagnose_prompt_performance(
     total_count: int = None,
     llm_client: Any = None,
     model_config: Dict[str, Any] = None,
-    project_id: str = None
+    project_id: str = None,
+    **kwargs
 ) -> Dict[str, Any]:
     """
     综合诊断提示词性能

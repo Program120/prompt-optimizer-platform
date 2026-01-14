@@ -219,7 +219,7 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
                 dataset=dataset,
                 total_count=total_count,
                 strategy_mode="auto",
-                max_strategies=1,
+                max_strategies=3,
                 project_id=project_id,
                 should_stop=check_stop,
                 verification_config=verification_config,
