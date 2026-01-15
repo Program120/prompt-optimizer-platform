@@ -10,6 +10,7 @@
 import asyncio
 import logging
 import re
+import random
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from collections import Counter, defaultdict
 from openai import AsyncOpenAI, OpenAI
@@ -150,6 +151,10 @@ class IntentAnalyzer:
                 intent_confusion[intent].most_common(3)
             )
             
+            # 随机选取最多 10 个错误案例
+            all_errors = intent_errors[intent]
+            sample_errors = random.sample(all_errors, min(len(all_errors), 10))
+
             # 构建意图详情对象
             intent_detail: Dict[str, Any] = {
                 "intent": intent,
@@ -158,7 +163,7 @@ class IntentAnalyzer:
                 "confusion_targets": [
                     {"target": t, "count": c} for t, c in confusion_targets
                 ],
-                "sample_errors": intent_errors[intent][:10]
+                "sample_errors": sample_errors
             }
             
             # 判断是否为澄清类意图
