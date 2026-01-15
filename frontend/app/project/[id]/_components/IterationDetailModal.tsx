@@ -48,8 +48,8 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
 
             if (isCancelled) return;
 
-            const oldP = selectedIteration.old_prompt || "";
-            const newP = selectedIteration.new_prompt || "";
+            const oldP = selectedIteration.previous_prompt || "";
+            const newP = selectedIteration.optimized_prompt || "";
 
             try {
                 // Always calculate full diff to ensure correctness
@@ -79,7 +79,7 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
 
     if (!selectedIteration) return null;
 
-    const isLargeContent = (selectedIteration.old_prompt || "").length > TRUNCATE_LENGTH || (selectedIteration.new_prompt || "").length > TRUNCATE_LENGTH;
+    const isLargeContent = (selectedIteration.previous_prompt || "").length > TRUNCATE_LENGTH || (selectedIteration.optimized_prompt || "").length > TRUNCATE_LENGTH;
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -95,7 +95,7 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
                             迭代详情
                         </h2>
                         <div className="flex gap-4 mt-2 text-sm text-slate-400">
-                            <span>准确率: <span className="text-emerald-400 font-bold">{(selectedIteration.accuracy * 100).toFixed(1)}%</span></span>
+                            <span>准确率: <span className="text-emerald-400 font-bold">{(selectedIteration.accuracy_before * 100).toFixed(1)}%</span></span>
                             <span>时间: {new Date(selectedIteration.created_at).toLocaleString()}</span>
                         </div>
                     </div>
@@ -192,13 +192,13 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
                         <div>
                             <label className="block text-sm font-medium text-red-400 mb-2">旧提示词</label>
                             <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4 text-sm whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar">
-                                {selectedIteration.old_prompt || "(无)"}
+                                {selectedIteration.previous_prompt || "(无)"}
                             </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-emerald-400 mb-2">新提示词</label>
                             <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 text-sm whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar">
-                                {selectedIteration.new_prompt || "(无)"}
+                                {selectedIteration.optimized_prompt || "(无)"}
                             </div>
                         </div>
                     </div>
@@ -207,7 +207,7 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
                     <div className="flex gap-4">
                         <button
                             onClick={() => {
-                                onApply(selectedIteration.old_prompt, "提示词已回退");
+                                onApply(selectedIteration.previous_prompt, "提示词已回退");
                                 onClose();
                             }}
                             className="flex-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/50 text-red-400 py-3 rounded-xl font-medium transition-colors"
@@ -216,7 +216,7 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
                         </button>
                         <button
                             onClick={() => {
-                                onApply(selectedIteration.new_prompt, "此版本提示词已应用");
+                                onApply(selectedIteration.optimized_prompt, "此版本提示词已应用");
                                 onClose();
                             }}
                             className="flex-1 bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-medium transition-colors text-white"
