@@ -78,27 +78,29 @@ export default function ExecutionPanel({
                     批处理执行
                 </h2>
                 <div className="flex gap-2">
-                    {taskStatus?.status === "running" && !isAutoIterating ? (
+                    {/* 暂停/继续按钮 - 仅普通任务运行时显示，服务重启中断时不显示 */}
+                    {taskStatus?.status === "running" && !isAutoIterating && autoIterateStatus?.status !== "error" ? (
                         <button onClick={() => onControlTask("pause")} className="flex items-center gap-2 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 px-4 py-2 rounded-lg font-medium transition-colors">
                             <Pause size={18} /> 暂停
                         </button>
-                    ) : taskStatus?.status === "paused" && !isAutoIterating ? (
+                    ) : taskStatus?.status === "paused" && !isAutoIterating && autoIterateStatus?.status !== "error" ? (
                         <button onClick={() => onControlTask("resume")} className="flex items-center gap-2 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 px-4 py-2 rounded-lg font-medium transition-colors">
                             <Play size={18} /> 继续
                         </button>
                     ) : null}
 
-                    {/* 终止按钮 - 自动迭代或普通任务运行时显示 */}
-                    {(isAutoIterating || (taskStatus?.status === "running" || taskStatus?.status === "paused")) && (
+                    {/* 终止按钮 - 自动迭代、普通任务运行时、或服务重启中断时显示 */}
+                    {(isAutoIterating || autoIterateStatus?.status === "error" || (taskStatus?.status === "running" || taskStatus?.status === "paused")) && (
                         <button
-                            onClick={() => isAutoIterating ? onStopAutoIterate() : onControlTask("stop")}
+                            onClick={() => (isAutoIterating || autoIterateStatus?.status === "error") ? onStopAutoIterate() : onControlTask("stop")}
                             className="flex items-center gap-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 px-4 py-2 rounded-lg font-medium transition-colors"
                         >
-                            <Square size={18} /> {isAutoIterating ? "停止迭代" : "终止任务"}
+                            <Square size={18} /> {(isAutoIterating || autoIterateStatus?.status === "error") ? "终止任务" : "终止任务"}
                         </button>
                     )}
 
-                    {(!taskStatus || taskStatus.status === "completed" || taskStatus.status === "stopped") && autoIterateStatus?.status !== "running" && (
+                    {/* 启动按钮 - 任务未运行或服务重启中断后显示 */}
+                    {((!taskStatus || taskStatus.status === "completed" || taskStatus.status === "stopped") && autoIterateStatus?.status !== "running") && (
                         <button
                             onClick={onStartTask}
                             disabled={!fileInfo}
@@ -327,8 +329,16 @@ export default function ExecutionPanel({
                             )}
 
                             {autoIterateStatus && autoIterateStatus.status !== "running" && autoIterateStatus.status !== "idle" && (
-                                <div className={`mt-3 text-xs p-2 rounded ${autoIterateStatus.status === "completed" ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300"}`}>
+                                <div className={`mt-3 text-xs p-2 rounded ${autoIterateStatus.status === "completed"
+                                        ? "bg-emerald-500/20 text-emerald-300"
+                                        : autoIterateStatus.status === "error"
+                                            ? "bg-amber-500/20 text-amber-300"
+                                            : "bg-red-500/20 text-red-300"
+                                    }`}>
                                     {autoIterateStatus.message}
+                                    {autoIterateStatus.status === "error" && (
+                                        <div className="mt-1 text-amber-400/70">请点击"终止任务"后重新启动</div>
+                                    )}
                                 </div>
                             )}
                         </>

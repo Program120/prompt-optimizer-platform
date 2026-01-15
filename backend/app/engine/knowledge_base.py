@@ -101,7 +101,11 @@ class OptimizationKnowledgeBase:
         accuracy_before: float,
         accuracy_after: Optional[float] = None,
         deep_analysis: Optional[Dict[str, Any]] = None,
-        newly_failed_cases: Optional[List[Dict[str, Any]]] = None
+        newly_failed_cases: Optional[List[Dict[str, Any]]] = None,
+        difficult_cases: Optional[List[Dict[str, Any]]] = None,
+        persistent_errors: Optional[List[Dict[str, Any]]] = None,
+        clarification_intents: Optional[List[Dict[str, Any]]] = None,
+        multi_intent_intents: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
         记录一次优化
@@ -115,6 +119,10 @@ class OptimizationKnowledgeBase:
         :param accuracy_after: 优化后准确率（可选，可后续更新）
         :param deep_analysis: 深度分析数据（可选）
         :param newly_failed_cases: 新增的失败案例（上一轮成功，本轮失败）（可选）
+        :param difficult_cases: 诊断出的困难/顽固样本（可选）
+        :param persistent_errors: 按次数排序的完整错误历史（可选）
+        :param clarification_intents: 被过滤的澄清类意图数据（可选）
+        :param multi_intent_intents: 被过滤的多意图类意图数据（可选）
         :return: 保存的优化记录
         """
         # 加载历史记录
@@ -136,6 +144,11 @@ class OptimizationKnowledgeBase:
             "accuracy_before": accuracy_before,
             "accuracy_after": accuracy_after,
             "newly_failed_cases": newly_failed_cases,
+            "difficult_cases": difficult_cases,
+            "persistent_errors": persistent_errors,
+            # 新增：被过滤的澄清类和多意图类意图
+            "clarification_intents": clarification_intents,
+            "multi_intent_intents": multi_intent_intents,
             "diff": self._compute_diff(original_prompt, optimized_prompt)
         }
         
@@ -144,6 +157,15 @@ class OptimizationKnowledgeBase:
         
         # 保存
         self._save_history(history)
+        
+        # 日志记录过滤的意图数量
+        clarification_count: int = len(clarification_intents) if clarification_intents else 0
+        multi_intent_count: int = len(multi_intent_intents) if multi_intent_intents else 0
+        if clarification_count > 0 or multi_intent_count > 0:
+            self.logger.info(
+                f"知识库 V{version} 记录了 {clarification_count} 个澄清类意图, "
+                f"{multi_intent_count} 个多意图类意图"
+            )
         
         self.logger.info(
             f"记录优化版本 {version}，项目: {self.project_id}"

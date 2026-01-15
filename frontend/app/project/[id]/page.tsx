@@ -523,6 +523,16 @@ export default function ProjectDetail() {
     const stopAutoIterate = async () => {
         try {
             await axios.post(`${API_BASE}/projects/${id}/auto-iterate/stop`);
+            // 立即更新前端状态
+            setAutoIterateStatus((prev: any) => ({
+                ...prev,
+                status: "stopped",
+                message: "已手动停止"
+            }));
+            // 刷新任务状态以获取最新数据
+            await fetchTaskStatus();
+            // 刷新项目数据
+            await fetchProject();
         } catch (e) { console.error(e); }
     };
 

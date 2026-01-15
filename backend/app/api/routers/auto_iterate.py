@@ -398,6 +398,11 @@ async def get_auto_iterate_status(project_id: str):
              status["status"] = "error"
              status["message"] = "服务重启，任务已中断"
              storage.save_auto_iterate_status(project_id, status)
+             # 同步更新关联任务状态，防止前端状态不一致
+             task_id = status.get("task_id")
+             if task_id:
+                 storage.update_task_status_only(task_id, "stopped")
+                 logging.info(f"[AutoIterate {project_id}] 服务重启检测: 已将任务 {task_id} 标记为 stopped")
         auto_iterate_status[project_id] = status
         return status
         
@@ -435,6 +440,11 @@ async def stop_auto_iterate(project_id: str):
         status["should_stop"] = True
         status["status"] = "stopped"
         status["message"] = "已手动停止"
+        # 停止关联任务，确保任务状态一致
+        task_id = status.get("task_id")
+        if task_id:
+            storage.update_task_status_only(task_id, "stopped")
+            logging.info(f"[AutoIterate {project_id}] 从磁盘停止: 已将任务 {task_id} 标记为 stopped")
         storage.save_auto_iterate_status(project_id, status)
         auto_iterate_status[project_id] = status
         return {"status": "stopping"}

@@ -27,6 +27,17 @@ class IntentAnalyzer:
     - 格式化分析结果用于优化提示词
     """
     
+    # 澄清类意图关键词（用于过滤 top_failing_intents）
+    CLARIFICATION_KEYWORDS: List[str] = [
+        "澄清", "clarify", "clarification", "unclear", "不明确",
+        "需要确认", "请确认", "请问您说的是"
+    ]
+    
+    # 多意图类型标识（用于过滤 top_failing_intents）
+    MULTI_INTENT_KEYWORDS: List[str] = [
+        "multiple", "multi", "多意图"
+    ]
+    
     # 深度分析提示词模板
     DEEP_ANALYSIS_PROMPT: str = """你是一个意图分类错误分析专家。请分析以下失败意图的错误模式。
 
@@ -77,6 +88,10 @@ class IntentAnalyzer:
         """
         按意图统计错误
         
+        新增：过滤澄清类（clarification）和多意图类（multiple）意图，
+        这些意图不会进入 top_failing_intents 进行深度分析，
+        但会单独返回以便存入知识库。
+        
         :param errors: 错误样例列表，每个样例包含 query, target, output
         :param total_count: 总样本数（用于计算错误率）
         :return: 按意图分组的错误分析
@@ -86,7 +101,9 @@ class IntentAnalyzer:
                 "total_errors": 0,
                 "intent_errors": {},
                 "top_failing_intents": [],
-                "error_rate_by_intent": {}
+                "error_rate_by_intent": {},
+                "clarification_intents": [],
+                "multi_intent_intents": []
             }
             
         # 统计每个意图的错误数量
@@ -122,15 +139,19 @@ class IntentAnalyzer:
         top_failing: List[Tuple[str, int]] = intent_error_counts.most_common(20)
         
         # 构建 Top 失败意图详情
+        # 新增：过滤澄清类和多意图类，单独存储
         top_failing_intents: List[Dict[str, Any]] = []
+        clarification_intents: List[Dict[str, Any]] = []
+        multi_intent_intents: List[Dict[str, Any]] = []
+        
         for intent, count in top_failing:
             # 获取该意图的主要混淆目标
             confusion_targets: List[Tuple[str, int]] = (
                 intent_confusion[intent].most_common(3)
             )
             
-            # 保留该意图的所有错误案例（最多 50 个），供深度分析使用
-            top_failing_intents.append({
+            # 构建意图详情对象
+            intent_detail: Dict[str, Any] = {
                 "intent": intent,
                 "error_count": count,
                 "error_rate": error_rate_by_intent.get(intent, 0),
@@ -138,7 +159,42 @@ class IntentAnalyzer:
                     {"target": t, "count": c} for t, c in confusion_targets
                 ],
                 "sample_errors": intent_errors[intent][:10]
-            })
+            }
+            
+            # 判断是否为澄清类意图
+            intent_lower: str = intent.lower()
+            is_clarification: bool = any(
+                kw in intent_lower for kw in self.CLARIFICATION_KEYWORDS
+            )
+            
+            # 判断是否为多意图类
+            is_multi_intent: bool = any(
+                kw in intent_lower for kw in self.MULTI_INTENT_KEYWORDS
+            )
+            
+            if is_clarification:
+                # 澄清类意图，归入单独列表
+                clarification_intents.append(intent_detail)
+                self.logger.debug(
+                    f"过滤澄清类意图: {intent}（错误数: {count}）"
+                )
+            elif is_multi_intent:
+                # 多意图类，归入单独列表
+                multi_intent_intents.append(intent_detail)
+                self.logger.debug(
+                    f"过滤多意图类意图: {intent}（错误数: {count}）"
+                )
+            else:
+                # 正常的单意图，保留在 top_failing_intents 中
+                top_failing_intents.append(intent_detail)
+        
+        # 日志输出过滤结果
+        if clarification_intents or multi_intent_intents:
+            self.logger.info(
+                f"[意图过滤] 单意图: {len(top_failing_intents)}, "
+                f"澄清类: {len(clarification_intents)}, "
+                f"多意图类: {len(multi_intent_intents)}"
+            )
             
         return {
             "total_errors": len(errors),
@@ -147,7 +203,10 @@ class IntentAnalyzer:
                 k: len(v) for k, v in intent_errors.items()
             },
             "top_failing_intents": top_failing_intents,
-            "error_rate_by_intent": error_rate_by_intent
+            "error_rate_by_intent": error_rate_by_intent,
+            # 新增：被过滤的澄清类和多意图类意图（供知识库存储）
+            "clarification_intents": clarification_intents,
+            "multi_intent_intents": multi_intent_intents
         }
         
     async def deep_analyze_top_failures(

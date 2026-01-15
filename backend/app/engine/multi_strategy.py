@@ -568,6 +568,43 @@ class MultiStrategyOptimizer:
                 c["strategy"] for c in filtered_candidates
             ]
             
+            # 阶段 9（提前计算）：计算并准备错误优化历史
+            # 这里的目的是能在 Knowledge Base 中记录最新的错误统计
+            # 但实际的 DB 更新仍保留在最后（或在此处更新也可以，但为了逻辑清晰，我们先计算）
+            current_persistent_errors_list: List[Dict[str, Any]] = []
+            
+            if project_id and optimized_intents:
+                try:
+                    # 如果还没有 loading updated_history，这里先计算
+                    # 注意：为了避免重复计算，我们在这里计算一次，后续 Stage 9 直接使用
+                    # 但考虑到 Stage 9 的现有逻辑比较独立，我们这里先复用 _update_error_optimization_history 逻辑用于展示
+                    # 真正的 DB 更新留给 Stage 9 防止副作用（虽然副作用只是 DB 写）
+                    
+                    # 暂时为了数据一致性，我们在这里就生成 "即将在 Stage 9 保存的数据预览"
+                    temp_updated_history = self._update_error_optimization_history(
+                        errors, 
+                        error_history, 
+                        optimized_intents
+                    )
+                    
+                    # 转换为列表并排序
+                    for hash_key, val in temp_updated_history.items():
+                         val_copy = val.copy()
+                         val_copy['hash_key'] = hash_key # 保留 key 方便调试
+                         current_persistent_errors_list.append(val_copy)
+                    
+                    # 按 optimization_count 倒序排序
+                    current_persistent_errors_list.sort(
+                        key=lambda x: x.get("optimization_count", 0), 
+                        reverse=True
+                    )
+                    
+                except Exception as e:
+                    self.logger.warning(f"准备错误历史数据失败: {e}")
+
+            # 提取困难样本 (hard_cases)
+            difficult_cases = diagnosis.get("error_patterns", {}).get("hard_cases", [])
+
             self.knowledge_base.record_optimization(
                 original_prompt=prompt,
                 optimized_prompt=best_result.get("prompt", prompt),
@@ -576,7 +613,12 @@ class MultiStrategyOptimizer:
                 applied_strategies=applied_strategies,
                 accuracy_before=accuracy,
                 deep_analysis=deep_analysis,
-                newly_failed_cases=newly_failed_cases
+                newly_failed_cases=newly_failed_cases,
+                difficult_cases=difficult_cases,
+                persistent_errors=current_persistent_errors_list,
+                # 新增：传递被过滤的澄清类和多意图类意图
+                clarification_intents=intent_analysis.get("clarification_intents", []),
+                multi_intent_intents=intent_analysis.get("multi_intent_intents", [])
             )
         
         self.logger.info(f"优化任务结束。最终胜出策略: {best_result.get('strategy')}, 预估提升分数: {best_result.get('score', 0):.4f}")
