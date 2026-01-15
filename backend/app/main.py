@@ -19,7 +19,9 @@ loguru_logger.remove()
 LOG_FORMAT = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
 
 # 添加控制台输出 (默认为 INFO)
-console_handler_id = loguru_logger.add(sys.stderr, level="INFO", format=LOG_FORMAT)
+# console_handler_id = loguru_logger.add(sys.stderr, level=os.getenv("LOG_LEVEL", "INFO").upper(), format=LOG_FORMAT)
+console_handler_id = loguru_logger.add(sys.stderr, level="DEBUG", format=LOG_FORMAT)
+
 
 # 统一配置参数
 LOG_CONFIG = {
