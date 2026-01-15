@@ -522,7 +522,9 @@ class MultiStrategyOptimizer:
         if on_progress:
             on_progress("正在验证优化后的提示词...")
         self.logger.info("步骤 8: 验证优化后的提示词...")
-        validation_result: Dict[str, Any] = await self.validator.validate_optimized_prompt(
+        # 使用优化配置的模型进行验证 (用户要求)
+        temp_validator = PromptValidator(self.llm_helper)
+        validation_result: Dict[str, Any] = await temp_validator.validate_optimized_prompt(
             prompt,
             best_result["prompt"],
             should_stop
