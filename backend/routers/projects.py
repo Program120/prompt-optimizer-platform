@@ -341,7 +341,8 @@ async def optimize_project_prompt(project_id: str, task_id: str, strategy: str =
     import threading
     
     project = storage.get_project(project_id)
-    task_status = tm.get_task_status(task_id)
+    # 优化任务需要 errors 数据
+    task_status = tm.get_task_status(task_id, include_results=True)
     
     if not project or not task_status:
         raise HTTPException(status_code=404, detail="Project or Task not found")
@@ -399,10 +400,11 @@ async def download_task_dataset(task_id: str):
     from fastapi.responses import FileResponse
     import os
     
-    task_status = tm.get_task_status(task_id)
+    # 下载数据集不需要 results/errors，优化性能
+    task_status = tm.get_task_status(task_id, include_results=False)
     if not task_status:
         # 尝试直接从 storage 获取，防止内存中没有
-        task_status = storage.get_task_status(task_id)
+        task_status = storage.get_task_status(task_id, include_results=False)
         
     if not task_status:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -423,7 +425,8 @@ async def get_optimize_context(project_id: str, task_id: str):
     :return: 格式化后的优化上下文
     """
     project = storage.get_project(project_id)
-    task_status = tm.get_task_status(task_id)
+    # 获取优化上下文需要 errors 数据
+    task_status = tm.get_task_status(task_id, include_results=True)
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")

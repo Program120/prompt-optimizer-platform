@@ -379,8 +379,8 @@ class TaskManager:
             storage.save_task_status(self.tasks[task_id]["info"]["project_id"], task_id, self.tasks[task_id]["info"])
             return True
         else:
-            # 尝试从磁盘加载并启动
-            info = storage.get_task_status(task_id)
+            # 尝试从磁盘加载并启动（不需要加载完整的 results/errors）
+            info = storage.get_task_status(task_id, include_results=False)
             if info and info["status"] != "completed":
                 # 重新查找文件路径并启动
                 project_id = info["project_id"]
@@ -422,16 +422,26 @@ class TaskManager:
             storage.save_task_status(self.tasks[task_id]["info"]["project_id"], task_id, self.tasks[task_id]["info"])
             return True
         else:
-            # 尝试从磁盘加载并标记为stopped
-            info = storage.get_task_status(task_id)
+            # 尝试从磁盘加载并标记为 stopped（不需要加载完整的 results/errors）
+            info = storage.get_task_status(task_id, include_results=False)
             if info:
                 info["status"] = "stopped"
                 storage.save_task_status(info.get("project_id", ""), task_id, info)
                 return True
         return False
 
-    def get_task_status(self, task_id: str):
-        # 优先从内存拿实时数据，拿不到去文件拿
+    def get_task_status(self, task_id: str, include_results: bool = True):
+        """
+        获取任务状态
+        
+        :param task_id: 任务 ID
+        :param include_results: 是否包含完整的 results 和 errors 数据
+                               对于内存中的任务始终返回完整数据
+                               从数据库加载时按此参数决定
+        :return: 任务状态字典
+        """
+        # 优先从内存拿实时数据（内存中的任务始终包含 results 和 errors）
         if task_id in self.tasks:
             return self.tasks[task_id]["info"]
-        return storage.get_task_status(task_id)
+        # 从数据库加载，按需包含 results/errors
+        return storage.get_task_status(task_id, include_results=include_results)

@@ -49,7 +49,8 @@ async def start_task(
 
 @router.get("/{task_id}")
 async def get_task_status(task_id: str):
-    status = tm.get_task_status(task_id)
+    # 获取任务状态时需要包含完整的 results 和 errors 数据
+    status = tm.get_task_status(task_id, include_results=True)
     if not status:
         raise HTTPException(status_code=404, detail="Task not found")
     return status
@@ -80,7 +81,8 @@ async def delete_task_endpoint(task_id: str):
 
 @router.get("/{task_id}/export")
 async def export_task_results(task_id: str):
-    status = tm.get_task_status(task_id)
+    # 导出时需要包含完整的 results 数据
+    status = tm.get_task_status(task_id, include_results=True)
     if not status:
         raise HTTPException(status_code=404, detail="Task not found")
     

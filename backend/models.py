@@ -289,11 +289,14 @@ class Task(SQLModel, table=True):
     # 其他配置数据（JSON 格式）
     extra_config: str = Field(default="{}", sa_column=Column(Text))
     
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典格式（兼容旧 API）"""
-        from database import get_db_session
-        from sqlmodel import select
+    def to_dict(self, include_results: bool = False) -> Dict[str, Any]:
+        """
+        转换为字典格式（兼容旧 API）
         
+        :param include_results: 是否包含完整的 results 和 errors 数据
+                               默认 False 以提升性能
+        :return: 任务字典
+        """
         result: Dict[str, Any] = {
             "id": self.id,
             "project_id": self.project_id,
@@ -314,15 +317,23 @@ class Task(SQLModel, table=True):
         except json.JSONDecodeError:
             pass
         
-        # 加载结果和错误（延迟加载）
-        with get_db_session() as session:
-            results_stmt = select(TaskResult).where(TaskResult.task_id == self.id)
-            results: List[TaskResult] = list(session.exec(results_stmt))
-            result["results"] = [r.to_dict() for r in results]
+        # 仅在明确请求时加载 results 和 errors（性能优化）
+        if include_results:
+            from database import get_db_session
+            from sqlmodel import select
             
-            errors_stmt = select(TaskError).where(TaskError.task_id == self.id)
-            errors: List[TaskError] = list(session.exec(errors_stmt))
-            result["errors"] = [e.to_dict() for e in errors]
+            with get_db_session() as session:
+                results_stmt = select(TaskResult).where(TaskResult.task_id == self.id)
+                results: List[TaskResult] = list(session.exec(results_stmt))
+                result["results"] = [r.to_dict() for r in results]
+                
+                errors_stmt = select(TaskError).where(TaskError.task_id == self.id)
+                errors: List[TaskError] = list(session.exec(errors_stmt))
+                result["errors"] = [e.to_dict() for e in errors]
+        else:
+            # 默认返回空列表，需要时通过专门的 API 获取
+            result["results"] = []
+            result["errors"] = []
         
         return result
 

@@ -66,6 +66,9 @@ export default function ProjectDetail() {
     const [optimizeContext, setOptimizeContext] = useState<string>("");
     const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
+    // 轮询状态 Ref，用于防止自动保存覆盖后端数据（竞争条件防护）
+    const isPollingRef = useRef(false);
+
     const showToast = (message: string, type: "success" | "error" = "success") => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3000);
@@ -86,11 +89,14 @@ export default function ProjectDetail() {
     }, [taskStatus?.id, taskStatus?.status, autoIterateStatus?.status]);
 
     // 自动保存配置 (Debounce 1s)
-    // 在自动迭代或优化中时，不触发自动保存，避免重复保存
+    // 🔒 竞争条件防护：在以下场景不触发自动保存
+    // 1. 自动迭代运行中 (autoIterateStatus?.status === "running")
+    // 2. 优化任务运行中 (isOptimizing)
+    // 3. 轮询进行中 (isPollingRef.current) - 防止 fetchProject 更新 state 后触发保存覆盖后端数据
     useEffect(() => {
         if (!project) return;
-        // 如果正在自动迭代 或 正在优化，跳过自动保存
-        if (autoIterateStatus?.status === "running" || isOptimizing) return;
+        // 如果正在自动迭代 或 正在优化 或 正在轮询，跳过自动保存
+        if (autoIterateStatus?.status === "running" || isOptimizing || isPollingRef.current) return;
 
         const timer = setTimeout(() => {
             saveProject(true);
@@ -195,8 +201,6 @@ export default function ProjectDetail() {
     };
 
     const isAutoIterating = autoIterateStatus?.status === "running";
-    // 轮询Ref防止重复
-    const isPollingRef = useRef(false);
 
     const pollAutoIterateStatus = () => {
         if (isPollingRef.current) return;

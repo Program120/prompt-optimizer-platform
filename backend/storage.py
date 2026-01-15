@@ -362,11 +362,13 @@ def _create_task_error(task_id: str, data: Dict[str, Any]) -> TaskError:
     )
 
 
-def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
+def get_task_status(task_id: str, include_results: bool = False) -> Optional[Dict[str, Any]]:
     """
     获取任务状态
     
     :param task_id: 任务 ID
+    :param include_results: 是否包含完整的 results 和 errors 数据
+                           默认 False 以提升性能
     :return: 任务状态字典，未找到返回 None
     """
     with get_db_session() as session:
@@ -375,30 +377,31 @@ def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
         
         task = session.get(Task, normalized_id)
         if task:
-            return task.to_dict()
+            return task.to_dict(include_results=include_results)
         return None
 
 
 def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
     """
-    获取项目关联的所有任务
+    获取项目关联的所有任务（仅返回摘要信息，不包含完整的 results/errors）
     
     :param project_id: 项目 ID
     :return: 任务信息列表
     """
+    from sqlalchemy import func
+    
     with get_db_session() as session:
         statement = select(Task).where(Task.project_id == project_id)
         tasks: List[Task] = list(session.exec(statement))
         
         result: List[Dict[str, Any]] = []
         for task in tasks:
-            # 获取结果和错误数量
-            results_stmt = select(TaskResult).where(TaskResult.task_id == task.id)
-            results_count = len(list(session.exec(results_stmt)))
+            # 使用 COUNT 查询获取数量，避免加载所有数据（性能优化）
+            results_count_stmt = select(func.count(TaskResult.id)).where(TaskResult.task_id == task.id)
+            results_count: int = session.exec(results_count_stmt).one()
             
-            errors_stmt = select(TaskError).where(TaskError.task_id == task.id)
-            errors: List[TaskError] = list(session.exec(errors_stmt))
-            errors_count = len(errors)
+            errors_count_stmt = select(func.count(TaskError.id)).where(TaskError.task_id == task.id)
+            errors_count: int = session.exec(errors_count_stmt).one()
             
             # 计算准确率
             accuracy: float = (results_count - errors_count) / results_count if results_count > 0 else 0
