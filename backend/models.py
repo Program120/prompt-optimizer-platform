@@ -331,9 +331,9 @@ class Task(SQLModel, table=True):
                 results: List[TaskResult] = list(session.exec(results_stmt))
                 result["results"] = [r.to_dict() for r in results]
                 
-                errors_stmt = select(TaskError).where(TaskError.task_id == self.id)
-                errors: List[TaskError] = list(session.exec(errors_stmt))
-                result["errors"] = [e.to_dict() for e in errors]
+                # 修复：直接从结果中筛选错误，确保与 TaskResult 表一致，不再单独查询 TaskError 表
+                # TaskError 表可能存在数据不同步问题
+                result["errors"] = [r for r in result["results"] if not r.get("is_correct")]
         else:
             # 默认返回空列表，需要时通过专门的 API 获取
             result["results"] = []

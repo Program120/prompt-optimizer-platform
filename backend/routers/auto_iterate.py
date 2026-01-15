@@ -262,7 +262,8 @@ async def start_auto_iterate(
                                 newly_failed_cases=regression_cases,
                                 should_stop=check_stop,
                                 verification_config=model_config,
-                                selected_modules=selected_modules
+                                selected_modules=selected_modules,
+                                on_progress=lambda msg: storage.save_auto_iterate_status(project_id, {**status, "message": f"第 {round_num}/{max_rounds} 轮: {msg}"})
                             ))
                         
                         # 优化完成后再次检查停止信号

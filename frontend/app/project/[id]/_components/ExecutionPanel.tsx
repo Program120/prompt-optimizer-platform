@@ -36,6 +36,7 @@ interface ExecutionPanelProps {
     setStrategy: (strategy: "multi" | "simple") => void;
     validationLimit: number | "";
     setValidationLimit: (limit: number | "") => void;
+    optimizationStatus: any;
 }
 
 export default function ExecutionPanel({
@@ -66,7 +67,8 @@ export default function ExecutionPanel({
     strategy,
     setStrategy,
     validationLimit,
-    setValidationLimit
+    setValidationLimit,
+    optimizationStatus
 }: ExecutionPanelProps) {
     return (
         <section className="glass p-6 rounded-2xl">
@@ -417,6 +419,13 @@ export default function ExecutionPanel({
                                         <Download size={20} /> 导出
                                     </button>
                                 </div>
+
+                                {isOptimizing && optimizationStatus?.message && (
+                                    <div className="mt-2 text-xs text-blue-300 bg-blue-500/20 p-2 rounded-lg flex items-center gap-2">
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        {optimizationStatus.message}
+                                    </div>
+                                )}
 
                                 {/* 外部优化面板 */}
                                 {showExternalOptimize && (

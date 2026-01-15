@@ -5,6 +5,7 @@
 import os
 from typing import Generator
 from sqlmodel import SQLModel, create_engine, Session
+from sqlalchemy import event
 from loguru import logger
 
 # 数据库文件路径
@@ -13,11 +14,37 @@ DATABASE_URL: str = f"sqlite:///{os.path.join(DATA_DIR, 'app.db')}"
 
 # 创建数据库引擎
 # check_same_thread=False 允许在多线程环境下使用（FastAPI 需要）
+# timeout=30 设置 30 秒超时，避免长时间锁等待
 engine = create_engine(
     DATABASE_URL, 
     echo=False,  # 设置为 True 可以打印 SQL 语句用于调试
-    connect_args={"check_same_thread": False}
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 30  # 30秒超时，避免长时间锁等待
+    }
 )
+
+
+def _set_sqlite_pragma(dbapi_connection, connection_record) -> None:
+    """
+    设置 SQLite 连接参数
+    在每个连接建立时自动调用，启用 WAL 模式和超时设置
+    
+    :param dbapi_connection: 数据库 API 连接
+    :param connection_record: 连接记录
+    """
+    cursor = dbapi_connection.cursor()
+    # 启用 WAL 模式：提升并发读写性能，减少锁冲突
+    cursor.execute("PRAGMA journal_mode=WAL")
+    # 设置 30 秒的忙等待超时
+    cursor.execute("PRAGMA busy_timeout=30000")
+    # 启用外键约束
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
+# 注册连接事件监听器
+event.listen(engine, "connect", _set_sqlite_pragma)
 
 
 def init_db() -> None:

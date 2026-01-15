@@ -247,7 +247,8 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
                 project_id=project_id,
                 should_stop=check_stop,
                 verification_config=verification_config,
-                selected_modules=selected_modules
+                selected_modules=selected_modules,
+                on_progress=lambda msg: optimization_status[project_id].update({"message": msg})
             ))
             new_prompt = result.get("optimized_prompt", project["current_prompt"])
             applied_strategies = result.get("applied_strategies", [])

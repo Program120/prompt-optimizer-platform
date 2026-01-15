@@ -131,7 +131,8 @@ class MultiStrategyOptimizer:
         project_id: Optional[str] = None,
         should_stop: Any = None,
         newly_failed_cases: Optional[List[Dict[str, Any]]] = None,
-        selected_modules: Optional[List[int]] = None
+        selected_modules: Optional[List[int]] = None,
+        on_progress: Optional[Callable[[str], None]] = None
     ) -> Dict[str, Any]:
         """
         执行多策略优化（增强版七阶段工作流）
@@ -153,6 +154,7 @@ class MultiStrategyOptimizer:
         :param project_id: 项目ID（用于知识库）
         :param newly_failed_cases: 新增的失败案例（上一轮成功，本轮失败）
         :param selected_modules: 用户选择的标准模块ID列表（对应前端 STANDARD_MODULES 的 id）
+        :param on_progress: 进度回调函数，接收进度消息字符串
         :return: 优化结果字典
         """
         if not errors:
@@ -173,6 +175,8 @@ class MultiStrategyOptimizer:
             self.logger.info(f"步骤 0: 初始化知识库 (项目ID: {project_id})")
         
         # 阶段 1 & 2：并行执行诊断分析和意图分析（性能优化）
+        if on_progress:
+            on_progress("正在执行诊断与意图分析...")
         self.logger.info(f"步骤 1&2: 并行执行诊断分析和意图分析... (错误样本数: {len(errors)})")
         self.logger.info(f"提示词上下文: {prompt[:100]}... (总长度: {len(prompt)})")
         
@@ -238,6 +242,8 @@ class MultiStrategyOptimizer:
             return {"optimized_prompt": prompt, "message": "Stopped"}
 
         # 立即启动高级诊断（与后续步骤并行）
+        if on_progress:
+            on_progress("正在执行高级定向分析...")
         self.logger.info("步骤 2.5: 启动高级定向分析...")
         all_intents = [
             i["intent"] for i in intent_analysis.get("top_failing_intents", [])
@@ -267,6 +273,8 @@ class MultiStrategyOptimizer:
         
         # 阶段 3：Top 失败意图深度分析
         # 选取错误数最多的 top 3 个意图，每个意图最多 50 个错误案例
+        if on_progress:
+            on_progress("正在执行深度意图分析...")
         self.logger.info("步骤 3: Top 失败意图深度分析...")
         self.logger.info(f"开始分析 Top 3 失败意图，错误样本数: {len(errors)}")
         deep_analysis: Dict[str, Any] = await self.intent_analyzer.deep_analyze_top_failures(
@@ -348,6 +356,8 @@ class MultiStrategyOptimizer:
             self.logger.info(f"注入新增失败案例到 diagnosis，数量: {len(newly_failed_cases)}")
         
         # 阶段 4：策略匹配
+        if on_progress:
+            on_progress("正在匹配优化策略...")
         self.logger.info("步骤 4: 策略匹配...")
         
         # 检查是否应该强制使用负向优化融合策略
@@ -414,6 +424,8 @@ class MultiStrategyOptimizer:
              }
 
         # 阶段 5：候选生成 (并行优化)
+        if on_progress:
+            on_progress(f"正在生成优化候选方案 (应用策略数: {len(strategies)})...")
         self.logger.info(f"步骤 5: 候选生成... (应用策略数: {len(strategies)})")
         candidates = await self._generate_candidates(
             prompt, strategies, errors, diagnosis, dataset, should_stop
@@ -427,12 +439,16 @@ class MultiStrategyOptimizer:
             target_error_count=40,
             correct_error_ratio=1.5
         )
+        if on_progress:
+            on_progress("正在快速评估候选方案...")
         self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)}, 验证集大小: {len(validation_set)})")
         filtered_candidates = await self._rapid_evaluation(candidates, validation_set, should_stop)
         if filtered_candidates:
             self.logger.info(f"筛选后的候选方案及其评分: {[(c['strategy'], round(c.get('score', 0), 4)) for c in filtered_candidates]}")
         
         # 阶段 6：选择最佳方案
+        if on_progress:
+            on_progress("正在选择最佳方案...")
         self.logger.info("步骤 6: 选择最佳方案...")
         
         # 优化：检查是否可以跳过选择步骤
@@ -456,6 +472,8 @@ class MultiStrategyOptimizer:
         
         # 阶段 7：记录到知识库
         if self.knowledge_base and best_result.get("prompt") != prompt:
+            if on_progress:
+                on_progress("正在保存知识库记录...")
             self.logger.info("步骤 7: 记录优化结果到知识库...")
             accuracy: float = diagnosis.get("overall_metrics", {}).get("accuracy", 0)
             
@@ -487,6 +505,8 @@ class MultiStrategyOptimizer:
         self.logger.info(f"最终提示词摘要: {best_result['prompt'][:100]}... (总长度: {len(best_result['prompt'])})")
         
         # 阶段 8: 验证优化后的提示词
+        if on_progress:
+            on_progress("正在验证优化后的提示词...")
         self.logger.info("步骤 8: 验证优化后的提示词...")
         validation_result: Dict[str, Any] = await self.validator.validate_optimized_prompt(
             prompt,

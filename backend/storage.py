@@ -458,7 +458,12 @@ def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
             results_count_stmt = select(func.count(TaskResult.id)).where(TaskResult.task_id == task.id)
             results_count: int = session.exec(results_count_stmt).one()
             
-            errors_count_stmt = select(func.count(TaskError.id)).where(TaskError.task_id == task.id)
+            # 使用 TaskResult 计算错误数 (is_correct=False)，确保数据一致性
+            # 不再查询 TaskError 表，因为它可能与 TaskResult 不一致
+            errors_count_stmt = select(func.count(TaskResult.id)).where(
+                TaskResult.task_id == task.id, 
+                TaskResult.is_correct == False
+            )
             errors_count: int = session.exec(errors_count_stmt).one()
             
             # 计算准确率
@@ -544,6 +549,7 @@ def update_task_note(task_id: str, note: str) -> bool:
 def get_all_project_errors(project_id: str) -> List[Dict[str, Any]]:
     """
     获取项目所有历史任务中的错误案例
+    通过查询 TaskResult 中 is_correct=False 的记录，确保与准确率计算一致
     
     :param project_id: 项目 ID
     :return: 错误案例列表
@@ -558,8 +564,12 @@ def get_all_project_errors(project_id: str) -> List[Dict[str, Any]]:
         
         all_errors: List[Dict[str, Any]] = []
         for task in tasks:
-            errors_stmt = select(TaskError).where(TaskError.task_id == task.id)
-            errors: List[TaskError] = list(session.exec(errors_stmt))
+            # 修改：从 TaskResult 获取错误 (is_correct=False)，不再使用 TaskError 表
+            errors_stmt = select(TaskResult).where(
+                TaskResult.task_id == task.id,
+                TaskResult.is_correct == False
+            )
+            errors: List[TaskResult] = list(session.exec(errors_stmt))
             all_errors.extend([e.to_dict() for e in errors])
         
         return all_errors

@@ -383,6 +383,8 @@ export default function ProjectDetail() {
     // 优化状态轮询
     const isOptimizePollingRef = useRef(false);
 
+    const [optimizationStatus, setOptimizationStatus] = useState<any>(null);
+
     const pollOptimizationStatus = () => {
         if (isOptimizePollingRef.current) return;
         isOptimizePollingRef.current = true;
@@ -392,6 +394,7 @@ export default function ProjectDetail() {
             try {
                 const res = await axios.get(`${API_BASE}/projects/${id}/optimize/status`);
                 const status = res.data;
+                setOptimizationStatus(status);
 
                 if (status.status === "completed") {
                     setIsOptimizing(false);
@@ -737,6 +740,7 @@ export default function ProjectDetail() {
                         setStrategy={setStrategy}
                         validationLimit={validationLimit}
                         setValidationLimit={setValidationLimit}
+                        optimizationStatus={optimizationStatus}
                     />
                 </div>
 
