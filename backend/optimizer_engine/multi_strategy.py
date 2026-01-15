@@ -9,11 +9,12 @@ from .fewshot_selector import FewShotSelector
 from .knowledge_base import OptimizationKnowledgeBase
 from .intent_analyzer import IntentAnalyzer
 from .advanced_diagnosis import AdvancedDiagnoser
-from .cancellation import gather_with_cancellation
 # 新增模块导入
 from .llm_helper import LLMHelper
 from .validation import PromptValidator
 from .multi_intent_optimizer import MultiIntentOptimizer
+from .candidate_generator import CandidateGenerator
+from .prompt_evaluator import PromptEvaluator
 from openai import AsyncOpenAI
 
 
@@ -98,6 +99,19 @@ class MultiStrategyOptimizer:
         # 初始化多意图优化器
         self.multi_intent_optimizer: MultiIntentOptimizer = MultiIntentOptimizer(
             llm_helper=self.llm_helper
+        )
+        
+        # 初始化候选生成器
+        self.candidate_generator: CandidateGenerator = CandidateGenerator(
+            selector=self.selector,
+            semaphore=self.semaphore
+        )
+        
+        # 初始化提示词评估器
+        self.prompt_evaluator: PromptEvaluator = PromptEvaluator(
+            llm_helper=self.llm_helper,
+            verification_llm_client=verification_llm_client,
+            verification_model_config=verification_model_config
         )
         
         # 知识库延迟初始化（需要 project_id）
@@ -427,13 +441,13 @@ class MultiStrategyOptimizer:
         if on_progress:
             on_progress(f"正在生成优化候选方案 (应用策略数: {len(strategies)})...")
         self.logger.info(f"步骤 5: 候选生成... (应用策略数: {len(strategies)})")
-        candidates = await self._generate_candidates(
+        candidates = await self.candidate_generator.generate_candidates(
             prompt, strategies, errors, diagnosis, dataset, should_stop
         )
         
         # 阶段 5.1：构建混合验证集并快速筛选
         # 验证集由正确案例和错误案例组成，比例为 3:2
-        validation_set: List[Dict[str, Any]] = self._build_validation_set(
+        validation_set: List[Dict[str, Any]] = self.prompt_evaluator.build_validation_set(
             errors=errors,
             dataset=dataset,
             target_error_count=40,
@@ -442,7 +456,7 @@ class MultiStrategyOptimizer:
         if on_progress:
             on_progress("正在快速评估候选方案...")
         self.logger.info(f"步骤 5.1: 快速筛选... (候选方案数: {len(candidates)}, 验证集大小: {len(validation_set)})")
-        filtered_candidates = await self._rapid_evaluation(candidates, validation_set, should_stop)
+        filtered_candidates = await self.prompt_evaluator.rapid_evaluation(candidates, validation_set, should_stop)
         if filtered_candidates:
             self.logger.info(f"筛选后的候选方案及其评分: {[(c['strategy'], round(c.get('score', 0), 4)) for c in filtered_candidates]}")
         
@@ -466,7 +480,7 @@ class MultiStrategyOptimizer:
             self.logger.info(f"[选择最佳方案] {skip_reason}，跳过选择步骤，直接使用")
             best_result: Dict[str, Any] = filtered_candidates[0]
         else:
-            best_result: Dict[str, Any] = self._select_best_candidate(
+            best_result: Dict[str, Any] = self.prompt_evaluator.select_best_candidate(
                 filtered_candidates, prompt
             )
         
@@ -547,356 +561,6 @@ class MultiStrategyOptimizer:
             result["failure_reason"] = ""
         
         return result
-        
-    async def _generate_candidates(
-        self, 
-        prompt: str, 
-        strategies: List[Any], 
-        errors: List[Dict], 
-        diagnosis: Dict,
-        dataset: List[Dict],
-        should_stop: Any = None
-    ) -> List[Dict[str, Any]]:
-        """
-        生成优化候选集（支持取消）
-        
-        :param prompt: 当前提示词
-        :param strategies: 策略列表
-        :param errors: 错误样例
-        :param diagnosis: 诊断结果
-        :param dataset: 数据集
-        :param should_stop: 停止回调函数
-        :return: 候选方案列表
-        """
-        candidates: List[Dict[str, Any]] = []
-        
-        # 检查停止信号
-        if should_stop and should_stop():
-            self.logger.info("候选生成阶段开始前即被手动中止")
-            return candidates
-        
-        # 创建策略应用任务列表
-        tasks: list = []
-        for strategy in strategies:
-            tasks.append(self._apply_strategy_wrapper(strategy, prompt, errors, diagnosis, dataset))
-        
-        # 使用可取消的 gather 执行所有策略
-        # 如果收到停止信号，会自动取消所有未完成的任务
-        results = await gather_with_cancellation(
-            *tasks,
-            should_stop=should_stop,
-            check_interval=0.5,
-            return_exceptions=True
-        )
-        
-        for res in results:
-            if isinstance(res, dict) and res.get("prompt"):
-                candidates.append(res)
-            elif isinstance(res, asyncio.CancelledError):
-                self.logger.info("策略执行被取消")
-            elif isinstance(res, Exception):
-                self.logger.error(f"策略执行失败: {res}")
-        
-        self.logger.info(f"成功生成 {len(candidates)} 个候选方案: {[c.get('strategy') for c in candidates]}")
-        return candidates
-
-    async def _apply_strategy_wrapper(self, strategy, prompt, errors, diagnosis, dataset):
-        """包装策略执行逻辑"""
-        self.logger.info(f"正在应用策略: {strategy.name}")
-        try:
-            # 策略应用可能涉及 LLM 调用，也可能涉及 Rewriter/Selector
-            # 为了兼容现有 Strategy 类，我们先尝试调用其 apply 方法
-            # 同时注入 rewriter/selector 的能力（如果 Strategy 支持）
-            
-            # 这里做一个扩展：如果 Strategy 是 DifficultExampleInjectionStrategy，我们使用 Selector
-            if strategy.name == "difficult_example_injection":
-                # 使用 Selector 选择困难案例
-                hard_cases = self.selector.select(dataset, "difficulty", n=3)
-                diagnosis_copy = diagnosis.copy()
-                diagnosis_copy["error_patterns"] = diagnosis.get("error_patterns", {}).copy()
-                diagnosis_copy["error_patterns"]["hard_cases"] = hard_cases
-                diagnosis = diagnosis_copy
-            
-            loop = asyncio.get_running_loop()
-            new_prompt = await loop.run_in_executor(
-                None,
-                lambda: strategy.apply(prompt, errors, diagnosis)
-            )
-            
-            if new_prompt != prompt:
-                self.logger.info(f"策略 {strategy.name} 成功更新了提示词。长度变化: {len(prompt)} -> {len(new_prompt)}")
-                self.logger.debug(f"Diff 预览: {new_prompt[:50]}... (已应用变更)")
-            else:
-                self.logger.info(f"策略 {strategy.name} 未产生任何实质性变更。")
-            
-            return {
-                "strategy": strategy.name,
-                "prompt": new_prompt,
-                "original_prompt": prompt
-            }
-        except Exception as e:
-            self.logger.error(f"应用策略 {strategy.name} 时发生错误: {e}")
-            raise e
-
-    def _build_validation_set(
-        self,
-        errors: List[Dict[str, Any]],
-        dataset: List[Dict[str, Any]],
-        target_error_count: int = 20,
-        correct_error_ratio: float = 1.5
-    ) -> List[Dict[str, Any]]:
-        """
-        构建混合验证集，包含正确案例和错误案例
-        
-        验证集设计原则：
-        - 正确案例与错误案例比例为 3:2 (correct_error_ratio=1.5)
-        - 当数据不足时，按实际可用数量构建
-        - 确保验证集不会包含重复数据
-        
-        :param errors: 错误案例列表
-        :param dataset: 完整数据集（包含正确和错误案例）
-        :param target_error_count: 目标错误案例数量（默认20）
-        :param correct_error_ratio: 正确案例与错误案例的比例（默认1.5，即3:2）
-        :return: 混合验证集
-        """
-        import random
-        
-        validation_set: List[Dict[str, Any]] = []
-        
-        # 1. 获取错误集合
-        # 获取错误案例的唯一标识（使用 query 字段作为 key）
-        error_queries: set = {e.get('query', '') for e in errors}
-        
-        # 2. 从 dataset 中筛选出正确案例
-        # 正确案例 = 完整数据集中不在错误集合里的案例
-        correct_cases: List[Dict[str, Any]] = [
-            item for item in dataset 
-            if item.get('query', '') not in error_queries
-        ]
-        
-        # 3. 计算实际可用的案例数量
-        available_errors: int = len(errors)
-        available_correct: int = len(correct_cases)
-        
-        # 4. 计算目标数量（考虑数据不足的情况）
-        # 期望的错误案例数
-        actual_error_count: int = min(target_error_count, available_errors)
-        
-        # 期望的正确案例数 = 错误案例数 * 比例
-        target_correct_count: int = int(actual_error_count * correct_error_ratio)
-        actual_correct_count: int = min(target_correct_count, available_correct)
-        
-        # 5. 如果正确案例不足，重新调整错误案例数量以保持比例
-        if actual_correct_count < target_correct_count and actual_correct_count > 0:
-            # 根据实际正确案例反推错误案例数量
-            adjusted_error_count: int = int(actual_correct_count / correct_error_ratio)
-            actual_error_count = max(1, min(adjusted_error_count, actual_error_count))
-            self.logger.info(
-                f"[验证集构建] 正确案例不足，调整比例: "
-                f"正确={actual_correct_count}, 错误={actual_error_count}"
-            )
-        
-        # 6. 随机采样
-        # 采样错误案例
-        if actual_error_count > 0 and available_errors > 0:
-            sampled_errors: List[Dict[str, Any]] = random.sample(
-                errors, 
-                min(actual_error_count, available_errors)
-            )
-            # 使用浅拷贝避免污染原始数据，并标记为错误案例
-            for case in sampled_errors:
-                case_copy: Dict[str, Any] = case.copy()
-                case_copy['_is_error_case'] = True
-                validation_set.append(case_copy)
-        
-        # 采样正确案例
-        if actual_correct_count > 0 and available_correct > 0:
-            sampled_correct: List[Dict[str, Any]] = random.sample(
-                correct_cases,
-                min(actual_correct_count, available_correct)
-            )
-            # 使用浅拷贝避免污染原始数据，并标记为正确案例
-            for case in sampled_correct:
-                case_copy: Dict[str, Any] = case.copy()
-                case_copy['_is_error_case'] = False
-                validation_set.append(case_copy)
-        
-        # 7. 打乱验证集顺序
-        random.shuffle(validation_set)
-        
-        # 8. 记录日志
-        error_count: int = sum(1 for c in validation_set if c.get('_is_error_case', False))
-        correct_count: int = len(validation_set) - error_count
-        self.logger.info(
-            f"[验证集构建] 完成: 总计={len(validation_set)} "
-            f"(正确={correct_count}, 错误={error_count}, "
-            f"比例={correct_count / error_count if error_count > 0 else 'N/A':.2f})"
-        )
-        
-        return validation_set
-
-    async def _rapid_evaluation(
-        self, 
-        candidates: List[Dict], 
-        validation_set: List[Dict],
-        should_stop: Callable[[], bool] = None
-    ) -> List[Dict]:
-        """
-        快速评估候选效果（支持取消）
-        
-        :param candidates: 候选方案列表
-        :param validation_set: 验证集
-        :param should_stop: 停止回调函数
-        :return: 评估后的候选方案列表
-        """
-        # 优化：无候选时直接返回
-        if not candidates:
-            self.logger.info("[快速筛选] 无候选方案，跳过筛选")
-            return candidates
-        
-        # 优化：仅一个候选时无须筛选，直接返回
-        if len(candidates) == 1:
-            self.logger.info(
-                f"[快速筛选] 仅有 1 个候选方案 ({candidates[0]['strategy']})，"
-                f"跳过筛选步骤"
-            )
-            # 给单个候选设置默认分数
-            candidates[0]["score"] = 1.0
-            return candidates
-        
-        # 优化：无验证集时直接返回
-        if not validation_set:
-            self.logger.info("[快速筛选] 无验证集，跳过筛选")
-            return candidates
-        
-        self.logger.info(
-            f"[快速筛选] 开始评估 {len(candidates)} 个候选方案，"
-            f"验证集大小: {len(validation_set)}"
-        )
-        
-        # 使用实例变量的停止回调
-        stop_func: Callable[[], bool] = should_stop or self._should_stop
-            
-        evaluated: List[Dict] = []
-        for cand in candidates:
-            # 每次评估前检查停止信号
-            if stop_func and stop_func():
-                self.logger.info("[快速筛选] 评估阶段被手动中止")
-                break
-                
-            score: float = await self._evaluate_prompt(cand["prompt"], validation_set, stop_func)
-            self.logger.info(f"[快速筛选] 策略 '{cand['strategy']}' 评估完毕: 得分 = {score:.4f}")
-            cand["score"] = score
-            evaluated.append(cand)
-            
-        # 按分数排序
-        evaluated.sort(key=lambda x: x["score"], reverse=True)
-        return evaluated
-        
-    async def _evaluate_prompt(
-        self, 
-        prompt: str, 
-        test_cases: List[Dict],
-        should_stop: Callable[[], bool] = None
-    ) -> float:
-        """
-        评估 Prompt 在测试集上的表现 (0-1)（支持取消）
-        
-        :param prompt: 待评估的提示词
-        :param test_cases: 测试用例列表
-        :param should_stop: 停止回调函数
-        :return: 评估得分 (0-1)
-        """
-        # 使用验证专用的 client，如果未提供则回退到主 client
-        client_to_use = self.verification_llm_client or self.llm_client
-        if not client_to_use:
-            return 0.5
-        
-        # 检查停止信号
-        if should_stop and should_stop():
-            return 0.0
-            
-        total: int = len(test_cases)
-        self.logger.info(f"正在对提示词进行快速评估 (长度={len(prompt)})，测试案例数: {total}...")
-        
-        # 限制并发
-        sem: asyncio.Semaphore = asyncio.Semaphore(3)
-        
-        async def run_case(case: Dict) -> int:
-            """
-            评估单个测试用例
-            
-            :param case: 测试用例
-            :return: 1 表示正确，0 表示错误
-            """
-            async with sem:
-                # 检查停止信号
-                if should_stop and should_stop():
-                    return 0
-                    
-                try:
-                    query: str = case.get('query', '')
-                    target: str = case.get('target', '')
-                    
-                    # 构建简单的推理 prompt
-                    eval_input: str = prompt.replace("{{input}}", query).replace("{{context}}", "")
-                    # 如果没有替换变量，直接拼接
-                    if eval_input == prompt:
-                        eval_input = f"{prompt}\n\nInput: {query}"
-                    
-                    # 使用 LLM Helper 进行可取消的 LLM 调用
-                    # 传入验证专用的 client 和 config
-                    response: str = await self.llm_helper.call_llm_with_cancellation(
-                        eval_input,
-                        should_stop=should_stop,
-                        task_name="快速评估",
-                        override_client=self.verification_llm_client,
-                        override_config=self.verification_model_config
-                    )
-                    
-                    # 简单匹配：只要包含目标值就算对 (模糊匹配)
-                    if str(target).lower() in response.lower():
-                        return 1
-                    return 0
-                except asyncio.CancelledError:
-                    return 0
-                except:
-                    return 0
-
-        tasks: list = [run_case(case) for case in test_cases]
-        
-        # 使用可取消的 gather
-        results = await gather_with_cancellation(
-            *tasks,
-            should_stop=should_stop,
-            check_interval=0.5,
-            return_exceptions=True
-        )
-        
-        # 处理结果，忽略异常
-        valid_results: list = [r for r in results if isinstance(r, int)]
-        
-        return sum(valid_results) / total if total > 0 else 0
-
-    def _select_best_candidate(self, candidates: List[Dict], original_prompt: str) -> Dict:
-        """
-        选择最佳候选方案
-        
-        :param candidates: 候选方案列表（已按分数排序）
-        :param original_prompt: 原始提示词（用于回退）
-        :return: 最佳候选方案
-        """
-        if not candidates:
-            self.logger.info("[选择最佳方案] 无候选方案，返回原始提示词")
-            return {"prompt": original_prompt, "strategy": "none", "score": 0}
-        
-        best: Dict = candidates[0]
-        self.logger.info(
-            f"[选择最佳方案] 最终选定: '{best['strategy']}' "
-            f"(评估得分: {best.get('score', 0):.4f})"
-        )
-        return best
-
 
 
     def diagnose(
