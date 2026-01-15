@@ -17,10 +17,13 @@ loguru_logger.remove()
 
 # 统一日志格式
 LOG_FORMAT = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
+from dotenv import load_dotenv
 
+# 先加载环境变量
+load_dotenv()
 # 添加控制台输出 (默认为 INFO)
-# console_handler_id = loguru_logger.add(sys.stderr, level=os.getenv("LOG_LEVEL", "INFO").upper(), format=LOG_FORMAT)
-console_handler_id = loguru_logger.add(sys.stderr, level="DEBUG", format=LOG_FORMAT)
+console_handler_id = loguru_logger.add(sys.stderr, level=os.getenv("LOG_LEVEL", "INFO").upper(), format=LOG_FORMAT)
+# console_handler_id = loguru_logger.add(sys.stderr, level="DEBUG", format=LOG_FORMAT)
 
 
 # 统一配置参数
