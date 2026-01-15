@@ -86,6 +86,14 @@ async def lifespan(app: FastAPI):
         loguru_logger.info("python-multipart is installed.")
     except ImportError:
         loguru_logger.error("Create: python-multipart module is missing! Form data parsing will fail.")
+    
+    # 执行数据迁移（从 JSON 到 SQLite）
+    try:
+        from migrate_to_sqlite import run_migration
+        run_migration()
+    except Exception as e:
+        loguru_logger.warning(f"数据迁移检查失败（可能已完成或无需迁移）: {e}")
+    
     yield
     loguru_logger.info("Service is shutting down...")
 

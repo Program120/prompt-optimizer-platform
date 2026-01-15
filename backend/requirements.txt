@@ -13,3 +13,5 @@ numpy
 networkx
 starlette
 fastapi
+sqlmodel
+aiosqlite

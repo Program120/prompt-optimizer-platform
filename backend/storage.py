@@ -1,452 +1,774 @@
+"""
+数据存储模块（SQLModel 版本）
+提供项目、任务、模型配置等数据的 CRUD 操作
+"""
 import os
 import json
-import pandas as pd
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import tempfile
-import shutil
 from loguru import logger
+from sqlmodel import Session, select
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-PROJECTS_FILE = os.path.join(DATA_DIR, "projects.json")
+from database import get_db_session, DATA_DIR
+from models import (
+    Project, ProjectIteration, Task, TaskResult, TaskError,
+    GlobalModel, ModelConfig, AutoIterateStatus
+)
 
-def init_storage():
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
-    if not os.path.exists(PROJECTS_FILE):
-        _atomic_save_json(PROJECTS_FILE, [])
 
-def _atomic_save_json(file_path: str, data: Any):
+def init_storage() -> None:
     """
-    Atomically save JSON data to a file using a temporary file.
-    This prevents data corruption (e.g. 'Extra data') if the process crashes or concurrent writes happen.
+    初始化存储层
+    确保数据目录存在，并初始化数据库
     """
-    dir_name = os.path.dirname(file_path)
-    if not os.path.exists(dir_name):
-        os.makedirs(dir_name)
-    
-    # Create temp file
-    try:
-        with tempfile.NamedTemporaryFile("w", delete=False, dir=dir_name, encoding="utf-8", suffix=".tmp") as tmp:
-            json.dump(data, tmp, indent=2, ensure_ascii=False)
-            temp_path = tmp.name
-        
-        # Atomically replace
-        os.replace(temp_path, file_path)
-    except Exception as e:
-        logger.error(f"Failed to save JSON to {file_path}: {e}")
-        if 'temp_path' in locals() and os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise e
+    from database import init_db
+    init_db()
+    logger.info("存储层初始化完成")
 
-def _safe_load_json(file_path: str) -> Any:
-    """
-    Safely load JSON from file, identifying and recovering from 'Extra data' corruption.
-    """
-    with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-        
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError as e:
-        if "Extra data" in str(e):
-            logger.warning(f"Detected corrupted JSON in {file_path} (Extra data). Attempting recovery.")
-            try:
-                # Attempt to recover by taking the valid part up to the extra data
-                recovered_data = json.loads(content[:e.pos])
-                logger.info(f"Successfully recovered JSON data from {file_path}")
-                
-                # Optionally auto-fix the file on disk? 
-                # Better to just return valid data for now, the next save will fix it.
-                return recovered_data
-            except Exception as recovery_error:
-                logger.error(f"Failed to recover JSON from {file_path}: {recovery_error}")
-                raise e
-        else:
-            logger.error(f"JSON decode error in {file_path}: {e}")
-            raise e
+
+# ============== 项目相关操作 ==============
 
 def get_projects() -> List[Dict[str, Any]]:
-    return _safe_load_json(PROJECTS_FILE)
+    """
+    获取所有项目列表
+    
+    :return: 项目字典列表
+    """
+    with get_db_session() as session:
+        statement = select(Project)
+        projects: List[Project] = list(session.exec(statement))
+        return [p.to_dict() for p in projects]
 
-def save_projects(projects: List[Dict[str, Any]]):
-    _atomic_save_json(PROJECTS_FILE, projects)
+
+def save_projects(projects: List[Dict[str, Any]]) -> None:
+    """
+    保存项目列表（批量更新）
+    注意：此函数保留用于兼容性，推荐使用单独的 create/update 函数
+    
+    :param projects: 项目字典列表
+    """
+    with get_db_session() as session:
+        for proj_dict in projects:
+            existing = session.get(Project, proj_dict.get("id"))
+            if existing:
+                _update_project_from_dict(existing, proj_dict)
+            else:
+                new_project = _create_project_from_dict(proj_dict)
+                session.add(new_project)
+        session.commit()
+
 
 def get_project(project_id: str) -> Optional[Dict[str, Any]]:
-    projects = get_projects()
-    for p in projects:
-        if p["id"] == project_id:
-            return p
-    return None
+    """
+    根据 ID 获取单个项目
+    
+    :param project_id: 项目 ID
+    :return: 项目字典，未找到返回 None
+    """
+    with get_db_session() as session:
+        project = session.get(Project, project_id)
+        if project:
+            return project.to_dict()
+        return None
+
 
 def create_project(name: str, prompt: str) -> Dict[str, Any]:
-    projects = get_projects()
-    new_project = {
-        "id": datetime.now().strftime("%Y%m%d%H%M%S"),
-        "name": name,
-        "current_prompt": prompt,
-        "iterations": [],
-        "model_config": {}, # 初始化为空配置
-        "created_at": datetime.now().isoformat()
-    }
-    projects.append(new_project)
-    save_projects(projects)
-    return new_project
+    """
+    创建新项目
+    
+    :param name: 项目名称
+    :param prompt: 初始提示词
+    :return: 创建的项目字典
+    """
+    project_id: str = datetime.now().strftime("%Y%m%d%H%M%S")
+    
+    new_project = Project(
+        id=project_id,
+        name=name,
+        current_prompt=prompt,
+        config="{}",
+        model_config_data="{}",
+        optimization_model_config="{}",
+        created_at=datetime.now().isoformat()
+    )
+    
+    with get_db_session() as session:
+        session.add(new_project)
+        session.commit()
+        session.refresh(new_project)
+        logger.info(f"创建项目: {project_id} - {name}")
+        return new_project.to_dict()
+
 
 def delete_project(project_id: str) -> bool:
-    """删除项目"""
-    projects = get_projects()
-    initial_len = len(projects)
-    projects = [p for p in projects if p["id"] != project_id]
+    """
+    删除项目
     
-    if len(projects) < initial_len:
-        save_projects(projects)
-        return True
-    return False
+    :param project_id: 项目 ID
+    :return: 是否成功删除
+    """
+    with get_db_session() as session:
+        project = session.get(Project, project_id)
+        if project:
+            # 同时删除关联的迭代记录
+            for iteration in project.iterations:
+                session.delete(iteration)
+            session.delete(project)
+            session.commit()
+            logger.info(f"删除项目: {project_id}")
+            return True
+        return False
 
-def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]):
-    task_file = os.path.join(DATA_DIR, f"task_{task_id}.json")
-    _atomic_save_json(task_file, status)
-
-def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
-    task_file = os.path.join(DATA_DIR, f"task_{task_id}.json")
-    if os.path.exists(task_file):
-        return _safe_load_json(task_file)
-    return None
-
-MODEL_CONFIG_FILE = os.path.join(DATA_DIR, "model_config.json")
-
-def get_model_config() -> Dict[str, str]:
-    if os.path.exists(MODEL_CONFIG_FILE):
-        return _safe_load_json(MODEL_CONFIG_FILE)
-    return {
-        "base_url": "https://api.openai.com/v1", 
-        "api_key": "",
-        "max_tokens": 2000,
-        "timeout": 60,
-        "model_name": "gpt-3.5-turbo",
-        "temperature": 0.0
-    }
-
-def save_model_config(config: Dict[str, str]):
-    _atomic_save_json(MODEL_CONFIG_FILE, config)
 
 def update_project(project_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """更新项目信息"""
-    projects = get_projects()
-    for idx, p in enumerate(projects):
-        if p["id"] == project_id:
-            # 更新允许的字段
-            if "name" in updates:
-                p["name"] = updates["name"]
-            if "current_prompt" in updates:
-                p["current_prompt"] = updates["current_prompt"]
-            if "last_task_id" in updates:
-                p["last_task_id"] = updates["last_task_id"]
-            if "config" in updates:
-                p["config"] = updates["config"]
-            if "iterations" in updates:
-                p["iterations"] = updates["iterations"]
-            if "model_config" in updates:
-                p["model_config"] = updates["model_config"]
-            if "optimization_model_config" in updates:
-                p["optimization_model_config"] = updates["optimization_model_config"]
-            if "optimization_prompt" in updates:
-                p["optimization_prompt"] = updates["optimization_prompt"]
-            p["updated_at"] = datetime.now().isoformat()
-            projects[idx] = p
-            save_projects(projects)
-            return p
-    return None
-
-def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
-    """获取项目关联的所有任务（完整的运行历史）"""
-    tasks = []
-    for filename in os.listdir(DATA_DIR):
-        if filename.startswith("task_") and filename.endswith(".json"):
-            task_path = os.path.join(DATA_DIR, filename)
-            try:
-                task_data = _safe_load_json(task_path)
-            except Exception as e:
-                logger.error(f"Error loading task file {filename}: {e}")
-                continue
-                
-            if task_data.get("project_id") == project_id:
-                    # 从文件路径提取数据集名称
-                    file_path = task_data.get("file_path", "")
-                    original_filename = task_data.get("original_filename")
-                    dataset_name = original_filename if original_filename else (os.path.basename(file_path) if file_path else "未知")
-                    
-                    # 计算准确率
-                    results = task_data.get("results", [])
-                    errors = task_data.get("errors", [])
-                    accuracy = (len(results) - len(errors)) / len(results) if results else 0
-                    
-                    # 从任务ID提取时间戳 (格式: task_1234567890)
-                    task_id = task_data.get("id", "")
-                    timestamp = task_id.replace("task_", "") if task_id.startswith("task_") else ""
-                    
-                    tasks.append({
-                        "id": task_id,
-                        "status": task_data.get("status"),
-                        "current_index": task_data.get("current_index", 0),
-                        "total_count": task_data.get("total_count", 0),
-                        "results_count": len(results),
-                        "errors_count": len(errors),
-                        "accuracy": accuracy,
-                        "prompt": task_data.get("prompt", ""),
-                        "dataset_name": dataset_name,
-                        "created_at": timestamp,
-                        "note": task_data.get("note", "")
-                    })
-    # 按任务ID排序（最新的在前）
-    tasks.sort(key=lambda x: x["id"], reverse=True)
-    return tasks
-
-def save_auto_iterate_status(project_id: str, status: Dict[str, Any]):
-    file_path = os.path.join(DATA_DIR, f"auto_iterate_{project_id}.json")
-    _atomic_save_json(file_path, status)
-
-def get_auto_iterate_status(project_id: str) -> Optional[Dict[str, Any]]:
-    file_path = os.path.join(DATA_DIR, f"auto_iterate_{project_id}.json")
-    if os.path.exists(file_path):
-        try:
-            return _safe_load_json(file_path)
-        except:
-            return None
-    return None
-
-
-def get_all_project_errors(project_id: str) -> List[Dict[str, Any]]:
     """
-    获取项目所有历史任务中的错误案例
-    :param project_id: 项目ID
-    :return: 错误案例列表（包含 query, target, output 等信息）
-    """
-    if not project_id:
-        return []
-        
-    all_errors = []
+    更新项目信息
     
-    # 遍历所有任务文件
-    if not os.path.exists(DATA_DIR):
-        return []
+    :param project_id: 项目 ID
+    :param updates: 要更新的字段字典
+    :return: 更新后的项目字典，未找到返回 None
+    """
+    with get_db_session() as session:
+        project = session.get(Project, project_id)
+        if not project:
+            return None
         
-    for filename in os.listdir(DATA_DIR):
-        if filename.startswith("task_") and filename.endswith(".json"):
-            try:
-                task_path = os.path.join(DATA_DIR, filename)
-                task_data = _safe_load_json(task_path)
-                    
-                # 检查是否属于该项目
-                if task_data.get("project_id") == project_id:
-                    # 提取错误案例
-                    errors = task_data.get("errors", [])
-                    if errors:
-                        all_errors.extend(errors)
-            except Exception as e:
-                logger.error(f"Error reading task file {filename}: {e}")
-                continue
-                
-    return all_errors
+        # 更新允许的字段
+        if "name" in updates:
+            project.name = updates["name"]
+        if "current_prompt" in updates:
+            project.current_prompt = updates["current_prompt"]
+        if "last_task_id" in updates:
+            project.last_task_id = updates["last_task_id"]
+        if "config" in updates:
+            project.config = json.dumps(updates["config"], ensure_ascii=False)
+        if "model_config" in updates:
+            project.model_config_data = json.dumps(updates["model_config"], ensure_ascii=False)
+        if "optimization_model_config" in updates:
+            project.optimization_model_config = json.dumps(updates["optimization_model_config"], ensure_ascii=False)
+        if "optimization_prompt" in updates:
+            project.optimization_prompt = updates["optimization_prompt"]
+        
+        # 处理迭代记录更新
+        if "iterations" in updates:
+            _sync_project_iterations(session, project, updates["iterations"])
+        
+        project.updated_at = datetime.now().isoformat()
+        session.commit()
+        session.refresh(project)
+        logger.info(f"更新项目: {project_id}")
+        return project.to_dict()
 
 
-# 公共模型配置文件路径
-GLOBAL_MODELS_FILE: str = os.path.join(DATA_DIR, "global_models.json")
-
-
-def get_global_models() -> List[Dict[str, Any]]:
+def _sync_project_iterations(session: Session, project: Project, iterations_data: List[Dict[str, Any]]) -> None:
     """
-    获取所有公共模型配置
-    @return: 公共模型配置列表
+    同步项目迭代记录
+    
+    :param session: 数据库会话
+    :param project: 项目对象
+    :param iterations_data: 迭代记录数据列表
     """
-    if os.path.exists(GLOBAL_MODELS_FILE):
-        return _safe_load_json(GLOBAL_MODELS_FILE)
-    return []
+    # 删除现有迭代
+    for existing_iter in project.iterations:
+        session.delete(existing_iter)
+    
+    # 添加新迭代
+    for idx, iter_data in enumerate(iterations_data):
+        new_iter = ProjectIteration(
+            project_id=project.id,
+            version=iter_data.get("version", idx + 1),
+            previous_prompt=iter_data.get("previous_prompt", ""),
+            optimized_prompt=iter_data.get("optimized_prompt", ""),
+            strategy=iter_data.get("strategy", ""),
+            accuracy_before=iter_data.get("accuracy_before", 0.0),
+            accuracy_after=iter_data.get("accuracy_after"),
+            task_id=iter_data.get("task_id"),
+            analysis=json.dumps(iter_data.get("analysis", {}), ensure_ascii=False),
+            note=iter_data.get("note", ""),
+            created_at=iter_data.get("created_at", datetime.now().isoformat())
+        )
+        session.add(new_iter)
 
-
-def _save_global_models(models: List[Dict[str, Any]]) -> None:
-    """
-    保存公共模型配置列表到文件
-    @param models: 公共模型配置列表
-    """
-    _atomic_save_json(GLOBAL_MODELS_FILE, models)
-
-
-
-def delete_task(task_id: str) -> bool:
-    """
-    删除任务及相关文件
-    :param task_id: 任务ID
-    :return: 是否成功
-    """
-    success = False
-    # 删除任务文件
-    task_file = os.path.join(DATA_DIR, f"task_{task_id}.json")
-    if os.path.exists(task_file):
-        try:
-            os.remove(task_file)
-            success = True
-        except Exception as e:
-            logger.error(f"Error deleting task file {task_file}: {e}")
-            
-    # 删除结果文件 (可能有多个，包括带进度的)
-    # results_{task_id}.xlsx 或 results_{task_id}_*.xlsx
-    for f in os.listdir(DATA_DIR):
-        if f.startswith(f"results_{task_id}") and f.endswith(".xlsx"):
-            try:
-                os.remove(os.path.join(DATA_DIR, f))
-            except Exception as e:
-                logger.error(f"Error deleting result file {f}: {e}")
-                
-    return success
 
 def delete_project_iteration(project_id: str, timestamp: str) -> bool:
     """
     删除项目迭代记录
-    :param project_id: 项目ID
-    :param timestamp: 迭代创建时间 (created_at) 用于匹配
-    :return: 是否成功
-    """
-    projects = get_projects()
-    for i, p in enumerate(projects):
-        if p["id"] == project_id:
-            iterations = p.get("iterations", [])
-            initial_len = len(iterations)
-            # 过滤掉匹配的迭代
-            p["iterations"] = [it for it in iterations if it.get("created_at") != timestamp]
-            
-            if len(p["iterations"]) < initial_len:
-                p["updated_at"] = datetime.now().isoformat()
-                projects[i] = p
-                save_projects(projects)
-                return True
-    return False
-
-def create_global_model(model_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    创建新的公共模型配置
-    @param model_data: 模型配置数据
-    @return: 创建的模型配置（包含生成的ID）
-    """
-    models: List[Dict[str, Any]] = get_global_models()
     
-    # 生成唯一ID
-    new_model: Dict[str, Any] = {
-        "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
-        "name": model_data.get("name", "未命名模型"),
-        "base_url": model_data.get("base_url", ""),
-        "api_key": model_data.get("api_key", ""),
-        "model_name": model_data.get("model_name", "gpt-3.5-turbo"),
-        "max_tokens": model_data.get("max_tokens", 2000),
-        "temperature": model_data.get("temperature", 0.0),
-        "timeout": model_data.get("timeout", 60),
-        "concurrency": model_data.get("concurrency", 5),
-        "extra_body": model_data.get("extra_body", None),
-        "default_headers": model_data.get("default_headers", None),
-        "created_at": datetime.now().isoformat(),
-        "updated_at": datetime.now().isoformat()
-    }
-    
-    models.append(new_model)
-    _save_global_models(models)
-    return new_model
-
-
-def update_task_note(task_id: str, note: str) -> bool:
+    :param project_id: 项目 ID
+    :param timestamp: 迭代创建时间（用于匹配）
+    :return: 是否成功删除
     """
-    更新任务备注
-    :param task_id: 任务ID
-    :param note: 备注内容
-    :return: 是否成功
-    """
-    task_status = get_task_status(task_id)
-    if task_status:
-        task_status["note"] = note
-        save_task_status(task_status.get("project_id", ""), task_id, task_status)
-        return True
-    return False
+    with get_db_session() as session:
+        statement = select(ProjectIteration).where(
+            ProjectIteration.project_id == project_id,
+            ProjectIteration.created_at == timestamp
+        )
+        iteration = session.exec(statement).first()
+        if iteration:
+            session.delete(iteration)
+            session.commit()
+            logger.info(f"删除项目迭代: {project_id} - {timestamp}")
+            return True
+        return False
 
 
 def update_project_iteration_note(project_id: str, timestamp: str, note: str) -> bool:
     """
     更新项目迭代记录备注
-    :param project_id: 项目ID
-    :param timestamp: 迭代创建时间 (created_at) 用于匹配
+    
+    :param project_id: 项目 ID
+    :param timestamp: 迭代创建时间（用于匹配）
     :param note: 备注内容
-    :return: 是否成功
+    :return: 是否成功更新
     """
-    projects = get_projects()
-    for i, p in enumerate(projects):
-        if p["id"] == project_id:
-            iterations = p.get("iterations", [])
-            updated = False
-            for it in iterations:
-                if it.get("created_at") == timestamp:
-                    it["note"] = note
-                    updated = True
-                    break
+    with get_db_session() as session:
+        statement = select(ProjectIteration).where(
+            ProjectIteration.project_id == project_id,
+            ProjectIteration.created_at == timestamp
+        )
+        iteration = session.exec(statement).first()
+        if iteration:
+            iteration.note = note
+            session.commit()
+            logger.info(f"更新项目迭代备注: {project_id} - {timestamp}")
+            return True
+        return False
+
+
+# ============== 任务相关操作 ==============
+
+def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]) -> None:
+    """
+    保存任务状态
+    
+    :param project_id: 项目 ID
+    :param task_id: 任务 ID
+    :param status: 任务状态字典
+    """
+    with get_db_session() as session:
+        # 规范化任务 ID
+        normalized_id: str = task_id if task_id.startswith("task_") else f"task_{task_id}"
+        
+        existing_task = session.get(Task, normalized_id)
+        
+        if existing_task:
+            # 更新现有任务
+            existing_task.status = status.get("status", existing_task.status)
+            existing_task.current_index = status.get("current_index", existing_task.current_index)
+            existing_task.total_count = status.get("total_count", existing_task.total_count)
+            existing_task.prompt = status.get("prompt", existing_task.prompt)
+            existing_task.file_path = status.get("file_path", existing_task.file_path)
+            existing_task.original_filename = status.get("original_filename", existing_task.original_filename)
+            existing_task.note = status.get("note", existing_task.note)
             
-            if updated:
-                p["updated_at"] = datetime.now().isoformat()
-                projects[i] = p
-                save_projects(projects)
-                return True
-    return False
+            # 保存额外配置
+            extra_fields = {k: v for k, v in status.items() if k not in [
+                "id", "project_id", "status", "current_index", "total_count",
+                "prompt", "file_path", "original_filename", "note", "results", "errors"
+            ]}
+            existing_task.extra_config = json.dumps(extra_fields, ensure_ascii=False)
+            
+            # 同步结果和错误
+            _sync_task_results(session, normalized_id, status.get("results", []))
+            _sync_task_errors(session, normalized_id, status.get("errors", []))
+        else:
+            # 创建新任务
+            new_task = Task(
+                id=normalized_id,
+                project_id=project_id,
+                status=status.get("status", "pending"),
+                current_index=status.get("current_index", 0),
+                total_count=status.get("total_count", 0),
+                prompt=status.get("prompt", ""),
+                file_path=status.get("file_path", ""),
+                original_filename=status.get("original_filename", ""),
+                note=status.get("note", ""),
+                created_at=datetime.now().isoformat()
+            )
+            
+            # 保存额外配置
+            extra_fields = {k: v for k, v in status.items() if k not in [
+                "id", "project_id", "status", "current_index", "total_count",
+                "prompt", "file_path", "original_filename", "note", "results", "errors"
+            ]}
+            new_task.extra_config = json.dumps(extra_fields, ensure_ascii=False)
+            session.add(new_task)
+            
+            # 添加结果和错误
+            for result_data in status.get("results", []):
+                result = _create_task_result(normalized_id, result_data)
+                session.add(result)
+            
+            for error_data in status.get("errors", []):
+                error = _create_task_error(normalized_id, error_data)
+                session.add(error)
+        
+        session.commit()
+        logger.debug(f"保存任务状态: {normalized_id}")
+
+
+def _sync_task_results(session: Session, task_id: str, results_data: List[Dict[str, Any]]) -> None:
+    """同步任务结果"""
+    # 删除现有结果
+    statement = select(TaskResult).where(TaskResult.task_id == task_id)
+    existing_results = session.exec(statement).all()
+    for r in existing_results:
+        session.delete(r)
+    
+    # 添加新结果
+    for result_data in results_data:
+        result = _create_task_result(task_id, result_data)
+        session.add(result)
+
+
+def _sync_task_errors(session: Session, task_id: str, errors_data: List[Dict[str, Any]]) -> None:
+    """同步任务错误"""
+    # 删除现有错误
+    statement = select(TaskError).where(TaskError.task_id == task_id)
+    existing_errors = session.exec(statement).all()
+    for e in existing_errors:
+        session.delete(e)
+    
+    # 添加新错误
+    for error_data in errors_data:
+        error = _create_task_error(task_id, error_data)
+        session.add(error)
+
+
+def _create_task_result(task_id: str, data: Dict[str, Any]) -> TaskResult:
+    """从字典创建任务结果对象"""
+    extra_data = {k: v for k, v in data.items() if k not in ["query", "target", "output", "is_correct", "reason"]}
+    return TaskResult(
+        task_id=task_id,
+        query=data.get("query", ""),
+        target=data.get("target", ""),
+        output=data.get("output", ""),
+        is_correct=data.get("is_correct", False),
+        reason=data.get("reason", ""),
+        extra_data=json.dumps(extra_data, ensure_ascii=False) if extra_data else "{}"
+    )
+
+
+def _create_task_error(task_id: str, data: Dict[str, Any]) -> TaskError:
+    """从字典创建任务错误对象"""
+    extra_data = {k: v for k, v in data.items() if k not in ["query", "target", "output", "reason"]}
+    return TaskError(
+        task_id=task_id,
+        query=data.get("query", ""),
+        target=data.get("target", ""),
+        output=data.get("output", ""),
+        reason=data.get("reason", ""),
+        extra_data=json.dumps(extra_data, ensure_ascii=False) if extra_data else "{}"
+    )
+
+
+def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
+    """
+    获取任务状态
+    
+    :param task_id: 任务 ID
+    :return: 任务状态字典，未找到返回 None
+    """
+    with get_db_session() as session:
+        # 规范化任务 ID
+        normalized_id: str = task_id if task_id.startswith("task_") else f"task_{task_id}"
+        
+        task = session.get(Task, normalized_id)
+        if task:
+            return task.to_dict()
+        return None
+
+
+def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
+    """
+    获取项目关联的所有任务
+    
+    :param project_id: 项目 ID
+    :return: 任务信息列表
+    """
+    with get_db_session() as session:
+        statement = select(Task).where(Task.project_id == project_id)
+        tasks: List[Task] = list(session.exec(statement))
+        
+        result: List[Dict[str, Any]] = []
+        for task in tasks:
+            # 获取结果和错误数量
+            results_stmt = select(TaskResult).where(TaskResult.task_id == task.id)
+            results_count = len(list(session.exec(results_stmt)))
+            
+            errors_stmt = select(TaskError).where(TaskError.task_id == task.id)
+            errors: List[TaskError] = list(session.exec(errors_stmt))
+            errors_count = len(errors)
+            
+            # 计算准确率
+            accuracy: float = (results_count - errors_count) / results_count if results_count > 0 else 0
+            
+            # 提取时间戳
+            timestamp: str = task.id.replace("task_", "") if task.id.startswith("task_") else ""
+            
+            # 数据集名称
+            dataset_name: str = task.original_filename if task.original_filename else (
+                os.path.basename(task.file_path) if task.file_path else "未知"
+            )
+            
+            result.append({
+                "id": task.id,
+                "status": task.status,
+                "current_index": task.current_index,
+                "total_count": task.total_count,
+                "results_count": results_count,
+                "errors_count": errors_count,
+                "accuracy": accuracy,
+                "prompt": task.prompt,
+                "dataset_name": dataset_name,
+                "created_at": timestamp,
+                "note": task.note
+            })
+        
+        # 按任务 ID 排序（最新的在前）
+        result.sort(key=lambda x: x["id"], reverse=True)
+        return result
+
+
+def delete_task(task_id: str) -> bool:
+    """
+    删除任务及相关数据
+    
+    :param task_id: 任务 ID
+    :return: 是否成功删除
+    """
+    with get_db_session() as session:
+        # 规范化任务 ID
+        normalized_id: str = task_id if task_id.startswith("task_") else f"task_{task_id}"
+        
+        task = session.get(Task, normalized_id)
+        if task:
+            # 删除关联的结果和错误
+            results_stmt = select(TaskResult).where(TaskResult.task_id == normalized_id)
+            for result in session.exec(results_stmt):
+                session.delete(result)
+            
+            errors_stmt = select(TaskError).where(TaskError.task_id == normalized_id)
+            for error in session.exec(errors_stmt):
+                session.delete(error)
+            
+            session.delete(task)
+            session.commit()
+            logger.info(f"删除任务: {normalized_id}")
+            return True
+        return False
+
+
+def update_task_note(task_id: str, note: str) -> bool:
+    """
+    更新任务备注
+    
+    :param task_id: 任务 ID
+    :param note: 备注内容
+    :return: 是否成功更新
+    """
+    with get_db_session() as session:
+        # 规范化任务 ID
+        normalized_id: str = task_id if task_id.startswith("task_") else f"task_{task_id}"
+        
+        task = session.get(Task, normalized_id)
+        if task:
+            task.note = note
+            session.commit()
+            logger.info(f"更新任务备注: {normalized_id}")
+            return True
+        return False
+
+
+def get_all_project_errors(project_id: str) -> List[Dict[str, Any]]:
+    """
+    获取项目所有历史任务中的错误案例
+    
+    :param project_id: 项目 ID
+    :return: 错误案例列表
+    """
+    if not project_id:
+        return []
+    
+    with get_db_session() as session:
+        # 获取项目的所有任务
+        tasks_stmt = select(Task).where(Task.project_id == project_id)
+        tasks: List[Task] = list(session.exec(tasks_stmt))
+        
+        all_errors: List[Dict[str, Any]] = []
+        for task in tasks:
+            errors_stmt = select(TaskError).where(TaskError.task_id == task.id)
+            errors: List[TaskError] = list(session.exec(errors_stmt))
+            all_errors.extend([e.to_dict() for e in errors])
+        
+        return all_errors
+
+
+# ============== 模型配置相关操作 ==============
+
+def get_model_config() -> Dict[str, Any]:
+    """
+    获取系统模型配置
+    
+    :return: 模型配置字典
+    """
+    with get_db_session() as session:
+        config = session.get(ModelConfig, 1)
+        if config:
+            return config.to_dict()
+        
+        # 返回默认配置
+        return {
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "",
+            "max_tokens": 2000,
+            "timeout": 60,
+            "model_name": "gpt-3.5-turbo",
+            "temperature": 0.0
+        }
+
+
+def save_model_config(config: Dict[str, Any]) -> None:
+    """
+    保存系统模型配置
+    
+    :param config: 模型配置字典
+    """
+    with get_db_session() as session:
+        existing = session.get(ModelConfig, 1)
+        
+        if existing:
+            existing.base_url = config.get("base_url", existing.base_url)
+            existing.api_key = config.get("api_key", existing.api_key)
+            existing.max_tokens = config.get("max_tokens", existing.max_tokens)
+            existing.timeout = config.get("timeout", existing.timeout)
+            existing.model_name = config.get("model_name", existing.model_name)
+            existing.temperature = config.get("temperature", existing.temperature)
+        else:
+            new_config = ModelConfig(
+                id=1,
+                base_url=config.get("base_url", "https://api.openai.com/v1"),
+                api_key=config.get("api_key", ""),
+                max_tokens=config.get("max_tokens", 2000),
+                timeout=config.get("timeout", 60),
+                model_name=config.get("model_name", "gpt-3.5-turbo"),
+                temperature=config.get("temperature", 0.0)
+            )
+            session.add(new_config)
+        
+        session.commit()
+        logger.info("保存系统模型配置")
+
+
+# ============== 公共模型配置相关操作 ==============
+
+def get_global_models() -> List[Dict[str, Any]]:
+    """
+    获取所有公共模型配置
+    
+    :return: 公共模型配置列表
+    """
+    with get_db_session() as session:
+        statement = select(GlobalModel)
+        models: List[GlobalModel] = list(session.exec(statement))
+        return [m.to_dict() for m in models]
+
+
+def get_global_model(model_id: str) -> Optional[Dict[str, Any]]:
+    """
+    根据 ID 获取单个公共模型配置
+    
+    :param model_id: 模型配置 ID
+    :return: 模型配置字典，未找到返回 None
+    """
+    with get_db_session() as session:
+        model = session.get(GlobalModel, model_id)
+        if model:
+            return model.to_dict()
+        return None
+
+
+def create_global_model(model_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    创建新的公共模型配置
+    
+    :param model_data: 模型配置数据
+    :return: 创建的模型配置字典
+    """
+    model_id: str = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    
+    new_model = GlobalModel(
+        id=model_id,
+        name=model_data.get("name", "未命名模型"),
+        base_url=model_data.get("base_url", ""),
+        api_key=model_data.get("api_key", ""),
+        model_name=model_data.get("model_name", "gpt-3.5-turbo"),
+        max_tokens=model_data.get("max_tokens", 2000),
+        temperature=model_data.get("temperature", 0.0),
+        timeout=model_data.get("timeout", 60),
+        concurrency=model_data.get("concurrency", 5),
+        extra_body=json.dumps(model_data.get("extra_body")) if model_data.get("extra_body") else "",
+        default_headers=json.dumps(model_data.get("default_headers")) if model_data.get("default_headers") else "",
+        created_at=datetime.now().isoformat(),
+        updated_at=datetime.now().isoformat()
+    )
+    
+    with get_db_session() as session:
+        session.add(new_model)
+        session.commit()
+        session.refresh(new_model)
+        logger.info(f"创建公共模型配置: {model_id}")
+        return new_model.to_dict()
 
 
 def update_global_model(model_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     更新公共模型配置
-    @param model_id: 模型配置ID
-    @param updates: 要更新的字段
-    @return: 更新后的模型配置，如果未找到则返回None
+    
+    :param model_id: 模型配置 ID
+    :param updates: 要更新的字段
+    :return: 更新后的模型配置，未找到返回 None
     """
-    models: List[Dict[str, Any]] = get_global_models()
-    
-    for idx, model in enumerate(models):
-        if model["id"] == model_id:
-            # 更新允许的字段
-            allowed_fields: List[str] = [
-                "name", "base_url", "api_key", "model_name", 
-                "max_tokens", "temperature", "timeout", "concurrency",
-                "extra_body", "default_headers"
-            ]
-            for field in allowed_fields:
-                if field in updates:
-                    model[field] = updates[field]
-            model["updated_at"] = datetime.now().isoformat()
-            models[idx] = model
-            _save_global_models(models)
-            return model
-    
-    return None
+    with get_db_session() as session:
+        model = session.get(GlobalModel, model_id)
+        if not model:
+            return None
+        
+        # 更新允许的字段
+        allowed_fields: List[str] = [
+            "name", "base_url", "api_key", "model_name",
+            "max_tokens", "temperature", "timeout", "concurrency"
+        ]
+        for field in allowed_fields:
+            if field in updates:
+                setattr(model, field, updates[field])
+        
+        # 处理 JSON 字段
+        if "extra_body" in updates:
+            model.extra_body = json.dumps(updates["extra_body"]) if updates["extra_body"] else ""
+        if "default_headers" in updates:
+            model.default_headers = json.dumps(updates["default_headers"]) if updates["default_headers"] else ""
+        
+        model.updated_at = datetime.now().isoformat()
+        session.commit()
+        session.refresh(model)
+        logger.info(f"更新公共模型配置: {model_id}")
+        return model.to_dict()
 
 
 def delete_global_model(model_id: str) -> bool:
     """
     删除公共模型配置
-    @param model_id: 模型配置ID
-    @return: 是否删除成功
-    """
-    models: List[Dict[str, Any]] = get_global_models()
-    initial_len: int = len(models)
-    models = [m for m in models if m["id"] != model_id]
     
-    if len(models) < initial_len:
-        _save_global_models(models)
-        return True
-    return False
+    :param model_id: 模型配置 ID
+    :return: 是否成功删除
+    """
+    with get_db_session() as session:
+        model = session.get(GlobalModel, model_id)
+        if model:
+            session.delete(model)
+            session.commit()
+            logger.info(f"删除公共模型配置: {model_id}")
+            return True
+        return False
 
 
-def get_global_model(model_id: str) -> Optional[Dict[str, Any]]:
+# ============== 自动迭代状态相关操作 ==============
+
+def save_auto_iterate_status(project_id: str, status: Dict[str, Any]) -> None:
     """
-    根据ID获取单个公共模型配置
-    @param model_id: 模型配置ID
-    @return: 模型配置，如果未找到则返回None
+    保存自动迭代状态
+    
+    :param project_id: 项目 ID
+    :param status: 状态字典
     """
-    models: List[Dict[str, Any]] = get_global_models()
-    for model in models:
-        if model["id"] == model_id:
-            return model
-    return None
+    with get_db_session() as session:
+        existing = session.get(AutoIterateStatus, project_id)
+        
+        if existing:
+            existing.status = status.get("status", existing.status)
+            existing.current_round = status.get("current_round", existing.current_round)
+            existing.max_rounds = status.get("max_rounds", existing.max_rounds)
+            existing.target_accuracy = status.get("target_accuracy", existing.target_accuracy)
+            existing.current_accuracy = status.get("current_accuracy", existing.current_accuracy)
+            existing.error_message = status.get("error_message", existing.error_message)
+            
+            # 保存额外数据
+            extra_fields = {k: v for k, v in status.items() if k not in [
+                "project_id", "status", "current_round", "max_rounds",
+                "target_accuracy", "current_accuracy", "error_message"
+            ]}
+            existing.extra_data = json.dumps(extra_fields, ensure_ascii=False)
+            existing.updated_at = datetime.now().isoformat()
+        else:
+            extra_fields = {k: v for k, v in status.items() if k not in [
+                "project_id", "status", "current_round", "max_rounds",
+                "target_accuracy", "current_accuracy", "error_message"
+            ]}
+            new_status = AutoIterateStatus(
+                project_id=project_id,
+                status=status.get("status", "idle"),
+                current_round=status.get("current_round", 0),
+                max_rounds=status.get("max_rounds", 5),
+                target_accuracy=status.get("target_accuracy", 95.0),
+                current_accuracy=status.get("current_accuracy", 0.0),
+                error_message=status.get("error_message", ""),
+                extra_data=json.dumps(extra_fields, ensure_ascii=False),
+                updated_at=datetime.now().isoformat()
+            )
+            session.add(new_status)
+        
+        session.commit()
+        logger.debug(f"保存自动迭代状态: {project_id}")
+
+
+def get_auto_iterate_status(project_id: str) -> Optional[Dict[str, Any]]:
+    """
+    获取自动迭代状态
+    
+    :param project_id: 项目 ID
+    :return: 状态字典，未找到返回 None
+    """
+    with get_db_session() as session:
+        status = session.get(AutoIterateStatus, project_id)
+        if status:
+            return status.to_dict()
+        return None
+
+
+# ============== 辅助函数 ==============
+
+def _create_project_from_dict(data: Dict[str, Any]) -> Project:
+    """从字典创建项目对象"""
+    return Project(
+        id=data.get("id", datetime.now().strftime("%Y%m%d%H%M%S")),
+        name=data.get("name", ""),
+        current_prompt=data.get("current_prompt", ""),
+        last_task_id=data.get("last_task_id"),
+        config=json.dumps(data.get("config", {}), ensure_ascii=False),
+        model_config_data=json.dumps(data.get("model_config", {}), ensure_ascii=False),
+        optimization_model_config=json.dumps(data.get("optimization_model_config", {}), ensure_ascii=False),
+        optimization_prompt=data.get("optimization_prompt", ""),
+        created_at=data.get("created_at", datetime.now().isoformat()),
+        updated_at=data.get("updated_at")
+    )
+
+
+def _update_project_from_dict(project: Project, data: Dict[str, Any]) -> None:
+    """从字典更新项目对象"""
+    if "name" in data:
+        project.name = data["name"]
+    if "current_prompt" in data:
+        project.current_prompt = data["current_prompt"]
+    if "last_task_id" in data:
+        project.last_task_id = data["last_task_id"]
+    if "config" in data:
+        project.config = json.dumps(data["config"], ensure_ascii=False)
+    if "model_config" in data:
+        project.model_config_data = json.dumps(data["model_config"], ensure_ascii=False)
+    if "optimization_model_config" in data:
+        project.optimization_model_config = json.dumps(data["optimization_model_config"], ensure_ascii=False)
+    if "optimization_prompt" in data:
+        project.optimization_prompt = data["optimization_prompt"]
+    if "updated_at" in data:
+        project.updated_at = data["updated_at"]
