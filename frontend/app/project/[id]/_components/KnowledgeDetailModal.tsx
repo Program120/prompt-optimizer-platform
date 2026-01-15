@@ -1,16 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Save, Trash2, Clock, TrendingUp, Layers, FileText, AlertCircle } from "lucide-react";
+import { X, Save, Trash2, Clock, TrendingUp, Layers, FileText, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import axios from "axios";
 
-/**
- * 差异对象接口定义
- */
-interface DiffItem {
-    type: string;
-    content: string;
-}
+
 
 /**
  * 新增失败案例接口定义
@@ -23,6 +17,7 @@ interface FailedCase {
 
 /**
  * 知识库记录接口定义
+ * 使用动态类型以支持后端新增字段的自动展示
  */
 interface KnowledgeRecord {
     version: number;
@@ -36,10 +31,50 @@ interface KnowledgeRecord {
     accuracy_before: number;
     accuracy_after?: number;
     updated_at?: string;
-    // 新增字段
     newly_failed_cases?: FailedCase[];
-    diff?: DiffItem[];
+    diff?: string;
+    // 允许任意额外字段（动态扩展）
+    [key: string]: unknown;
 }
+
+/**
+ * 字段展示配置接口
+ */
+interface FieldConfig {
+    // 字段显示名称
+    label: string;
+    // 图标颜色类名
+    iconColor: string;
+    // 是否跳过该字段（在自定义区域已处理）
+    skip?: boolean;
+}
+
+/**
+ * 已知字段的显示配置映射
+ * 用于为常见字段提供友好的中文名称和样式
+ */
+const FIELD_CONFIG: Record<string, FieldConfig> = {
+    // 基础字段（已在固定区域展示，跳过动态渲染）
+    version: { label: "版本", iconColor: "text-slate-400", skip: true },
+    timestamp: { label: "时间", iconColor: "text-slate-400", skip: true },
+    original_prompt: { label: "原始提示词", iconColor: "text-slate-400", skip: true },
+    optimized_prompt: { label: "优化后提示词", iconColor: "text-slate-400", skip: true },
+    analysis_summary: { label: "优化总结", iconColor: "text-slate-400", skip: true },
+    applied_strategies: { label: "应用策略", iconColor: "text-slate-400", skip: true },
+    accuracy_before: { label: "优化前准确率", iconColor: "text-slate-400", skip: true },
+    accuracy_after: { label: "优化后准确率", iconColor: "text-slate-400", skip: true },
+    updated_at: { label: "更新时间", iconColor: "text-slate-400", skip: true },
+    // 动态展示区域字段
+    intent_analysis: { label: "意图分析", iconColor: "text-blue-400" },
+    deep_analysis: { label: "深度分析", iconColor: "text-purple-400" },
+    newly_failed_cases: { label: "新增失败案例", iconColor: "text-red-400" },
+    diff: { label: "提示词变更", iconColor: "text-emerald-400" },
+    // 可能的新增字段预配置
+    advanced_diagnosis: { label: "高级诊断", iconColor: "text-amber-400" },
+    optimization_history: { label: "优化历史", iconColor: "text-cyan-400" },
+    error_patterns: { label: "错误模式分析", iconColor: "text-orange-400" },
+    confusion_matrix: { label: "混淆矩阵", iconColor: "text-pink-400" },
+};
 
 /**
  * 模态框属性接口
@@ -79,6 +114,24 @@ export default function KnowledgeDetailModal({
     const [isSaving, setIsSaving] = useState(false);
     // 删除确认状态
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+    // 各模块折叠状态（默认展开）
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+        intent_analysis: true,
+        deep_analysis: true,
+        newly_failed_cases: true,
+        diff: true
+    });
+
+    /**
+     * 切换模块折叠状态
+     */
+    const toggleSection = (section: string): void => {
+        setExpandedSections(prev => ({
+            ...prev,
+            [section]: !prev[section]
+        }));
+    };
 
     // 当记录变化时，重置编辑状态
     useEffect(() => {
@@ -165,6 +218,176 @@ export default function KnowledgeDetailModal({
         "context_enrichment": "上下文增强"
     };
 
+    /**
+     * 检查值是否为空
+     */
+    const isEmptyValue = (value: unknown): boolean => {
+        if (value === null || value === undefined) return true;
+        if (typeof value === 'string' && value.trim() === '') return true;
+        if (Array.isArray(value) && value.length === 0) return true;
+        if (typeof value === 'object' && Object.keys(value as object).length === 0) return true;
+        return false;
+    };
+
+    /**
+     * 获取字段配置（支持未知字段的自动生成）
+     */
+    const getFieldConfig = (fieldKey: string): FieldConfig => {
+        if (FIELD_CONFIG[fieldKey]) {
+            return FIELD_CONFIG[fieldKey];
+        }
+        // 自动生成未知字段的配置
+        // 将 snake_case 转换为中文友好名称
+        const label = fieldKey
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, c => c.toUpperCase());
+        return {
+            label: label,
+            iconColor: 'text-slate-400'
+        };
+    };
+
+    /**
+     * 渲染 Diff 内容（特殊处理 unified diff 格式）
+     */
+    const renderDiffContent = (diffText: string): React.ReactNode => {
+        return (
+            <div className="bg-black/30 rounded-lg p-3 font-mono text-xs space-y-0.5">
+                {diffText.split('\n').map((line: string, idx: number) => {
+                    const isAdded = line.startsWith('+');
+                    const isRemoved = line.startsWith('-');
+                    const isContext = line.startsWith('@@');
+
+                    return (
+                        <div
+                            key={idx}
+                            className={`whitespace-pre-wrap break-words px-1 rounded ${isAdded
+                                ? 'text-green-400 bg-green-500/10'
+                                : isRemoved
+                                    ? 'text-red-400 bg-red-500/10'
+                                    : isContext
+                                        ? 'text-blue-400 bg-blue-500/10'
+                                        : 'text-slate-400'
+                                }`}
+                        >
+                            {line}
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
+    /**
+     * 渲染失败案例列表（特殊处理 newly_failed_cases 格式）
+     */
+    const renderFailedCases = (cases: FailedCase[]): React.ReactNode => {
+        return (
+            <div className="space-y-2">
+                {cases.map((item: FailedCase, idx: number) => (
+                    <div
+                        key={idx}
+                        className="bg-black/30 rounded-lg p-3 border border-red-500/20"
+                    >
+                        <div className="text-xs text-slate-500 mb-1">查询:</div>
+                        <div className="text-sm text-slate-300 mb-2 break-words">
+                            {item.query || "无"}
+                        </div>
+                        <div className="text-xs text-slate-500 mb-1">预期结果:</div>
+                        <div className="text-sm text-red-400 break-words">
+                            {item.target || "无"}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
+    /**
+     * 通用字段内容渲染器
+     * 根据值类型自动选择最佳展示方式
+     */
+    const renderFieldContent = (fieldKey: string, value: unknown): React.ReactNode => {
+        // Diff 特殊处理
+        if (fieldKey === 'diff' && typeof value === 'string') {
+            return renderDiffContent(value);
+        }
+
+        // 失败案例特殊处理
+        if (fieldKey === 'newly_failed_cases' && Array.isArray(value)) {
+            return renderFailedCases(value as FailedCase[]);
+        }
+
+        // 字符串类型
+        if (typeof value === 'string') {
+            return (
+                <pre className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text">
+                    {value}
+                </pre>
+            );
+        }
+
+        // 数组或对象类型 - JSON 格式化展示
+        return (
+            <pre className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text">
+                {JSON.stringify(value, null, 2)}
+            </pre>
+        );
+    };
+
+    /**
+     * 渲染动态字段区块
+     * 支持折叠/展开，自动适配内容类型
+     */
+    const renderDynamicSection = (fieldKey: string, value: unknown): React.ReactNode => {
+        const config = getFieldConfig(fieldKey);
+        const isExpanded = expandedSections[fieldKey] !== false;
+
+        // 计算显示的数量（如果是数组）
+        const countDisplay = Array.isArray(value) ? ` (${value.length})` : '';
+
+        return (
+            <div key={fieldKey} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <button
+                    onClick={() => toggleSection(fieldKey)}
+                    className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
+                >
+                    <div className="text-sm text-slate-300 font-medium flex items-center gap-2">
+                        <Layers size={14} className={config.iconColor} />
+                        {config.label}{countDisplay}
+                    </div>
+                    {isExpanded ? (
+                        <ChevronUp size={16} className="text-slate-400" />
+                    ) : (
+                        <ChevronDown size={16} className="text-slate-400" />
+                    )}
+                </button>
+                {isExpanded && (
+                    <div className="px-4 pb-4">
+                        <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                            {renderFieldContent(fieldKey, value)}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    /**
+     * 获取需要动态渲染的字段列表
+     * 过滤掉已在固定区域展示的字段和空值
+     */
+    const getDynamicFields = (): Array<[string, unknown]> => {
+        return Object.entries(record).filter(([key, value]) => {
+            const config = FIELD_CONFIG[key];
+            // 跳过已在固定区域展示的字段
+            if (config?.skip) return false;
+            // 跳过空值
+            if (isEmptyValue(value)) return false;
+            return true;
+        });
+    };
+
     return (
         <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
@@ -193,8 +416,8 @@ export default function KnowledgeDetailModal({
                     </button>
                 </div>
 
-                {/* 内容区域 */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                {/* 内容区域 - 增加右侧 padding 方便操作滑动条 */}
+                <div className="flex-1 overflow-y-auto pl-4 pr-6 py-4 space-y-4 custom-scrollbar">
                     {/* 准确率卡片 */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="bg-gradient-to-br from-orange-600/10 to-red-600/10 border border-orange-500/20 rounded-xl p-4">
@@ -268,91 +491,9 @@ export default function KnowledgeDetailModal({
                         )}
                     </div>
 
-                    {/* 意图分析 (如果存在) - 固定高度 + 滚动条 */}
-                    {record.intent_analysis && Object.keys(record.intent_analysis).length > 0 && (
-                        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                            <div className="text-xs text-slate-400 mb-2">意图分析</div>
-                            {/* 固定高度容器，防止内容过长 */}
-                            <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                                <pre className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text">
-                                    {JSON.stringify(record.intent_analysis, null, 2)}
-                                </pre>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 深度分析 (如果存在) */}
-                    {record.deep_analysis && Object.keys(record.deep_analysis).length > 0 && (
-                        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                            <div className="text-xs text-slate-400 mb-2 flex items-center gap-1">
-                                <Layers size={12} />
-                                深度分析
-                            </div>
-                            {/* 固定高度容器 */}
-                            <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                                <pre className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text">
-                                    {JSON.stringify(record.deep_analysis, null, 2)}
-                                </pre>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 新增失败案例 (如果存在) */}
-                    {record.newly_failed_cases && record.newly_failed_cases.length > 0 && (
-                        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                            <div className="text-xs text-slate-400 mb-2 flex items-center gap-1">
-                                <AlertCircle size={12} />
-                                新增失败案例 ({record.newly_failed_cases.length})
-                            </div>
-                            {/* 固定高度容器 */}
-                            <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-2">
-                                {record.newly_failed_cases.map((item: FailedCase, idx: number) => (
-                                    <div
-                                        key={idx}
-                                        className="bg-black/30 rounded-lg p-3 border border-red-500/20"
-                                    >
-                                        <div className="text-xs text-slate-500 mb-1">查询:</div>
-                                        <div className="text-sm text-slate-300 mb-2 break-words">
-                                            {item.query || "无"}
-                                        </div>
-                                        <div className="text-xs text-slate-500 mb-1">预期结果:</div>
-                                        <div className="text-sm text-red-400 break-words">
-                                            {item.target || "无"}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Diff 变更 (如果存在) */}
-                    {record.diff && record.diff.length > 0 && (
-                        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                            <div className="text-xs text-slate-400 mb-2 flex items-center gap-1">
-                                <FileText size={12} />
-                                提示词变更
-                            </div>
-                            {/* 固定高度容器 */}
-                            <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                                <div className="bg-black/30 rounded-lg p-3 font-mono text-xs space-y-1">
-                                    {record.diff.map((line: DiffItem, idx: number) => (
-                                        <div
-                                            key={idx}
-                                            className={`whitespace-pre-wrap break-words ${line.type === 'added'
-                                                    ? 'text-green-400 bg-green-500/10'
-                                                    : line.type === 'removed'
-                                                        ? 'text-red-400 bg-red-500/10'
-                                                        : 'text-slate-400'
-                                                }`}
-                                        >
-                                            {line.type === 'added' && '+ '}
-                                            {line.type === 'removed' && '- '}
-                                            {line.content}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
+                    {/* 动态渲染所有分析字段 */}
+                    {getDynamicFields().map(([fieldKey, value]) =>
+                        renderDynamicSection(fieldKey, value)
                     )}
                 </div>
 
