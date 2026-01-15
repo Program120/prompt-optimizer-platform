@@ -132,29 +132,27 @@ class BaseStrategy(ABC):
 """
                 logger.info(f"[元优化] 已注入历史优化经验，长度: {len(history_text)} 字符")
         
-        # 构建新增失败案例章节（去空格后原样输出）
+        # 构建新增失败案例章节（去空格后原样输出）todo: 临时取消新增失败案例注入
         newly_failed_section: str = ""
-        if diagnosis:
-            newly_failed_cases: Optional[List[Dict[str, Any]]] = diagnosis.get(
-                "newly_failed_cases"
-            )
-            if newly_failed_cases and len(newly_failed_cases) > 0:
-                lines: List[str] = [
-                    "## 新增失败案例",
-                    "以下案例在上一轮优化后变得失败，需要特别关注，避免类似的优化方向：",
-                    ""
-                ]
-                for case in newly_failed_cases:
-                    # 去除空格后原样输出
-                    query: str = str(case.get("query", "")).strip()
-                    target: str = str(case.get("target", "")).strip()
-                    output: str = str(case.get("output", "")).strip()
-                    lines.append(f"- Query: {query}")
-                    lines.append(f"  Expected: {target} | Actual: {output}")
-                newly_failed_section = "\n".join(lines) + "\n"
-                logger.info(
-                    f"[元优化] 已注入新增失败案例，数量: {len(newly_failed_cases)}"
-                )
+        # if diagnosis:
+        #     newly_failed_cases: Optional[List[Dict[str, Any]]] = diagnosis.get(
+        #         "newly_failed_cases"
+        #     )
+        #     if newly_failed_cases and len(newly_failed_cases) > 0:
+        #         lines: List[str] = [
+        #             "## 新增失败案例",
+        #             "以下案例在上一轮优化后变得失败，需要特别关注，避免类似的优化方向：",
+        #             ""
+        #         ]
+        #         for case in newly_failed_cases:
+        #             # 去除空格后原样输出
+        #             query: str = str(case.get("query", "")).strip()
+        #             target: str = str(case.get("target", "")).strip()
+        #             output: str = str(case.get("output", "")).strip()
+        #             lines.append(f"- Query: {query}")
+        #             lines.append(f"  Expected: {target} | Actual: {output}")
+        #         newly_failed_section = "\n".join(lines) + "\n"
+        #         logger.info(f"[元优化] 已注入新增失败案例，数量: {len(newly_failed_cases)}")
         
         # 构建自检提示（仅当指定了模块名时）
         self_check_section: str = ""

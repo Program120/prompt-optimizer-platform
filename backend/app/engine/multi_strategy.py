@@ -15,6 +15,7 @@ from .validation import PromptValidator
 from .multi_intent_optimizer import MultiIntentOptimizer
 from .candidate_generator import CandidateGenerator
 from .prompt_evaluator import PromptEvaluator
+from .strategies.difficult_example_injection import DifficultExampleInjectionStrategy
 from openai import AsyncOpenAI
 
 
@@ -548,6 +549,49 @@ class MultiStrategyOptimizer:
                 filtered_candidates, prompt
             )
         
+        # 阶段 6.5：顽固困难样本二次注入 (Strategy Injection)
+        # 如果存在标记为 _persistent 的困难样本，且当前胜出策略不是 difficult_example_injection
+        # 则尝试在胜出策略的基础上叠加 difficult_example_injection
+        
+        hard_cases = diagnosis.get("error_patterns", {}).get("hard_cases", [])
+        has_persistent = any(c.get("_persistent") for c in hard_cases)
+        current_strategy_name = best_result.get("strategy", "")
+        
+        if has_persistent and current_strategy_name != "difficult_example_injection":
+            self.logger.info(f"[顽固样本处理] 检测到顽固困难样本，且当前策略({current_strategy_name})非注入策略，尝试二次优化...")
+            
+            try:
+                # 实例化困难案例注入策略
+                injection_strategy = DifficultExampleInjectionStrategy(
+                    llm_client=self.llm_client,
+                    model_config=self.model_config,
+                    semaphore=self.semaphore
+                )
+                
+                # 基于当前最佳提示词进行二次优化
+                current_best_prompt = best_result.get("prompt", prompt)
+                
+                # 注意：apply 需要 errors 和 diagnosis
+                # 这里我们应该传入原始的 errors 还是 hard_cases? 
+                # Strategy 内部会优先读 hard_cases，所以传入 errors 即可
+                injected_prompt = await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    lambda: injection_strategy.apply(
+                        current_best_prompt, errors, diagnosis
+                    )
+                )
+                
+                if injected_prompt != current_best_prompt:
+                    self.logger.info("[顽固样本处理] 二次注入成功，更新最佳提示词")
+                    best_result["prompt"] = injected_prompt
+                    best_result["strategy"] = f"{current_strategy_name} + difficult_injection"
+                    best_result["injected_difficult_cases"] = True
+                else:
+                     self.logger.info("[顽固样本处理] 二次注入未产生变化")
+                     
+            except Exception as e:
+                self.logger.error(f"[顽固样本处理] 二次注入执行失败: {e}")
+
         # 阶段 7：记录到知识库
         if self.knowledge_base and best_result.get("prompt") != prompt:
             if on_progress:
@@ -621,7 +665,7 @@ class MultiStrategyOptimizer:
                 multi_intent_intents=intent_analysis.get("multi_intent_intents", [])
             )
         
-        self.logger.info(f"优化任务结束。最终胜出策略: {best_result.get('strategy')}, 预估提升分数: {best_result.get('score', 0):.4f}")
+        self.logger.info(f"优化任务结束。最终胜出策略: {best_result.get('strategy')}, 打分: {best_result.get('score', 0):.4f}")
         self.logger.info(f"最终提示词摘要: {best_result['prompt'][:100]}... (总长度: {len(best_result['prompt'])})")
         
         # 阶段 8: 验证优化后的提示词
@@ -855,7 +899,7 @@ class MultiStrategyOptimizer:
                 updated_history[hash_key]["last_output"] = str(err.get("output", ""))
                 
                 # 检查是否为顽固错误
-                if updated_history[hash_key]["optimization_count"] >= 3:
+                if updated_history[hash_key]["optimization_count"] >= 5:
                     updated_history[hash_key]["is_persistent"] = True
             else:
                 # 新增记录
