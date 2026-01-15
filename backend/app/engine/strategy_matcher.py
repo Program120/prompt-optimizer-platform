@@ -149,12 +149,73 @@ class StrategyMatcher:
         
         strategies_text = "\n".join(strategy_descriptions)
         
-        # 简化诊断报告，只提供关键信息
-        diagnosis_summary = {
-            "overall_metrics": diagnosis.get("overall_metrics", {}),
-            "error_patterns": diagnosis.get("error_patterns", {}),
+        # 构建诊断报告摘要（完善版 - 包含更多关键信息）
+        # 1. 基础指标
+        overall_metrics: Dict[str, Any] = diagnosis.get("overall_metrics", {})
+        error_patterns: Dict[str, Any] = diagnosis.get("error_patterns", {})
+        
+        # 2. 意图分析摘要
+        intent_analysis: Dict[str, Any] = diagnosis.get("intent_analysis", {})
+        # 提取 Top 失败意图信息
+        top_failing_intents: List[Dict[str, Any]] = intent_analysis.get("top_failing_intents", [])
+        intent_analysis_summary: Dict[str, Any] = {
+            "top_failing_intents": [
+                {"intent": i.get("intent", ""), "error_rate": i.get("error_rate", 0)} 
+                for i in top_failing_intents[:5]
+            ],
+            "total_intent_count": intent_analysis.get("total_intents", 0),
+            # 判断错误是否集中在少数意图
+            "concentrated_failure": (
+                len(top_failing_intents) > 0 and 
+                top_failing_intents[0].get("error_rate", 0) > 0.3
+            )
+        }
+        
+        # 3. 深度分析摘要
+        deep_analysis: Dict[str, Any] = diagnosis.get("deep_analysis", {})
+        analyses: List[Dict[str, Any]] = deep_analysis.get("analyses", [])
+        deep_analysis_summary: str = ""
+        if analyses:
+            # 提取每个意图的分析摘要（限制长度）
+            summaries: List[str] = [
+                f"{a.get('intent', '未知')}: {a.get('analysis', '')[:100]}" 
+                for a in analyses[:3]
+            ]
+            deep_analysis_summary = "; ".join(summaries)
+        
+        # 4. 高级诊断摘要
+        advanced_diag: Dict[str, Any] = diagnosis.get("advanced_diagnosis", {})
+        advanced_diagnosis_summary: Dict[str, Any] = {
+            "has_context_issue": advanced_diag.get("context_analysis", {}).get("has_issue", False),
+            "has_multi_intent_issue": advanced_diag.get("multi_intent_analysis", {}).get("has_issue", False),
+            "has_domain_confusion": advanced_diag.get("domain_analysis", {}).get("domain_confusion", False),
+            "has_clarification_issue": advanced_diag.get("clarification_analysis", {}).get("has_issue", False),
+            # 澄清类样本数量（用于判断是否需要降低某些优化的优先级）
+            "clarification_target_count": advanced_diag.get("clarification_analysis", {}).get("clarification_target_count", 0)
+        }
+        
+        # 5. 新增失败案例标记
+        has_newly_failed: bool = bool(diagnosis.get("newly_failed_cases"))
+        
+        # 6. 顽固错误标记
+        has_persistent_errors: bool = bool(diagnosis.get("persistent_error_samples"))
+        
+        # 组装完整诊断摘要
+        diagnosis_summary: Dict[str, Any] = {
+            "overall_metrics": overall_metrics,
+            "error_patterns": {
+                # 只保留关键信息
+                "confusion_pairs": error_patterns.get("confusion_pairs", [])[:5],
+                "hard_cases_count": len(error_patterns.get("hard_cases", []))
+            },
             "root_cause_analysis": diagnosis.get("root_cause_analysis", {}),
-            "prompt_analysis": diagnosis.get("prompt_analysis", {})
+            "prompt_analysis": diagnosis.get("prompt_analysis", {}),
+            # 新增字段
+            "intent_analysis_summary": intent_analysis_summary,
+            "deep_analysis_summary": deep_analysis_summary,
+            "advanced_diagnosis": advanced_diagnosis_summary,
+            "has_newly_failed_cases": has_newly_failed,
+            "has_persistent_errors": has_persistent_errors
         }
         
         prompt = f"""
@@ -168,9 +229,14 @@ class StrategyMatcher:
         
         【评分标准】
         - 10分：该策略直接解决核心问题，是最佳选择。
-        - 7-9分：该策略由于主要问题高度相关，建议采纳。
+        - 7-9分：该策略与主要问题高度相关，建议采纳。
         - 4-6分：该策略可能有效，但不是最优先的。
         - 0-3分：该策略与当前问题关联度低。
+        
+        【特别注意】
+        - 如果 has_persistent_errors 为 true，说明存在顽固错误，difficult_example_injection 策略应获得较高分数。
+        - 如果 has_context_issue 为 true，context_enhancement 策略应优先考虑。
+        - 如果 has_clarification_issue 为 true 且 clarification_target_count 较高，澄清类问题暂时优先级较低。
         
         请以 JSON 格式返回评分结果，格式如下：
         {{

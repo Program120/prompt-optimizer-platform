@@ -300,13 +300,31 @@ class AdvancedDiagnoser:
     ) -> Dict[str, Any]:
         """
         分析澄清机制：过度澄清 vs 缺失澄清
+        
+        增强版本：返回澄清类样本的详细列表，用于后续优先级过滤
+        
+        :param errors: 错误样例列表
+        :param should_stop: 停止回调函数
+        :return: 澄清分析结果，包含澄清类样本列表
         """
-        clarification_keywords = ["澄清", "clarify", "哪个", "which", "provide more info", "请问"]
+        clarification_keywords = [
+            "澄清", "clarify", "哪个", "which", "provide more info", "请问",
+            "是什么意思", "什么意思", "clarification", "unclear", "不明确",
+            "需要确认", "请确认", "请问您说的是"
+        ]
         
-        unnecessary_clarification = 0 # 预期是具体意图，输出了澄清
-        missing_clarification = 0     # 预期是澄清，输出了具体意图
+        unnecessary_clarification = 0
+        # 预期是具体意图，模型输出了澄清
+        missing_clarification = 0
+        # 预期是澄清，模型输出了具体意图
         
+        # 不同类型的澄清类样本列表
+        clarification_target_samples = []
+        # target 是澄清类的样本（优先级低）
+        clarification_output_samples = []
+        # output 是澄清类的样本
         clarification_errors = []
+        # 所有澄清相关的错误
         
         for i, err in enumerate(errors):
             # 避免阻塞事件循环
@@ -319,22 +337,42 @@ class AdvancedDiagnoser:
             target = str(err.get('target', '')).lower()
             output = str(err.get('output', '')).lower()
             
-            target_is_clarify = any(k in target for k in clarification_keywords) or target == "clarification"
-            output_is_clarify = any(k in output for k in clarification_keywords) or output == "clarification"
+            target_is_clarify = (
+                any(k in target for k in clarification_keywords) or 
+                target == "clarification"
+            )
+            output_is_clarify = (
+                any(k in output for k in clarification_keywords) or 
+                output == "clarification"
+            )
+            
+            # 标记样本的澄清类型
+            err_copy = err.copy()
+            err_copy["_is_clarification_target"] = target_is_clarify
+            err_copy["_is_clarification_output"] = output_is_clarify
+            
+            if target_is_clarify:
+                # target 是澄清类 -> 这类样本优先级低
+                clarification_target_samples.append(err_copy)
             
             if not target_is_clarify and output_is_clarify:
                 unnecessary_clarification += 1
-                clarification_errors.append(err)
+                clarification_errors.append(err_copy)
+                clarification_output_samples.append(err_copy)
             elif target_is_clarify and not output_is_clarify:
                 missing_clarification += 1
-                clarification_errors.append(err)
+                clarification_errors.append(err_copy)
                 
         total = len(errors)
         return {
             "unnecessary_rate": unnecessary_clarification / total if total else 0,
             "missing_rate": missing_clarification / total if total else 0,
             "has_issue": (unnecessary_clarification + missing_clarification) / total > 0.05,
-            "sample_cases": clarification_errors[:3]
+            "sample_cases": clarification_errors[:3],
+            # 新增：澄清类样本的详细列表
+            "clarification_target_samples": clarification_target_samples,
+            "clarification_target_count": len(clarification_target_samples),
+            "clarification_output_samples": clarification_output_samples[:10]
         }
 
     async def _call_llm_async(self, prompt: str) -> str:

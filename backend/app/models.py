@@ -114,6 +114,11 @@ class Project(SQLModel, table=True):
     # 优化提示词
     optimization_prompt: str = Field(default="", sa_column=Column(Text))
     
+    # 错误样本优化历史（JSON 格式）
+    # 追踪被优化意图相关的错误样本的优化次数
+    # 格式: {"query_hash": {"query": "...", "target": "...", "optimization_count": N, "is_persistent": bool}}
+    error_optimization_history: str = Field(default="{}", sa_column=Column(Text))
+    
     # 创建时间
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     
@@ -154,6 +159,12 @@ class Project(SQLModel, table=True):
             result["optimization_model_config"] = {}
             
         result["optimization_prompt"] = self.optimization_prompt
+        
+        # 解析错误优化历史
+        try:
+            result["error_optimization_history"] = json.loads(self.error_optimization_history) if self.error_optimization_history else {}
+        except json.JSONDecodeError:
+            result["error_optimization_history"] = {}
         
         # 添加迭代记录
         result["iterations"] = [it.to_dict() for it in self.iterations] if self.iterations else []

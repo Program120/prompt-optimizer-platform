@@ -345,6 +345,49 @@ def update_project_iteration_note(project_id: str, timestamp: str, note: str) ->
         return False
 
 
+def get_error_optimization_history(project_id: str) -> Dict[str, Any]:
+    """
+    获取项目的错误样本优化历史
+    
+    :param project_id: 项目 ID
+    :return: 错误优化历史字典
+    """
+    with get_db_session() as session:
+        project = session.get(Project, project_id)
+        if not project:
+            return {}
+        
+        try:
+            history_str: str = project.error_optimization_history or "{}"
+            return json.loads(history_str)
+        except json.JSONDecodeError:
+            return {}
+
+
+def update_error_optimization_history(
+    project_id: str, 
+    history: Dict[str, Any]
+) -> bool:
+    """
+    更新项目的错误样本优化历史
+    
+    :param project_id: 项目 ID
+    :param history: 更新后的历史记录
+    :return: 是否成功更新
+    """
+    with get_db_session() as session:
+        project = session.get(Project, project_id)
+        if not project:
+            logger.warning(f"更新错误优化历史失败: 项目 {project_id} 不存在")
+            return False
+        
+        project.error_optimization_history = json.dumps(history, ensure_ascii=False)
+        project.updated_at = datetime.now().isoformat()
+        session.commit()
+        logger.info(f"更新错误优化历史: {project_id}, 记录数: {len(history)}")
+        return True
+
+
 # ============== 任务相关操作 ==============
 
 def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]) -> None:

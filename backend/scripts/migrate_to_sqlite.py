@@ -411,6 +411,14 @@ def check_and_migrate_schema() -> None:
             "''",
             "UPDATE projects SET initial_prompt = current_prompt WHERE initial_prompt IS NULL OR initial_prompt = ''"
         ),
+        # 新增：错误样本优化历史字段
+        (
+            "projects",
+            "error_optimization_history",
+            "TEXT",
+            "'{}'",
+            None
+        ),
     ]
     
     conn: sqlite3.Connection = sqlite3.connect(db_path)

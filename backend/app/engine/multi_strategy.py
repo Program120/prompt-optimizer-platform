@@ -323,6 +323,33 @@ class MultiStrategyOptimizer:
         diagnosis["intent_analysis"] = intent_analysis
         diagnosis["deep_analysis"] = deep_analysis
         diagnosis["advanced_diagnosis"] = advanced_diagnosis
+        
+        # 阶段 3.5：澄清意图过滤与顽固错误识别
+        # 获取澄清分析结果
+        clarification_analysis: Dict[str, Any] = advanced_diagnosis.get(
+            "clarification_analysis", {}
+        )
+        
+        # 过滤澄清类样本（降低优先级）
+        main_errors, low_priority_errors = self._filter_clarification_samples(
+            errors, clarification_analysis
+        )
+        
+        # 如果过滤后主要错误为空，使用原始错误列表
+        if not main_errors and errors:
+            self.logger.warning("[澄清过滤] 主要优化样本为空，使用原始错误列表")
+            main_errors = errors
+        
+        # 将过滤结果注入 diagnosis
+        diagnosis["main_errors"] = main_errors
+        diagnosis["low_priority_clarification_errors"] = low_priority_errors
+        
+        # 识别顽固错误样本（需要从项目获取历史记录）
+        # 提取本轮被优化的意图列表
+        optimized_intents: List[str] = [
+            i.get("intent", "") for i in intent_analysis.get("top_failing_intents", [])[:3]
+        ]
+        diagnosis["optimized_intents"] = optimized_intents
 
         # 检查停止信号
         if self._is_stopped(should_stop, "步骤 3 完成后"): 
@@ -646,3 +673,128 @@ class MultiStrategyOptimizer:
         
         return " ".join(lines)
 
+    def _filter_clarification_samples(
+        self,
+        errors: List[Dict[str, Any]],
+        clarification_analysis: Dict[str, Any]
+    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        过滤澄清类样本，将错误分为主要优化样本和低优先级样本
+        
+        澄清类样本（target 是澄清意图的）优先级较低，主要优化确定的单意图
+        
+        :param errors: 原始错误列表
+        :param clarification_analysis: 澄清分析结果
+        :return: (主要优化样本, 低优先级澄清类样本)
+        """
+        # 获取澄清类样本列表
+        clarification_targets: List[Dict[str, Any]] = clarification_analysis.get(
+            "clarification_target_samples", []
+        )
+        
+        if not clarification_targets:
+            # 无澄清类样本，全部为主要优化目标
+            return errors, []
+        
+        # 构建澄清类样本的 query 集合（用于快速查找）
+        clarification_queries: set = {
+            err.get("query", "") for err in clarification_targets
+        }
+        
+        main_errors: List[Dict[str, Any]] = []
+        low_priority_errors: List[Dict[str, Any]] = []
+        
+        for err in errors:
+            if err.get("query", "") in clarification_queries:
+                low_priority_errors.append(err)
+            else:
+                main_errors.append(err)
+        
+        self.logger.info(
+            f"[澄清过滤] 主要优化样本: {len(main_errors)}, 低优先级澄清类样本: {len(low_priority_errors)}"
+        )
+        
+        return main_errors, low_priority_errors
+
+    def _update_error_optimization_history(
+        self,
+        errors: List[Dict[str, Any]],
+        history: Dict[str, Any],
+        optimized_intents: List[str]
+    ) -> Dict[str, Any]:
+        """
+        更新错误样本的优化次数历史
+        
+        只追踪被当前优化策略针对的意图相关的错误样本
+        
+        :param errors: 当前轮次的错误样本列表
+        :param history: 现有的优化历史记录
+        :param optimized_intents: 本轮被优化的意图列表
+        :return: 更新后的历史记录
+        """
+        import hashlib
+        
+        updated_history: Dict[str, Any] = history.copy() if history else {}
+        
+        for err in errors:
+            target: str = str(err.get("target", ""))
+            
+            # 只追踪被优化意图相关的错误
+            if target not in optimized_intents:
+                continue
+            
+            query: str = str(err.get("query", ""))
+            
+            # 使用 query + target 生成唯一标识
+            hash_key: str = hashlib.md5(
+                f"{query}:{target}".encode()
+            ).hexdigest()[:16]
+            
+            if hash_key in updated_history:
+                # 已存在，增加优化次数
+                updated_history[hash_key]["optimization_count"] += 1
+                updated_history[hash_key]["last_output"] = str(err.get("output", ""))
+                
+                # 检查是否为顽固错误
+                if updated_history[hash_key]["optimization_count"] >= 3:
+                    updated_history[hash_key]["is_persistent"] = True
+            else:
+                # 新增记录
+                updated_history[hash_key] = {
+                    "query": query[:200],
+                    # 限制长度
+                    "target": target,
+                    "optimization_count": 1,
+                    "last_output": str(err.get("output", "")),
+                    "is_persistent": False
+                }
+        
+        return updated_history
+
+    def _identify_persistent_errors(
+        self,
+        history: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        识别顽固错误样本（连续错误>=3次）
+        
+        :param history: 错误优化历史记录
+        :return: 顽固错误样本列表
+        """
+        persistent_samples: List[Dict[str, Any]] = []
+        
+        for hash_key, record in history.items():
+            if record.get("is_persistent", False):
+                persistent_samples.append({
+                    "query": record.get("query", ""),
+                    "target": record.get("target", ""),
+                    "optimization_count": record.get("optimization_count", 0)
+                })
+        
+        if persistent_samples:
+            self.logger.info(
+                f"[顽固错误] 发现 {len(persistent_samples)} 个顽固错误样本 "
+                f"（连续优化>=3次仍错误）"
+            )
+        
+        return persistent_samples
