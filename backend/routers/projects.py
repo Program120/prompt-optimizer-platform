@@ -45,6 +45,24 @@ async def delete_project(project_id: str, password: str = Form(...)):
         
     return {"success": True, "message": "Project deleted"}
 
+
+@router.post("/{project_id}/reset")
+async def reset_project(project_id: str):
+    """
+    重置项目
+    将提示词恢复到初始状态，清空运行记录、迭代记录和优化分析
+    """
+    from starlette.concurrency import run_in_threadpool
+    from loguru import logger
+    
+    logger.info(f"重置项目请求: {project_id}")
+    
+    result = await run_in_threadpool(storage.reset_project, project_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    return {"success": True, "message": "项目已重置", "project": result}
+
 @router.get("/{project_id}")
 async def get_project(project_id: str):
     p = storage.get_project(project_id)

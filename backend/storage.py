@@ -86,6 +86,8 @@ def create_project(name: str, prompt: str) -> Dict[str, Any]:
         id=project_id,
         name=name,
         current_prompt=prompt,
+        # 保存初始提示词，用于重置功能
+        initial_prompt=prompt,
         config="{}",
         model_config_data="{}",
         optimization_model_config="{}",
@@ -118,6 +120,62 @@ def delete_project(project_id: str) -> bool:
             logger.info(f"删除项目: {project_id}")
             return True
         return False
+
+
+def reset_project(project_id: str) -> Optional[Dict[str, Any]]:
+    """
+    重置项目
+    将提示词恢复到初始状态，清空所有运行记录、迭代记录和知识库
+    
+    :param project_id: 项目 ID
+    :return: 重置后的项目字典，未找到返回 None
+    """
+    with get_db_session() as session:
+        project = session.get(Project, project_id)
+        if not project:
+            return None
+        
+        # 1. 将当前提示词重置为初始提示词
+        if project.initial_prompt:
+            project.current_prompt = project.initial_prompt
+        
+        # 2. 删除所有迭代记录
+        for iteration in project.iterations:
+            session.delete(iteration)
+        
+        # 3. 清空 last_task_id
+        project.last_task_id = None
+        
+        project.updated_at = datetime.now().isoformat()
+        session.commit()
+        session.refresh(project)
+        
+        logger.info(f"重置项目提示词和迭代记录: {project_id}")
+    
+    # 4. 删除所有关联的任务
+    project_tasks: List[Dict[str, Any]] = get_project_tasks(project_id)
+    deleted_task_count: int = 0
+    for task in project_tasks:
+        if delete_task(task["id"]):
+            deleted_task_count += 1
+    logger.info(f"删除项目任务 {deleted_task_count} 个: {project_id}")
+    
+    # 5. 清空知识库文件
+    knowledge_base_dir: str = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "data",
+        "knowledge_base"
+    )
+    kb_file_path: str = os.path.join(knowledge_base_dir, f"kb_{project_id}.json")
+    if os.path.exists(kb_file_path):
+        try:
+            os.remove(kb_file_path)
+            logger.info(f"删除知识库文件: {kb_file_path}")
+        except Exception as e:
+            logger.warning(f"删除知识库文件失败: {e}")
+    
+    # 返回重置后的项目
+    return get_project(project_id)
 
 
 def update_project(project_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -743,10 +801,13 @@ def get_auto_iterate_status(project_id: str) -> Optional[Dict[str, Any]]:
 
 def _create_project_from_dict(data: Dict[str, Any]) -> Project:
     """从字典创建项目对象"""
+    prompt: str = data.get("current_prompt", "")
     return Project(
         id=data.get("id", datetime.now().strftime("%Y%m%d%H%M%S")),
         name=data.get("name", ""),
-        current_prompt=data.get("current_prompt", ""),
+        current_prompt=prompt,
+        # 如果没有 initial_prompt，则使用 current_prompt
+        initial_prompt=data.get("initial_prompt", prompt),
         last_task_id=data.get("last_task_id"),
         config=json.dumps(data.get("config", {}), ensure_ascii=False),
         model_config_data=json.dumps(data.get("model_config", {}), ensure_ascii=False),

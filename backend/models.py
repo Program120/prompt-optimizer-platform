@@ -96,6 +96,9 @@ class Project(SQLModel, table=True):
     # 当前提示词
     current_prompt: str = Field(default="", sa_column=Column(Text))
     
+    # 初始提示词（用于重置功能）
+    initial_prompt: str = Field(default="", sa_column=Column(Text))
+    
     # 最后一次任务 ID
     last_task_id: Optional[str] = Field(default=None)
     
@@ -128,6 +131,7 @@ class Project(SQLModel, table=True):
             "id": self.id,
             "name": self.name,
             "current_prompt": self.current_prompt,
+            "initial_prompt": self.initial_prompt,
             "last_task_id": self.last_task_id,
             "created_at": self.created_at,
             "updated_at": self.updated_at,

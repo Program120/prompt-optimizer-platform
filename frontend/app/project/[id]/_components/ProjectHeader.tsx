@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft, Activity, Save, Settings } from "lucide-react";
+import { ChevronLeft, Activity, Save, Settings, RotateCcw } from "lucide-react";
 import Link from "next/link";
 
 interface ProjectHeaderProps {
@@ -9,6 +9,8 @@ interface ProjectHeaderProps {
     onSave: () => void;
     onOpenConfig: () => void;
     onTest: () => void;
+    /** 重置项目回调 */
+    onReset: () => void;
 }
 
 export default function ProjectHeader({
@@ -17,7 +19,8 @@ export default function ProjectHeader({
     isSaving,
     onSave,
     onOpenConfig,
-    onTest
+    onTest,
+    onReset
 }: ProjectHeaderProps) {
     const [isEditingName, setIsEditingName] = useState(false);
 
@@ -68,6 +71,14 @@ export default function ProjectHeader({
                 >
                     <Settings size={18} />
                     项目配置
+                </button>
+                <button
+                    onClick={onReset}
+                    className="flex items-center gap-2 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 hover:text-orange-300 border border-orange-500/30 px-4 py-2 rounded-xl transition-colors text-sm"
+                    title="重置项目到初始状态"
+                >
+                    <RotateCcw size={18} />
+                    重置
                 </button>
             </div>
         </div>

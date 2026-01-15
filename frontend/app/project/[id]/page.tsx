@@ -13,6 +13,7 @@ import HistoryPanel from "./_components/HistoryPanel";
 import LogDetailModal from "./_components/LogDetailModal";
 import IterationDetailModal from "./_components/IterationDetailModal";
 import KnowledgeDetailModal from "./_components/KnowledgeDetailModal";
+import ResetProjectModal from "./_components/ResetProjectModal";
 import TestOutputModal from "@/app/components/TestOutputModal";
 
 // 统一使用相对路径
@@ -65,6 +66,9 @@ export default function ProjectDetail() {
     // 存储从后端获取的优化上下文
     const [optimizeContext, setOptimizeContext] = useState<string>("");
     const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+    // 重置项目弹窗状态
+    const [showResetModal, setShowResetModal] = useState<boolean>(false);
 
     // 轮询状态 Ref，用于防止自动保存覆盖后端数据（竞争条件防护）
     const isPollingRef = useRef(false);
@@ -642,6 +646,27 @@ export default function ProjectDetail() {
         }
     };
 
+    /**
+     * 重置项目
+     * 调用后端 API 重置项目，并刷新页面数据
+     */
+    const handleResetProject = async () => {
+        try {
+            await axios.post(`${API_BASE}/projects/${id}/reset`);
+            showToast("项目已重置成功", "success");
+            setShowResetModal(false);
+            // 清空本地状态
+            setTaskStatus(null);
+            setTaskHistory([]);
+            setKnowledgeRecords([]);
+            // 重新获取项目数据
+            await fetchProject();
+        } catch (e: any) {
+            console.error("重置项目失败:", e);
+            showToast(`重置失败: ${e.response?.data?.detail || e.message}`, "error");
+        }
+    };
+
     if (!project) return <div className="p-10 text-center">加载中...</div>;
 
     return (
@@ -671,6 +696,7 @@ export default function ProjectDetail() {
                     setShowConfig(true);
                 }}
                 onTest={() => setShowTestModal(true)}
+                onReset={() => setShowResetModal(true)}
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -783,8 +809,16 @@ export default function ProjectDetail() {
             {showTestModal && (
                 <TestOutputModal
                     initialPrompt={project.current_prompt}
-                    initialModelConfig={project.model_config} // Pass verification model config
+                    initialModelConfig={project.model_config}
                     onClose={() => setShowTestModal(false)}
+                />
+            )}
+
+            {showResetModal && (
+                <ResetProjectModal
+                    projectName={project.name}
+                    onClose={() => setShowResetModal(false)}
+                    onConfirm={handleResetProject}
                 />
             )}
         </div>
