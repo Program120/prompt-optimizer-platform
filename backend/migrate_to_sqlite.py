@@ -351,20 +351,35 @@ def migrate_auto_iterate_status() -> int:
 def check_migration_needed() -> bool:
     """
     检查是否需要执行迁移
+    使用原生 sqlite3 查询，避免 SQLModel 模型与数据库表结构不匹配时报错
     
     :return: 是否需要迁移
     """
+    import sqlite3
+    
     projects_file: str = os.path.join(DATA_DIR, "projects.json")
     db_file: str = os.path.join(DATA_DIR, "app.db")
     
     # 如果存在 JSON 文件但数据库为空，则需要迁移
-    if os.path.exists(projects_file):
-        with get_db_session() as session:
-            from sqlmodel import select
-            statement = select(Project)
-            projects = session.exec(statement).first()
-            if projects is None:
+    if os.path.exists(projects_file) and os.path.exists(db_file):
+        try:
+            conn: sqlite3.Connection = sqlite3.connect(db_file)
+            cursor: sqlite3.Cursor = conn.cursor()
+            # 使用原生 SQL 查询，只查询 id 列，避免列不存在的问题
+            cursor.execute("SELECT id FROM projects LIMIT 1")
+            result = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            # 如果表中没有数据，则需要迁移
+            if result is None:
                 return True
+        except sqlite3.OperationalError as e:
+            # 如果表不存在，说明数据库刚创建，不需要迁移
+            logger.debug(f"检查迁移需求时出错: {e}")
+            return False
+    elif os.path.exists(projects_file) and not os.path.exists(db_file):
+        # JSON 文件存在但数据库不存在，需要迁移
+        return True
     
     return False
 
@@ -438,6 +453,7 @@ def check_and_migrate_schema() -> None:
 def run_migration() -> None:
     """
     执行完整的数据迁移
+    包含：1. 模式迁移（添加缺失列） 2. 数据迁移（JSON 转 SQLite）
     """
     logger.info("=" * 50)
     logger.info("开始数据迁移...")
@@ -445,6 +461,10 @@ def run_migration() -> None:
     
     # 初始化数据库
     init_db()
+    
+    # 先执行模式迁移，确保所有列都存在
+    # 必须在任何 SQLModel 查询之前执行，避免模型与数据库不匹配
+    check_and_migrate_schema()
     
     # 检查是否需要迁移
     if not check_migration_needed():
