@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Form, HTTPException
 from typing import Optional
 from datetime import datetime
-import storage
-from task_manager import TaskManager
-from optimizer import optimize_prompt, generate_optimize_context, multi_strategy_optimize
+from app.db import storage
+from app.services.task_service import TaskManager
+from app.services.optimizer_service import optimize_prompt, generate_optimize_context, multi_strategy_optimize
 from pydantic import BaseModel
 
 

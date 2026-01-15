@@ -7,9 +7,9 @@ import logging
 import time
 import asyncio
 
-import storage
-from task_manager import TaskManager
-from optimizer import optimize_prompt, multi_strategy_optimize
+from app.db import storage
+from app.services.task_service import TaskManager
+from app.services.optimizer_service import optimize_prompt, multi_strategy_optimize
 
 router = APIRouter(prefix="/projects", tags=["auto-iterate"])
 tm = TaskManager()

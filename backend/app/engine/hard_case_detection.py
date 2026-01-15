@@ -13,13 +13,7 @@ from openai import AsyncOpenAI, OpenAI
 
 # 如果需要，可以尝试导入用于文本分析的其他可选依赖项
 # 目前我们坚持使用标准库和 sklearn
-try:
-    import storage
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    import storage
+from app.db import storage
 
 class HardCaseDetector:
     """

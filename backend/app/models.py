@@ -323,7 +323,7 @@ class Task(SQLModel, table=True):
         
         # 仅在明确请求时加载 results 和 errors（性能优化）
         if include_results:
-            from database import get_db_session
+            from app.db.database import get_db_session
             from sqlmodel import select
             
             with get_db_session() as session:

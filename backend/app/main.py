@@ -5,8 +5,8 @@ import os
 import sys
 from loguru import logger as loguru_logger
 import logging
-import storage
-from routers import config, upload, projects, tasks, auto_iterate, global_models, knowledge_base, playground
+from app.db import storage
+from app.api.routers import config, upload, projects, tasks, auto_iterate, global_models, knowledge_base, playground
 
 # 创建 logs 目录
 if not os.path.exists("logs"):
@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
     
     # 执行数据迁移（从 JSON 到 SQLite）
     try:
-        from migrate_to_sqlite import run_migration
+        from scripts.migrate_to_sqlite import run_migration
         run_migration()
     except Exception as e:
         loguru_logger.warning(f"数据迁移检查失败（可能已完成或无需迁移）: {e}")

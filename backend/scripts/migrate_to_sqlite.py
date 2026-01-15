@@ -11,10 +11,10 @@ from loguru import logger
 
 # 添加 backend 到路径
 import sys
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from database import init_db, get_db_session, DATA_DIR
-from models import (
+from app.db.database import init_db, get_db_session, DATA_DIR
+from app.models import (
     Project, ProjectIteration, Task, TaskResult, TaskError,
     GlobalModel, ModelConfig, AutoIterateStatus
 )

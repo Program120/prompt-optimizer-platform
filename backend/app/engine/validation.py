@@ -3,7 +3,7 @@ import json
 import logging
 import re
 from typing import Dict, Any, List, Optional, Callable
-from prompts import PROMPT_VALIDATE_OPTIMIZATION
+from app.core.prompts import PROMPT_VALIDATE_OPTIMIZATION
 
 
 class PromptValidator:

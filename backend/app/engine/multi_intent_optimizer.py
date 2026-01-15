@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from typing import Dict, Any, List, Optional, Callable
-from prompts import PROMPT_SPLIT_INTENT, PROMPT_MERGE_INTENTS
+from app.core.prompts import PROMPT_SPLIT_INTENT, PROMPT_MERGE_INTENTS
 
 
 class MultiIntentOptimizer:

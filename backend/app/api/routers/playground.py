@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 import logging
 import time
 import asyncio
-from llm_factory import LLMFactory
+from app.core.llm_factory import LLMFactory
 from loguru import logger as loguru_logger
 
 router = APIRouter(prefix="/playground", tags=["playground"])

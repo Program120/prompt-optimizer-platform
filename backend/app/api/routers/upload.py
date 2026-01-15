@@ -3,7 +3,7 @@ import os
 import shutil
 import pandas as pd
 import uuid
-import storage
+from app.db import storage
 
 router = APIRouter(tags=["upload"])
 

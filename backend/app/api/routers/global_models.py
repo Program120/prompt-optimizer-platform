@@ -5,7 +5,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-import storage
+from app.db import storage
 import logging
 
 router = APIRouter(prefix="/global-models", tags=["global-models"])

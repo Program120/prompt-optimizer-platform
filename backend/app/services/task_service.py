@@ -5,8 +5,8 @@ import json
 import os
 import pandas as pd
 from typing import Dict, Any, Optional
-import storage
-from llm_factory import LLMFactory
+from app.db import storage
+from app.core.llm_factory import LLMFactory
 
 class TaskManager:
     _instance = None
@@ -295,7 +295,7 @@ class TaskManager:
                     accuracy = (len(results) - len(errors)) / len(results)
                     
                     # 导入知识库模块并更新
-                    from optimizer_engine.knowledge_base import OptimizationKnowledgeBase
+                    from app.engine.knowledge_base import OptimizationKnowledgeBase
                     project_id = info.get("project_id")
                     if project_id:
                         kb = OptimizationKnowledgeBase(project_id)

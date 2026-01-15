@@ -6,13 +6,13 @@
 2. multi_strategy_optimize() - 新的多策略优化引擎
 """
 from typing import Any
-from llm_factory import LLMFactory
 import re
-import storage
-from prompts import DEFAULT_OPTIMIZATION_PROMPT
+from app.core.llm_factory import LLMFactory
+from app.db import storage
+from app.core.prompts import DEFAULT_OPTIMIZATION_PROMPT
 
 # 导入多策略优化模块
-from optimizer_engine import (
+from app.engine import (
     MultiStrategyOptimizer,
     diagnose_prompt_performance
 )

@@ -9,7 +9,7 @@ from sqlalchemy import event
 from loguru import logger
 
 # 数据库文件路径
-DATA_DIR: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+DATA_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
 DATABASE_URL: str = f"sqlite:///{os.path.join(DATA_DIR, 'app.db')}"
 
 # 创建数据库引擎
@@ -58,7 +58,7 @@ def init_db() -> None:
         logger.info(f"创建数据目录: {DATA_DIR}")
     
     # 导入所有模型以确保它们被注册
-    from models import (
+    from app.models import (
         Project, ProjectIteration, Task, TaskResult, TaskError,
         GlobalModel, ModelConfig, AutoIterateStatus
     )

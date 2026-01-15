@@ -3,8 +3,8 @@ from fastapi.responses import FileResponse
 from typing import Optional
 import os
 import pandas as pd
-import storage
-from task_manager import TaskManager
+from app.db import storage
+from app.services.task_service import TaskManager
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 tm = TaskManager()

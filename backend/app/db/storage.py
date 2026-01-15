@@ -9,8 +9,8 @@ from datetime import datetime
 from loguru import logger
 from sqlmodel import Session, select
 
-from database import get_db_session, DATA_DIR
-from models import (
+from app.db.database import get_db_session, DATA_DIR
+from app.models import (
     Project, ProjectIteration, Task, TaskResult, TaskError,
     GlobalModel, ModelConfig, AutoIterateStatus
 )
@@ -21,7 +21,7 @@ def init_storage() -> None:
     初始化存储层
     确保数据目录存在，并初始化数据库
     """
-    from database import init_db
+    from app.db.database import init_db
     init_db()
     logger.info("存储层初始化完成")
 
@@ -162,7 +162,7 @@ def reset_project(project_id: str) -> Optional[Dict[str, Any]]:
     
     # 5. 清空知识库文件
     knowledge_base_dir: str = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
         "data",
         "knowledge_base"
     )

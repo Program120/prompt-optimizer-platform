@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Form
-import storage
+from app.db import storage
 import logging
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -128,7 +128,7 @@ async def test_config(
                 "default_headers": default_headers_dict
             }
             
-            from llm_factory import LLMFactory
+            from app.core.llm_factory import LLMFactory
             client = LLMFactory.create_async_client(model_config)
             
             logger.info("Sending chat completion request...")
