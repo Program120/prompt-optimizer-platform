@@ -79,6 +79,8 @@ async def start_auto_iterate(
         # 记录上一轮成功的索引集合，用于检测新增失败案例 (regression)
         previous_success_indices = set()
         
+        task_id = None  # 初始化 task_id，确保异常块可以访问
+        
         try:
             for round_num in range(1, max_rounds + 1):
                 # 重新读取状态，检查是否被停止
@@ -113,6 +115,9 @@ async def start_auto_iterate(
                     # 重新读取全局状态，检查是否收到停止信号
                     curr_status = auto_iterate_status.get(project_id)
                     if not curr_status: # 状态可能被删除了
+                        # 状态丢失，停止任务
+                        if task_id:
+                            tm.stop_task(task_id)
                         return
                     if curr_status["should_stop"]:
                         tm.stop_task(task_id)
@@ -344,6 +349,7 @@ async def start_auto_iterate(
                         status["message"] = f"第 {round_num} 轮优化失败: {str(e)}"
                         storage.save_auto_iterate_status(project_id, status)
                         logging.error(f"[AutoIterate {project_id}] Optimization failed: {str(e)}")
+                        # 优化失败也应该停止任务（如果还在运行? 此时task已经跑完）
                         return
             
             status["status"] = "completed"
@@ -356,6 +362,14 @@ async def start_auto_iterate(
                 auto_iterate_status[project_id]["status"] = "error"
                 auto_iterate_status[project_id]["message"] = f"系统错误: {str(e)}"
                 storage.save_auto_iterate_status(project_id, auto_iterate_status[project_id])
+            
+            # 关键修复：发生异常时，如果底层任务仍在运行，强制停止
+            if task_id:
+                try:
+                    logging.info(f"[AutoIterate {project_id}] Emergency stopping task {task_id} due to exception")
+                    tm.stop_task(task_id)
+                except Exception as stop_err:
+                     logging.error(f"[AutoIterate {project_id}] Failed to emergency stop task: {stop_err}")
     
     # 后台线程执行
     thread = threading.Thread(target=run_auto_iterate)
