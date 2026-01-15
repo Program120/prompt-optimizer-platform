@@ -225,6 +225,20 @@ async def start_auto_iterate(
                             status = auto_iterate_status.get(project_id, {})
                             return status.get("should_stop", False) or status.get("status") == "stopped"
 
+                        def _update_progress(pid, r_num, max_r, current_status, msg):
+                            """更新进度回调 - 同时更新内存和数据库"""
+                            full_msg = f"第 {r_num}/{max_r} 轮: {msg}"
+                            
+                            # 1. 更新内存状态 (关键修复)
+                            if pid in auto_iterate_status:
+                                auto_iterate_status[pid]["message"] = full_msg
+                            
+                            # 2. 更新传入的 status 对象
+                            current_status["message"] = full_msg
+                            
+                            # 3. 持久化
+                            storage.save_auto_iterate_status(pid, current_status)
+
                         if strategy == "simple":
                             # 简单优化
                             # 注意: optimize_prompt 是同步函数，但在线程中可直接调用
@@ -263,7 +277,7 @@ async def start_auto_iterate(
                                 should_stop=check_stop,
                                 verification_config=model_config,
                                 selected_modules=selected_modules,
-                                on_progress=lambda msg: storage.save_auto_iterate_status(project_id, {**status, "message": f"第 {round_num}/{max_rounds} 轮: {msg}"})
+                                on_progress=lambda msg: _update_progress(project_id, round_num, max_rounds, status, msg)
                             ))
                         
                         # 优化完成后再次检查停止信号
