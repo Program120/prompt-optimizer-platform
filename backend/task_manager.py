@@ -21,8 +21,7 @@ class TaskManager:
         return cls._instance
 
     def create_task(self, project_id: str, file_path: str, query_col: str, target_col: str, prompt: str, model_config: Dict[str, str], extract_field: Optional[str] = None, original_filename: Optional[str] = None, validation_limit: Optional[int] = None, reason_col: Optional[str] = None):
-        import uuid
-        task_id = f"task_{uuid.uuid4().hex}"
+        task_id = f"task_{int(time.time())}"
         
         # 加载数据以校验
         if file_path.endswith(".csv"):
