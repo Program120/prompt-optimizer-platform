@@ -7,6 +7,7 @@ import pandas as pd
 from typing import Dict, Any, Optional
 from app.db import storage
 from app.core.llm_factory import LLMFactory
+from app.engine.verifier import Verifier
 
 class TaskManager:
     _instance = None
@@ -154,102 +155,16 @@ class TaskManager:
             target = "" if pd.isna(raw_target) else str(raw_target)
             reason = "" if pd.isna(raw_reason) else str(raw_reason)
             
-            try:
-                validation_mode = model_config.get("validation_mode", "llm")
-                output = ""
-
-                if validation_mode == "interface":
-                    # 接口验证模式
-                    import requests
-                    
-                    interface_code = model_config.get("interface_code", "")
-                    base_url = model_config.get("base_url", "")
-                    api_key = model_config.get("api_key", "")
-                    timeout = int(model_config.get("timeout", 60))
-                    
-                    if not base_url:
-                        raise ValueError("Interface URL is required")
-                        
-                    # 准备执行环境
-                    # 允许脚本访问 query, target, prompt
-                    local_scope = {
-                        "query": query, 
-                        "target": target,
-                        "prompt": prompt,
-                        "params": None
-                    }
-                    
-                    # 执行转换脚本
-                    try:
-                        exec(interface_code, {"__builtins__": None}, local_scope)
-                        params = local_scope.get("params")
-                    except Exception as e:
-                        raise ValueError(f"Python script execution failed: {e}")
-                        
-                    if not isinstance(params, dict):
-                        raise ValueError("Script must assign a dict to 'params' variable")
-                        
-                    # 发起请求
-                    headers = {"Content-Type": "application/json"}
-                    if api_key:
-                        headers["Authorization"] = f"Bearer {api_key}"
-                        # 某些 API 可能使用 api-key header
-                        headers["api-key"] = api_key 
-                    
-                    resp = requests.post(base_url, json=params, headers=headers, timeout=timeout)
-                    resp.raise_for_status()
-                    
-                    # 获取输出
-                    try:
-                        # 尝试格式化 JSON 输出以便后续处理
-                        output = json.dumps(resp.json(), ensure_ascii=False)
-                    except:
-                        output = resp.text
-
-                else:
-                    # LLM 模式 (原有逻辑)
-                    response = task_client.chat.completions.create(
-                        model=model_config.get("model_name", "gpt-3.5-turbo"),
-                        messages=[
-                            {"role": "user", "content": prompt},
-                            {"role": "user", "content": query}
-                        ],
-                        temperature=float(model_config.get("temperature", 0)),
-                        max_tokens=int(model_config.get("max_tokens", 2000)),
-                        timeout=int(model_config.get("timeout", 60))
-                    )
-                    output = response.choices[0].message.content
-                
-                # 自动去除 markdown 代码块标记 (```json ... ```)
-                if "```" in output:
-                    import re
-                    # 匹配 ```json ... ``` 或 ``` ... ```，提取中间内容
-                    # capturing group 1 is the content
-                    match = re.search(r"```(?:\w+)?\s*(.*?)\s*```", output, re.DOTALL)
-                    if match:
-                        output = match.group(1).strip()
-                    else:
-                        # 如果是单个 ``` (不完整成对)，尝试简单去除
-                        output = output.replace("```json", "").replace("```", "").strip()
-                
-                return {
-                    "index": i,
-                    "query": query,
-                    "target": target,
-                    "reason": reason,
-                    "output": output,
-                    "is_correct": self._check_match(output, target, extract_field)
-                }
-            except Exception as e:
-                logging.error(f"[Task {task_id}] Error ind={i} URL={model_config.get('base_url')}: {str(e)}")
-                return {
-                    "index": i,
-                    "query": query,
-                    "target": target,
-                    "reason": reason,
-                    "output": f"ERROR: {str(e)}",
-                    "is_correct": False
-                }
+            result = Verifier.verify_single(
+                index=i,
+                query=query,
+                target=target,
+                prompt=prompt,
+                model_config=model_config,
+                extract_field=extract_field,
+                reason_col_value=reason
+            )
+            return result
         
         # 使用线程池并发执行
         start_index = info["current_index"]
@@ -306,61 +221,7 @@ class TaskManager:
         
         storage.save_task_status(info["project_id"], task_id, info)
 
-    def _check_match(self, output: str, target: str, extract_field: Optional[str] = None) -> bool:
-        output = output.strip().lower()
-        target = target.strip().lower()
-        
-        # 尝试提取 JSON
-        try:
-            if "{" in output and "}" in output:
-                json_str = output[output.find("{"):output.rfind("}")+1]
-                data = json.loads(json_str)
-                
-                # 如果指定了提取字段
-                if extract_field:
-                    # 支持 Python 表达式 extraction (以 py: 开头)
-                    if extract_field.startswith("py:"):
-                        expression = extract_field[3:].strip()
-                        try:
-                            # 允许在表达式中使用 data 变量
-                            # 1. 尝试直接 eval (单行表达式)
-                            try:
-                                val = eval(expression, {"__builtins__": None}, {"data": data})
-                            except SyntaxError:
-                                # 2. 如果是多行语句 (Sentence)，尝试 exec
-                                # 要求用户在代码中赋值给 result 变量
-                                local_scope = {"data": data}
-                                exec(expression, {"__builtins__": None}, local_scope)
-                                val = local_scope.get("result")
-                                if val is None:
-                                    # 如果没找到 result，警告一下
-                                    logging.warning("Multi-line script must assign to 'result' variable.")
-                                    return False
 
-                            # 如果表达式返回 True (比如也可以直接由表达式做判断)
-                            if isinstance(val, bool):
-                                return val
-                                
-                            return str(val).lower() == target
-                        except Exception as e:
-                            logging.warning(f"Expression eval/exec failed: {e}")
-                            return False
-
-                    if extract_field in data:
-                       val = str(data[extract_field]).lower()
-                       return val == target
-                
-                # 未指定字段，遍历所有值
-                for val in data.values():
-                    if str(val).lower() == target:
-                        return True
-        except:
-            pass
-
-        if target == output:
-            return True
-            
-        return target in output
 
     def pause_task(self, task_id: str):
         if task_id in self.tasks:

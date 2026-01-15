@@ -33,51 +33,67 @@ async def test_prompt_output(request: TestPromptRequest):
     # 所以前端必须更新
     model_config = request.llm_config
 
-    if not model_config or not model_config.get("api_key"):
-        raise HTTPException(status_code=400, detail="未配置模型参数(API Key)")
+    # 校验逻辑优化：
+    # 如果是 interface 模式，api_key 可能为空
+    validation_mode = model_config.get("validation_mode", "llm")
+    if validation_mode != "interface" and (not model_config or not model_config.get("api_key")):
+         raise HTTPException(status_code=400, detail="未配置模型参数(API Key)")
 
     start_time = time.time()
     try:
-        # 使用 LLMFactory 创建客户端
-        # 注意: 这里我们假设是简单的一问一答，Prompt作为System Message或者放在前面
-        
-        # 构造消息
-        messages = []
-        if prompt:
-            messages.append({"role": "system", "content": prompt})
-        messages.append({"role": "user", "content": query})
-
-        # 异步调用模型
-        client = LLMFactory.create_async_client(model_config)
-        
-        model_name = model_config.get("model_name", "gpt-3.5-turbo")
-        
-        # 准备参数
-        params = {
-            "model": model_name,
-            "messages": messages,
-            "temperature": model_config.get("temperature", 0.0),
-        }
-        
-        if model_config.get("max_tokens"):
-            params["max_tokens"] = int(model_config.get("max_tokens"))
+        if validation_mode == "interface":
+            # 接口模式：调用 Verifier._call_interface
+            #由于 Playground 没有 target，传空字符串
+            from app.engine.verifier import Verifier
+            # Verifier._call_interface 是静态方法
+            output = Verifier._call_interface(
+                query=query, 
+                target="", 
+                prompt=prompt, 
+                config=model_config
+            )
+            # 尝试去除 markdown (保持与 Verifier 一致)
+            output = Verifier._clean_markdown(output)
+            model_name = "Interface API"
             
-        # 处理 extra_body (例如 Ollama 可能需要的 chat_template_kwargs 等)
-        # 正确方式: 作为 extra_body 参数传递，而不是合并到顶层参数
-        if model_config.get("extra_body"):
-            params["extra_body"] = model_config.get("extra_body")
+        else:
+            # LLM 模式
+            # 使用 LLMFactory 创建客户端
+            # 构造消息
+            messages = []
+            if prompt:
+                messages.append({"role": "system", "content": prompt})
+            messages.append({"role": "user", "content": query})
 
-        loguru_logger.info(f"Playground Test - Model: {model_name}, Prompt Len: {len(prompt)}, Query Len: {len(query)}")
-        
-        response = await client.chat.completions.create(**params)
+            # 异步调用模型
+            client = LLMFactory.create_async_client(model_config)
+            
+            model_name = model_config.get("model_name", "gpt-3.5-turbo")
+            
+            # 准备参数
+            params = {
+                "model": model_name,
+                "messages": messages,
+                "temperature": model_config.get("temperature", 0.0),
+            }
+            
+            if model_config.get("max_tokens"):
+                params["max_tokens"] = int(model_config.get("max_tokens"))
+                
+            # 处理 extra_body
+            if model_config.get("extra_body"):
+                params["extra_body"] = model_config.get("extra_body")
+
+            loguru_logger.info(f"Playground Test - Model: {model_name}, Prompt Len: {len(prompt)}, Query Len: {len(query)}")
+            
+            response = await client.chat.completions.create(**params)
+            output = response.choices[0].message.content
         
         end_time = time.time()
         latency_ms = (end_time - start_time) * 1000
         
-        content = response.choices[0].message.content
-        
         return {
-            "output": content,
+            "output": output,
             "latency_ms": round(latency_ms, 2),
             "model_used": model_name
         }
@@ -86,4 +102,4 @@ async def test_prompt_output(request: TestPromptRequest):
         import traceback
         traceback.print_exc()
         loguru_logger.error(f"Playground Test Failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"模型调用失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"调用失败: {str(e)}")

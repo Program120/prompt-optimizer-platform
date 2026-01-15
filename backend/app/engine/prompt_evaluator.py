@@ -5,7 +5,9 @@ import random
 from typing import List, Dict, Any, Callable, Optional
 
 from .cancellation import gather_with_cancellation
+from .cancellation import gather_with_cancellation
 from .llm_helper import LLMHelper
+from .verifier import Verifier
 
 
 class PromptEvaluator:
@@ -237,32 +239,31 @@ class PromptEvaluator:
                     query: str = case.get('query', '')
                     target: str = case.get('target', '')
                     
-                    # 构建简单的推理 prompt
-                    eval_input: str = prompt.replace(
-                        "{{input}}", query
-                    ).replace("{{context}}", "")
+                    # 使用 Verifier 执行验证 (使用 run_in_executor 封装同步调用)
+                    # 注意: Verifier 这里是 CPU binding 操作为主 (exec)，但也包含 I/O (Interface / LLM)
+                    # 我们希望保持并发，所以 run_in_executor 是必须的
+                    loop = asyncio.get_running_loop()
                     
-                    # 如果没有替换变量，直接拼接
-                    if eval_input == prompt:
-                        eval_input = f"{prompt}\n\nInput: {query}"
+                    # 确定使用的配置 (验证配置或模型配置)
+                    config = self.verification_model_config or {}
                     
-                    # 使用 LLM Helper 进行可取消的 LLM 调用
-                    # 传入验证专用的 client 和 config
-                    response: str = await self.llm_helper.call_llm_with_cancellation(
-                        eval_input,
-                        should_stop=should_stop,
-                        task_name="快速评估",
-                        override_client=self.verification_llm_client,
-                        override_config=self.verification_model_config
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda: Verifier.verify_single(
+                            index=0, 
+                            query=query,
+                            target=target,
+                            prompt=prompt,
+                            model_config=config
+                        )
                     )
                     
-                    # 简单匹配：只要包含目标值就算对 (模糊匹配)
-                    if str(target).lower() in response.lower():
-                        return 1
-                    return 0
+                    return 1 if result["is_correct"] else 0
+
                 except asyncio.CancelledError:
                     return 0
-                except Exception:
+                except Exception as e:
+                    self.logger.error(f"Evaluating prompt error: {e}")
                     return 0
 
         tasks: list = [run_case(case) for case in test_cases]

@@ -34,7 +34,7 @@ async def save_config(
 @router.post("/test")
 async def test_config(
     base_url: str = Form(...), 
-    api_key: str = Form(...),
+    api_key: str = Form(None),
     model_name: str = Form("gpt-3.5-turbo"),
     max_tokens: int = Form(5),
     temperature: float = Form(0.0),

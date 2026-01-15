@@ -444,13 +444,15 @@ export default function ProjectDetail() {
         if (!taskStatus?.id) return;
 
         // 校验模型配置 (验证模型)
-        if (!project.model_config || !project.model_config.api_key) {
+        // 如果是接口验证模式，跳过验证模型 API Key 校验
+        const isInterfaceMode = project.model_config?.validation_mode === "interface";
+        if (!isInterfaceMode && (!project.model_config || !project.model_config.api_key)) {
             showToast("请先在【项目配置】中设置验证模型的 API Key", "error");
             return;
         }
 
         // 校验优化模型配置
-        // optimization_model_config 可能为空，或者 api_key 为空
+        // optimization_model_config 可能为空，或者 api_key 为空 (这个是必须的，因为优化必须用LLM)
         if (!project.optimization_model_config || !project.optimization_model_config.api_key) {
             showToast("请先在【项目配置】-【优化配置】中设置 API Key", "error");
             setConfigTab("optimization");
