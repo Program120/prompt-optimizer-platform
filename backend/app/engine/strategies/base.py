@@ -171,16 +171,20 @@ class BaseStrategy(ABC):
 {module_constraint}
 请根据提供的具体指令和错误案例优化以下提示词。
 
-## 当前提示词
+<ORIGINAL_PROMPT>
 {prompt}
+</ORIGINAL_PROMPT>
 
-## 错误案例
+<REFERENCE_INFO comment="以下信息仅供分析参考，严禁在此区域内进行任何 SEARCH 操作">
+## 错误案例（仅供参考）
 {error_text}
 {history_section}{newly_failed_section}
 ## 优化指令
 {instruction}
 {constraint_text}
 {self_check_section}
+</REFERENCE_INFO>
+
 ## 输出格式
 1. **分析**：首先，逐步分析当前提示词和错误模式。识别根本原因并规划具体的改进措施。
 2. **优化**：然后，输出用于应用更改的 Git Diff 块。
@@ -195,11 +199,12 @@ class BaseStrategy(ABC):
 [用于替换的新文本]
 >>>>>>>
 
-SEARCH/REPLACE 规则：
-1. **严格限制**: SEARCH 块中的内容必须**逐字逐句**地存在于"当前提示词"中，包括所有的空格、换行符和特殊字符。如果 SEARCH 内容找不到，Diff 将无法应用。
-2. 严禁修改 SEARCH 块中的内容去"匹配"你想修改的地方，你必须复制原文。
-3. 如果要插入文本，请 SEARCH 邻近的现有行，并在 REPLACE 中包含该行以及你的新文本。
-4. 要删除文本，请将 REPLACE 块留空。
+SEARCH/REPLACE 规则（核心约束）：
+1. **[最重要] SEARCH 内容必须且只能来自 <ORIGINAL_PROMPT> 标签内的文本**。严禁使用 <REFERENCE_INFO> 中的任何内容（如"错误案例"、"优化指令"等）作为 SEARCH 目标。
+2. **严格限制**: SEARCH 块中的内容必须**逐字逐句**地存在于 <ORIGINAL_PROMPT> 中，包括所有的空格、换行符和特殊字符。如果 SEARCH 内容找不到，Diff 将无法应用。
+3. 严禁修改 SEARCH 块中的内容去"匹配"你想修改的地方，你必须复制原文。
+4. 如果要插入文本，请 SEARCH <ORIGINAL_PROMPT> 中邻近的现有行，并在 REPLACE 中包含该行以及你的新文本。
+5. 要删除文本，请将 REPLACE 块留空。
 """
         
         logger.info(f"[元优化] 构造优化 Prompt 完成，总长度: {len(optimization_prompt)} 字符")
@@ -256,16 +261,17 @@ SEARCH/REPLACE 规则：
         logger: logging.Logger = logging.getLogger(__name__)
         
         # 正则匹配 SEARCH/REPLACE 块
+        # 兼容 LLM 输出的各种尖括号数量变体 (5-8个)
         pattern = re.compile(
-            r'<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>>',
+            r'<{5,8}\s*SEARCH\n(.*?)\n=======\n(.*?)\n>{5,8}',
             re.DOTALL
         )
         
         blocks = pattern.findall(diff_text)
         if not blocks:
-            # 尝试宽松匹配 (允许 SEARCH 后没有换行等)
+            # 尝试宽松匹配 (允许 SEARCH 后没有换行等，以及尖括号数量不一致)
             pattern_loose = re.compile(
-                r'<<<<<<< SEARCH\s*(.*?)\s*=======\s*(.*?)\s*>>>>>>>',
+                r'<{5,8}\s*SEARCH\s*(.*?)\s*=======\s*(.*?)\s*>{5,8}',
                 re.DOTALL
             )
             blocks = pattern_loose.findall(diff_text)
@@ -417,7 +423,7 @@ SEARCH/REPLACE 规则：
         import logging
         import asyncio
         import threading
-        from openai import AsyncOpenAI
+        from openai import AsyncOpenAI, OpenAI
         
         logger: logging.Logger = logging.getLogger(__name__)
         
@@ -447,8 +453,16 @@ SEARCH/REPLACE 规则：
                 # AsyncOpenAI 客户端需要异步调用
                 # 在同步上下文中运行异步代码
                 
-                # 如果有信号量，需要使用 async with 获取信号量
-                if self.semaphore:
+                # 检查是否有正在运行的事件循环
+                try:
+                    loop = asyncio.get_running_loop()
+                    has_running_loop = True
+                except RuntimeError:
+                    has_running_loop = False
+                    loop = None
+                
+                # 如果有信号量且有运行中的事件循环，使用 run_coroutine_threadsafe
+                if self.semaphore and has_running_loop:
                     async def _async_call_with_semaphore():
                         """
                         带信号量控制的异步调用 LLM
@@ -467,58 +481,32 @@ SEARCH/REPLACE 规则：
                                 timeout=timeout,
                                 extra_body=self.model_config.get("extra_body")
                             )
-                    _async_call = _async_call_with_semaphore
+                    future = asyncio.run_coroutine_threadsafe(_async_call_with_semaphore(), loop)
+                    response = future.result(timeout=timeout + 10)
                 else:
-                    async def _async_call_no_semaphore():
-                        """
-                        异步调用 LLM（无信号量控制）
-                        
-                        :return: LLM 响应对象
-                        """
-                        return await self.llm_client.chat.completions.create(
-                            model=model_name,
-                            messages=[
-                                {"role": "user", "content": prompt}
-                            ],
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            timeout=timeout,
-                            extra_body=self.model_config.get("extra_body")
-                        )
-                    _async_call = _async_call_no_semaphore
-                
-                # 检查是否有正在运行的事件循环
-                try:
-                    loop = asyncio.get_running_loop()
-                    # 有运行中的循环，使用 nest_asyncio 或创建新线程
-                    import concurrent.futures
+                    # 在新事件循环中运行，需要创建新的客户端实例
+                    # 避免共享客户端的连接池对象跨事件循环使用
+                    logger.debug(f"[LLM请求-策略优化] 策略: {self.name}, 创建新的同步客户端实例")
                     
-                    # 如果有信号量，需要在同一个事件循环中运行
-                    # 使用 run_coroutine_threadsafe 在当前循环中调度协程
-                    if self.semaphore:
-                        future = asyncio.run_coroutine_threadsafe(_async_call(), loop)
-                        response = future.result(timeout=timeout + 10)
-                    else:
-                        def run_in_new_loop():
-                            """
-                            在新的事件循环中运行异步代码
-                            
-                            :return: LLM 响应对象
-                            """
-                            new_loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(new_loop)
-                            try:
-                                return new_loop.run_until_complete(_async_call())
-                            finally:
-                                new_loop.close()
-                        
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future = executor.submit(run_in_new_loop)
-                            response = future.result(timeout=timeout + 10)
-                        
-                except RuntimeError:
-                    # 没有运行中的循环，可以直接运行
-                    response = asyncio.run(_async_call())
+                    # 从 AsyncOpenAI 客户端提取配置，创建同步客户端
+                    sync_client = OpenAI(
+                        api_key=self.llm_client.api_key,
+                        base_url=str(self.llm_client.base_url) if self.llm_client.base_url else None,
+                        timeout=timeout,
+                        http_client=None  # 使用新的 HTTP 客户端
+                    )
+                    
+                    # 使用同步客户端调用
+                    response = sync_client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=timeout,
+                        extra_body=self.model_config.get("extra_body")
+                    )
             else:
                 # 同步 OpenAI 客户端，直接调用
                 response = self.llm_client.chat.completions.create(
