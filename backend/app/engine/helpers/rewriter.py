@@ -1,4 +1,4 @@
-"""自动提示词改写器 - 基于策略的模板化改写"""
+from loguru import logger
 import re
 from typing import List, Dict, Any, Optional
 
@@ -17,17 +17,16 @@ class PromptRewriter:
         """
         基于策略重写提示词
         
-        Args:
-            prompt: 原始提示词
-            strategy: 改写策略名称
-            **kwargs: 策略所需的额外参数
-            
-        Returns:
-            改写后的提示词
+        :param prompt: 原始提示词
+        :param strategy: 改写策略名称
+        :param kwargs: 策略所需的额外参数
+        :return: 改写后的提示词
         """
         if strategy not in self.templates:
+            logger.warning(f"未知改写策略: {strategy}，忽略")
             return prompt
             
+        logger.debug(f"应用提示词改写策略: {strategy}")
         return self.templates[strategy](prompt, **kwargs)
 
     def _template_cot(self, prompt: str, **kwargs) -> str:

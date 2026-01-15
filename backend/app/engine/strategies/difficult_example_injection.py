@@ -1,5 +1,6 @@
 """困难案例注入策略 - 将困难案例注入到few-shot示例中"""
 
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -9,9 +10,9 @@ from .base import BaseStrategy
 class DifficultExampleInjectionStrategy(BaseStrategy):
     """困难案例注入策略 - 将困难案例注入到few-shot示例中"""
     
-    name = "difficult_example_injection"
-    priority = 70
-    description = "困难案例注入策略：将难处理的案例作为示例注入提示词"
+    name: str = "difficult_example_injection"
+    priority: int = 70
+    description: str = "困难案例注入策略：将难处理的案例作为示例注入提示词"
     module_name: str = "Few-Shot 场景示例"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
@@ -35,6 +36,7 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
         diagnosis: Dict[str, Any]
     ) -> str:
         """应用困难案例注入策略"""
+        logger.info(f"策略 {self.name} 开始执行...")
         hard_cases = diagnosis.get("error_patterns", {}).get("hard_cases", [])
         if not hard_cases:
             hard_cases = errors[:10]  # 如果没有识别到 hard_cases，使用前10个错误

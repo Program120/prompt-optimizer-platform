@@ -1,6 +1,6 @@
-"""负向优化融合策略 - 基于错误分析重写并融合提示词"""
+import asyncio
+from loguru import logger
 import re
-import logging
 from typing import List, Dict, Any, Optional
 from .base import BaseStrategy
 
@@ -125,7 +125,7 @@ class NegativeFusionOptimizationStrategy(BaseStrategy):
         self, 
         llm_client=None, 
         model_config: Dict[str, Any] = None,
-        semaphore=None
+        semaphore: Optional[asyncio.Semaphore] = None
     ):
         """
         初始化负向优化融合策略
@@ -135,7 +135,6 @@ class NegativeFusionOptimizationStrategy(BaseStrategy):
         :param semaphore: 并发控制信号量
         """
         super().__init__(llm_client, model_config, semaphore)
-        self.logger: logging.Logger = logging.getLogger(__name__)
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """
@@ -158,7 +157,7 @@ class NegativeFusionOptimizationStrategy(BaseStrategy):
         is_applicable: bool = accuracy < 0.85 and error_count > 0
         
         if is_applicable:
-            self.logger.info(
+            logger.info(
                 f"[负向融合策略] 策略适用条件满足: "
                 f"准确率={accuracy:.2%}, 错误数={error_count}"
             )
@@ -203,29 +202,30 @@ class NegativeFusionOptimizationStrategy(BaseStrategy):
         :param diagnosis: 诊断分析结果
         :return: 优化后的提示词
         """
-        self.logger.info("[负向融合策略] 开始执行两阶段优化...")
+
+        logger.info("[负向融合策略] 开始执行两阶段优化...")
         
         # 阶段一：负向重写
-        self.logger.info("[负向融合策略] 阶段一：基于错误分析重写提示词...")
+        logger.info("[负向融合策略] 阶段一：基于错误分析重写提示词...")
         rewritten_prompt: str = self._rewrite_prompt(prompt, errors, diagnosis)
         
         if not rewritten_prompt or rewritten_prompt == prompt:
-            self.logger.warning("[负向融合策略] 重写阶段未产生有效输出，返回原提示词")
+            logger.warning("[负向融合策略] 重写阶段未产生有效输出，返回原提示词")
             return prompt
         
-        self.logger.info(
+        logger.info(
             f"[负向融合策略] 重写完成，长度变化: {len(prompt)} -> {len(rewritten_prompt)}"
         )
         
         # 阶段二：融合优化
-        self.logger.info("[负向融合策略] 阶段二：融合原提示词与重写版本...")
+        logger.info("[负向融合策略] 阶段二：融合原提示词与重写版本...")
         fused_prompt: str = self._fuse_prompts(prompt, rewritten_prompt)
         
         if not fused_prompt:
-            self.logger.warning("[负向融合策略] 融合阶段失败，返回重写后的提示词")
+            logger.warning("[负向融合策略] 融合阶段失败，返回重写后的提示词")
             return rewritten_prompt
         
-        self.logger.info(
+        logger.info(
             f"[负向融合策略] 融合完成，最终长度: {len(fused_prompt)}"
         )
         
@@ -278,7 +278,7 @@ class NegativeFusionOptimizationStrategy(BaseStrategy):
             return cleaned_response
             
         except Exception as e:
-            self.logger.error(f"[负向融合策略] 重写阶段失败: {e}")
+            logger.error(f"[负向融合策略] 重写阶段失败: {e}")
             return ""
     
     def _fuse_prompts(
@@ -309,7 +309,7 @@ class NegativeFusionOptimizationStrategy(BaseStrategy):
             return cleaned_response
             
         except Exception as e:
-            self.logger.error(f"[负向融合策略] 融合阶段失败: {e}")
+            logger.error(f"[负向融合策略] 融合阶段失败: {e}")
             return ""
     
     def _build_error_samples(self, errors: List[Dict[str, Any]]) -> str:

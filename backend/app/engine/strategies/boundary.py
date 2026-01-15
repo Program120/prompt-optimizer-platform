@@ -1,5 +1,6 @@
 """边界澄清策略 - 解决易混淆意图对"""
 import re
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -31,9 +32,9 @@ BOUNDARY_CLARIFICATION_PROMPT = """你是提示词优化专家。当前提示词
 class BoundaryClarificationStrategy(BaseStrategy):
     """边界澄清策略 - 为易混淆的意图对添加区分规则"""
     
-    name = "boundary_clarification"
-    priority = 90
-    description = "边界澄清策略：针对易混淆的类别添加明确的区分规则"
+    name: str = "boundary_clarification"
+    priority: int = 90
+    description: str = "边界澄清策略：针对易混淆的类别添加明确的区分规则"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """当存在混淆对时适用"""
@@ -56,6 +57,7 @@ class BoundaryClarificationStrategy(BaseStrategy):
         diagnosis: Dict[str, Any]
     ) -> str:
         """应用边界澄清策略"""
+        logger.info(f"策略 {self.name} 开始执行...")
         confusion_pairs = diagnosis.get("error_patterns", {}).get("confusion_pairs", [])
         if not confusion_pairs:
             return prompt

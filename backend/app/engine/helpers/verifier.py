@@ -3,13 +3,11 @@
 
 统一 TaskService (任务执行) 和 PromptEvaluator (优化评估) 的验证行为
 """
-import logging
+from loguru import logger
 import json
 import re
 from typing import Dict, Any, Optional
 from app.core.llm_factory import LLMFactory
-
-logger = logging.getLogger(__name__)
 
 class Verifier:
     """

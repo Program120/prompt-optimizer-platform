@@ -3,12 +3,9 @@
 
 用于在多策略优化器的各个阶段传递停止信号，实现立即响应停止请求
 """
+from loguru import logger
 import asyncio
-import logging
 from typing import Callable, Any, Optional, Coroutine
-
-# 获取日志记录器
-logger: logging.Logger = logging.getLogger(__name__)
 
 
 class CancellationToken:

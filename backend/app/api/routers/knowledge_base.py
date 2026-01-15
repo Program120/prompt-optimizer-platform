@@ -11,7 +11,7 @@ import os
 
 # 添加父目录到路径以便导入 (已废弃，使用绝对导入)
 # sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from app.engine.knowledge_base import OptimizationKnowledgeBase
+from app.engine.helpers.knowledge import OptimizationKnowledgeBase
 from loguru import logger
 
 router = APIRouter(prefix="/projects", tags=["knowledge_base"])

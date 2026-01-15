@@ -6,6 +6,7 @@
 2. 添加意图的典型示例和边界说明
 3. 强化意图之间的区分规则
 """
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -87,6 +88,7 @@ class IntentDefinitionOptimizationStrategy(BaseStrategy):
         :param diagnosis: 诊断分析结果
         :return: 优化后的提示词
         """
+        logger.info(f"策略 {self.name} 开始执行...")
         # 分析意图问题
         intent_analysis_text: str = self._analyze_intent_issues(diagnosis)
         

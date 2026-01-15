@@ -1,26 +1,27 @@
 """策略匹配器 - 基于诊断结果匹配优化策略"""
-from typing import List, Dict, Any, Type
+from typing import List, Dict, Any, Type, Optional
 import json
 import asyncio
+from openai import AsyncOpenAI
 from loguru import logger
-from .strategies.base import BaseStrategy
-from .strategies.boundary import BoundaryClarificationStrategy
-from .strategies.instruction import InstructionRefinementStrategy
-from .strategies.difficult_example_injection import DifficultExampleInjectionStrategy
-from .strategies.meta_optimize import MetaOptimizationStrategy
-from .strategies.context_optimize import ContextEnhancementStrategy
-from .strategies.multi_intent_optimize import MultiIntentStrategy
-from .strategies.domain_optimize import DomainDistinctionStrategy
-from .strategies.clarification_optimize import ClarificationMechanismStrategy
-from .strategies.cot_optimize import CoTReasoningStrategy
+from ..strategies.base import BaseStrategy
+from ..strategies.boundary import BoundaryClarificationStrategy
+from ..strategies.instruction import InstructionRefinementStrategy
+from ..strategies.difficult_example_injection import DifficultExampleInjectionStrategy
+from ..strategies.meta_optimize import MetaOptimizationStrategy
+from ..strategies.context_optimize import ContextEnhancementStrategy
+from ..strategies.multi_intent_optimize import MultiIntentStrategy
+from ..strategies.domain_optimize import DomainDistinctionStrategy
+from ..strategies.clarification_optimize import ClarificationMechanismStrategy
+from ..strategies.cot_optimize import CoTReasoningStrategy
 # 新增策略导入
-from .strategies.custom_data_optimize import CustomDataOptimizationStrategy
-from .strategies.global_constraint_optimize import GlobalConstraintOptimizationStrategy
-from .strategies.intent_definition_optimize import IntentDefinitionOptimizationStrategy
-from .strategies.query_rewrite_optimize import QueryRewriteOptimizationStrategy
-from .strategies.role_task_definition_optimize import RoleTaskDefinitionStrategy
-from .strategies.output_format_optimize import OutputFormatOptimizationStrategy
-from .strategies.negative_fusion_optimize import NegativeFusionOptimizationStrategy
+from ..strategies.custom_data_optimize import CustomDataOptimizationStrategy
+from ..strategies.global_constraint_optimize import GlobalConstraintOptimizationStrategy
+from ..strategies.intent_definition_optimize import IntentDefinitionOptimizationStrategy
+from ..strategies.query_rewrite_optimize import QueryRewriteOptimizationStrategy
+from ..strategies.role_task_definition_optimize import RoleTaskDefinitionStrategy
+from ..strategies.output_format_optimize import OutputFormatOptimizationStrategy
+from ..strategies.negative_fusion_optimize import NegativeFusionOptimizationStrategy
 
 
 # 策略组合预设
@@ -106,9 +107,9 @@ class StrategyMatcher:
     
     def __init__(
         self, 
-        llm_client=None, 
-        model_config: Dict[str, Any] = None,
-        semaphore: Any = None
+        llm_client: Optional[AsyncOpenAI] = None, 
+        model_config: Optional[Dict[str, Any]] = None,
+        semaphore: Optional[asyncio.Semaphore] = None
     ):
         """
         初始化策略匹配器

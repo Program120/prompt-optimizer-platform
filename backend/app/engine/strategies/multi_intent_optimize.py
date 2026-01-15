@@ -1,3 +1,4 @@
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -7,18 +8,25 @@ class MultiIntentStrategy(BaseStrategy):
     针对多意图误判、漏判和排序问题。
     """
     
-    @property
-    def name(self) -> str:
-        return "multi_intent_optimization"
+    name: str = "multi_intent_optimization"
+    priority: int = 90  # 很高优先级
+    description: str = "多意图优化策略：优化多意图识别"
 
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         adv_diag = diagnosis.get("advanced_diagnosis", {})
         return adv_diag.get("multi_intent_analysis", {}).get("has_issue", False)
 
     def get_priority(self, diagnosis: Dict[str, Any]) -> int:
-        return 90 # 很高优先级
+        return self.priority
 
-    def apply(self, prompt: str, errors: List[Dict[str, Any]], diagnosis: Dict[str, Any]) -> str:
+    def apply(
+        self, 
+        prompt: str, 
+        errors: List[Dict[str, Any]], 
+        diagnosis: Dict[str, Any]
+    ) -> str:
+        """应用多意图优化策略"""
+        logger.info(f"策略 {self.name} 开始执行...")
         adv_diag = diagnosis.get("advanced_diagnosis", {})
         mi_analysis = adv_diag.get("multi_intent_analysis", {})
         

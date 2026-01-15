@@ -1,4 +1,4 @@
-"""元提示词优化策略 - 使用LLM自我优化提示词"""
+from loguru import logger
 import re
 from typing import List, Dict, Any, Optional
 from .base import BaseStrategy
@@ -136,9 +136,9 @@ META_OPTIMIZATION_PROMPT: str = """# 角色：提示词优化架构师
 class MetaOptimizationStrategy(BaseStrategy):
     """元提示词优化策略 - 使用LLM综合自我优化"""
     
-    name = "meta_optimization"
-    priority = 60
-    description = "元优化策略：使用LLM综合分析和优化提示词"
+    name: str = "meta_optimization"
+    priority: int = 60
+    description: str = "元优化策略：使用LLM综合分析和优化提示词"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """始终适用，作为通用优化策略"""
@@ -213,15 +213,13 @@ class MetaOptimizationStrategy(BaseStrategy):
         # 调用 LLM 优化
         response_content = self._call_llm(optimize_prompt)
         # Log raw output
-        import logging
-        logger = logging.getLogger(__name__)
         logger.info(f"元优化策略 - 原始模型输出:\n{response_content}")
         
         # 应用 Diff
         try:
             return self._apply_diff(prompt, response_content)
         except Exception as e:
-            print(f"Meta optimization diff failed: {e}. Return original.")
+            logger.error(f"Meta optimization diff failed: {e}. Return original.")
             return prompt
     
     def _build_error_samples(self, errors: List[Dict[str, Any]]) -> str:

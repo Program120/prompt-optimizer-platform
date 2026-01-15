@@ -6,6 +6,7 @@
 2. 划定任务边界（仅识别意图，不回答业务问题）
 3. 点明支持的场景（单意图/多意图/澄清/无意图）
 """
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -88,6 +89,7 @@ class RoleTaskDefinitionStrategy(BaseStrategy):
         :param diagnosis: 诊断分析结果
         :return: 优化后的提示词
         """
+        logger.info(f"策略 {self.name} 开始执行...")
         # 分析当前角色定义问题
         role_analysis: str = self._analyze_role_issues(prompt, diagnosis)
 

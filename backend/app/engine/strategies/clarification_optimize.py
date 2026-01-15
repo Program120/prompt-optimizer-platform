@@ -1,3 +1,4 @@
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -7,18 +8,25 @@ class ClarificationMechanismStrategy(BaseStrategy):
     优化澄清触发条件，防止过度或缺失澄清。
     """
     
-    @property
-    def name(self) -> str:
-        return "clarification_mechanism"
+    name: str = "clarification_mechanism"
+    priority: int = 75  # 中高优先级
+    description: str = "澄清机制策略：优化澄清触发条件"
 
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         adv_diag = diagnosis.get("advanced_diagnosis", {})
         return adv_diag.get("clarification_analysis", {}).get("has_issue", False)
 
     def get_priority(self, diagnosis: Dict[str, Any]) -> int:
-        return 75 # 中高优先级
+        return self.priority
 
-    def apply(self, prompt: str, errors: List[Dict[str, Any]], diagnosis: Dict[str, Any]) -> str:
+    def apply(
+        self, 
+        prompt: str, 
+        errors: List[Dict[str, Any]], 
+        diagnosis: Dict[str, Any]
+    ) -> str:
+        """应用澄清机制优化策略"""
+        logger.info(f"策略 {self.name} 开始执行...")
         adv_diag = diagnosis.get("advanced_diagnosis", {})
         clar_analysis = adv_diag.get("clarification_analysis", {})
         

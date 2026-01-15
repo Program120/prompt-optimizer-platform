@@ -1,4 +1,4 @@
-"""指令优化策略 - 提升指令清晰度和可执行性"""
+from loguru import logger
 import re
 from typing import List, Dict, Any
 from .base import BaseStrategy
@@ -29,9 +29,9 @@ INSTRUCTION_REFINEMENT_PROMPT = """你是提示词优化专家。当前提示词
 class InstructionRefinementStrategy(BaseStrategy):
     """指令优化策略 - 提升指令的清晰度和可执行性"""
     
-    name = "instruction_refinement"
-    priority = 80
-    description = "指令优化策略：提升指令清晰度，添加步骤引导"
+    name: str = "instruction_refinement"
+    priority: int = 80
+    description: str = "指令优化策略：提升指令清晰度，添加步骤引导"
     
     def is_applicable(self, diagnosis: Dict[str, Any]) -> bool:
         """当指令清晰度不足时适用"""
@@ -53,6 +53,7 @@ class InstructionRefinementStrategy(BaseStrategy):
         diagnosis: Dict[str, Any]
     ) -> str:
         """应用指令优化策略"""
+        logger.info(f"策略 {self.name} 开始执行...")
         prompt_analysis = diagnosis.get("prompt_analysis", {})
         
         # 构建指令问题分析

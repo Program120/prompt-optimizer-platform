@@ -1,4 +1,4 @@
-"""策略基类定义"""
+from loguru import logger
 import asyncio
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
@@ -88,9 +88,6 @@ class BaseStrategy(ABC):
         :param module_name: 可修改的模块名称（用于模块边界约束）
         :return: 优化后的提示词
         """
-        import logging
-        
-        logger: logging.Logger = logging.getLogger(__name__)
         
         logger.info(f"[元优化] 开始执行，策略: {self.name}, 模块: {module_name or '无限制'}")
         logger.info(f"[元优化] 原始提示词长度: {len(prompt)} 字符")
@@ -256,9 +253,6 @@ SEARCH/REPLACE 规则（核心约束）：
         :return: 应用修改后的文本
         """
         import re
-        import logging
-        
-        logger: logging.Logger = logging.getLogger(__name__)
         
         # 正则匹配 SEARCH/REPLACE 块
         # 兼容 LLM 输出的各种尖括号数量变体 (5-8个)
@@ -420,12 +414,10 @@ SEARCH/REPLACE 规则（核心约束）：
         :return: LLM 响应内容
         """
         import re
-        import logging
         import asyncio
         import threading
         from openai import AsyncOpenAI, OpenAI
         
-        logger: logging.Logger = logging.getLogger(__name__)
         
         if not self.llm_client:
             # Fallback for testing or if client not provided

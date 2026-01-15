@@ -29,7 +29,7 @@ class OptimizationKnowledgeBase:
     
     # 知识库存储目录
     KNOWLEDGE_BASE_DIR: str = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 
         "data", 
         "knowledge_base"
     )
@@ -41,7 +41,6 @@ class OptimizationKnowledgeBase:
         :param project_id: 项目ID，用于隔离不同项目的优化历史
         """
         self.project_id: str = project_id
-        self.logger: logging.Logger = logging.getLogger(__name__)
         
         # 确保目录存在
         self._ensure_dir()
@@ -74,7 +73,7 @@ class OptimizationKnowledgeBase:
                 with open(file_path, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
-                self.logger.error(f"加载知识库失败: {e}")
+                logger.error(f"加载知识库失败: {e}")
                 return []
         return []
         
@@ -89,7 +88,7 @@ class OptimizationKnowledgeBase:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(history, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            self.logger.error(f"保存知识库失败: {e}")
+            logger.error(f"保存知识库失败: {e}")
             
     def record_optimization(
         self,
@@ -162,12 +161,12 @@ class OptimizationKnowledgeBase:
         clarification_count: int = len(clarification_intents) if clarification_intents else 0
         multi_intent_count: int = len(multi_intent_intents) if multi_intent_intents else 0
         if clarification_count > 0 or multi_intent_count > 0:
-            self.logger.info(
+            logger.info(
                 f"知识库 V{version} 记录了 {clarification_count} 个澄清类意图, "
                 f"{multi_intent_count} 个多意图类意图"
             )
         
-        self.logger.info(
+        logger.info(
             f"记录优化版本 {version}，项目: {self.project_id}"
         )
         
@@ -193,7 +192,7 @@ class OptimizationKnowledgeBase:
                 
             return "\n".join(clean_diff).strip()
         except Exception as e:
-            self.logger.warning(f"Diff 计算失败: {e}")
+            logger.warning(f"Diff 计算失败: {e}")
             return ""
 
         
@@ -246,7 +245,7 @@ class OptimizationKnowledgeBase:
                 record["accuracy_after"] = accuracy_after
                 record["updated_at"] = datetime.now().isoformat()
                 self._save_history(history)
-                self.logger.info(
+                logger.info(
                     f"已回填知识库版本 {record.get('version')} 的优化后准确率: {accuracy_after:.1%}"
                 )
                 return True

@@ -2,18 +2,17 @@
 困难案例检测模块
 实现用于在提示词优化中识别困难案例的高级策略。
 """
-import logging
+from loguru import logger
 from typing import List, Dict, Any, Optional, Tuple
 from collections import defaultdict, Counter
 import numpy as np
-import networkx as nx
 import networkx as nx
 from sklearn.neighbors import NearestNeighbors
 from openai import AsyncOpenAI, OpenAI
 
 # 如果需要，可以尝试导入用于文本分析的其他可选依赖项
 # 目前我们坚持使用标准库和 sklearn
-from app.db import storage
+from ...db import storage
 
 class HardCaseDetector:
     """
@@ -34,9 +33,8 @@ class HardCaseDetector:
             model_config: 模型/客户端的配置
             weights: 不同检测策略的权重
         """
-        self.llm_client: Any = llm_client
+        self.llm_client = llm_client
         self.model_config: Dict[str, Any] = model_config or {}
-        self.logger: logging.Logger = logging.getLogger(__name__)
         
         self.weights: Dict[str, float] = weights or {
             "confidence": 0.25,
@@ -80,14 +78,14 @@ class HardCaseDetector:
                 hist_cases: List[Dict[str, Any]] = self._historical_frequency_based(predictions, project_id)
                 self._add_weighted_scores(all_scores, hist_cases, "history")
             except Exception as e:
-                self.logger.warning(f"基于历史频率的检测失败: {e}")
+                logger.warning(f"基于历史频率的检测失败: {e}")
         
         # 1. 基于置信度的检测
         try:
             conf_cases: List[Dict[str, Any]] = self._confidence_based(predictions)
             self._add_weighted_scores(all_scores, conf_cases, "confidence")
         except Exception as e:
-            self.logger.warning(f"基于置信度的检测失败: {e}")
+            logger.warning(f"基于置信度的检测失败: {e}")
 
         # 2. 基于混淆的检测
         try:
@@ -96,7 +94,7 @@ class HardCaseDetector:
             conf_net_cases: List[Dict[str, Any]] = self._confusion_based(predictions, intents)
             self._add_weighted_scores(all_scores, conf_net_cases, "confusion")
         except Exception as e:
-            self.logger.warning(f"基于混淆矩阵的检测失败: {e}")
+            logger.warning(f"基于混淆矩阵的检测失败: {e}")
 
         # # 3. 基于向量嵌入的检测（边界与多样性）
         # # 仅当我们有 LLM 客户端来生成向量嵌入时才运行
@@ -115,7 +113,7 @@ class HardCaseDetector:
         #             diversity_cases: List[Dict[str, Any]] = self._diversity_based(predictions, embeddings)
         #             self._add_weighted_scores(all_scores, diversity_cases, "diversity")
         #     except Exception as e:
-        #         self.logger.warning(f"基于向量嵌入的检测失败: {e}")
+        #         logger.warning(f"基于向量嵌入的检测失败: {e}")
         
         # 4. 歧义检测（目前在没有外部 NLP 工具的情况下简化）
         # 我们可以实现一个基本版本，或者如果过于复杂且没有重型 NLP 库则跳过
@@ -423,13 +421,13 @@ class HardCaseDetector:
         :return: 嵌入向量列表
         """
         if not self.llm_client:
-            self.logger.warning("[嵌入向量-困难案例] 未配置 LLM 客户端，跳过嵌入提取")
+            logger.warning("[嵌入向量-困难案例] 未配置 LLM 客户端，跳过嵌入提取")
             return []
         
         # 记录嵌入请求输入日志
-        self.logger.info(f"[嵌入向量请求-困难案例] 输入文本数量: {len(texts)}")
+        logger.info(f"[嵌入向量请求-困难案例] 输入文本数量: {len(texts)}")
         if texts:
-            self.logger.debug(f"[嵌入向量请求-困难案例] 首个文本预览: {texts[0][:100]}...")
+            logger.debug(f"[嵌入向量请求-困难案例] 首个文本预览: {texts[0][:100]}...")
             
         try:
             # 检查客户端是否支持向量嵌入
@@ -453,12 +451,10 @@ class HardCaseDetector:
                      else:
                          # 对于其他提供商，我们可能没有安全的默认值。
                          # 记录警告并跳过比在 ada-002 上崩溃或报 404 更好
-                         self.logger.warning("[嵌入向量请求-困难案例] 未配置 embedding_model，且无法推断默认模型。跳过困难案例检测。")
+                         logger.warning("[嵌入向量请求-困难案例] 未配置 embedding_model，且无法推断默认模型。跳过困难案例检测。")
                          return []
 
-                 self.logger.info(f"[嵌入向量请求-困难案例] 使用嵌入模型: {model_name}")
-                 
-                 self.logger.info(f"[嵌入向量请求-困难案例] 使用嵌入模型: {model_name}")
+                 logger.info(f"[嵌入向量请求-困难案例] 使用嵌入模型: {model_name}")
                  
                  # 异步客户端支持
                  if isinstance(self.llm_client, AsyncOpenAI):
@@ -505,15 +501,15 @@ class HardCaseDetector:
                  embeddings: List[List[float]] = [data.embedding for data in response.data]
                  
                  # 记录嵌入响应输出日志
-                 self.logger.info(f"[嵌入向量响应-困难案例] 生成向量数量: {len(embeddings)}")
+                 logger.info(f"[嵌入向量响应-困难案例] 生成向量数量: {len(embeddings)}")
                  if embeddings:
-                     self.logger.debug(f"[嵌入向量响应-困难案例] 向量维度: {len(embeddings[0])}")
+                     logger.debug(f"[嵌入向量响应-困难案例] 向量维度: {len(embeddings[0])}")
                  
                  return embeddings
         except Exception as e:
             # 捕获所有向量嵌入错误（404, 400 等）以防止整个优化过程崩溃
             # 尤其是对于提供商不兼容的情况（例如阿里云与 OpenAI 的模型名称）
-            self.logger.warning(f"[嵌入向量请求-困难案例] 生成向量嵌入失败: {e}。跳过基于向量的困难案例检测。")
+            logger.warning(f"[嵌入向量请求-困难案例] 生成向量嵌入失败: {e}。跳过基于向量的困难案例检测。")
             return []
         
         return []

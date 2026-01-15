@@ -6,6 +6,7 @@ Query 改写优化策略 - 优化用户查询的改写逻辑
 2. 添加口语化表达到标准术语的映射
 3. 强化模糊查询的处理逻辑
 """
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -91,6 +92,7 @@ class QueryRewriteOptimizationStrategy(BaseStrategy):
         :param diagnosis: 诊断分析结果
         :return: 优化后的提示词
         """
+        logger.info(f"策略 {self.name} 开始执行...")
         # 分析查询改写问题
         query_analysis: str = self._analyze_query_issues(errors, diagnosis)
         

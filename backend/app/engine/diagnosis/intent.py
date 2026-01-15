@@ -8,13 +8,13 @@
 4. 生成可注入优化提示词的分析上下文
 """
 import asyncio
-import logging
+from loguru import logger
 import re
 import random
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from collections import Counter, defaultdict
 from openai import AsyncOpenAI, OpenAI
-from .cancellation import run_with_cancellation, gather_with_cancellation
+from ..helpers.cancellation import run_with_cancellation, gather_with_cancellation
 
 
 class IntentAnalyzer:
@@ -77,7 +77,6 @@ class IntentAnalyzer:
         """
         self.llm_client = llm_client
         self.model_config: Dict[str, Any] = model_config or {}
-        self.logger: logging.Logger = logging.getLogger(__name__)
         # 如果未传入，则创建一个(但不推荐，最好共享)
         self.semaphore = semaphore or asyncio.Semaphore(5)
         
@@ -180,13 +179,13 @@ class IntentAnalyzer:
             if is_clarification:
                 # 澄清类意图，归入单独列表
                 clarification_intents.append(intent_detail)
-                self.logger.debug(
+                logger.debug(
                     f"过滤澄清类意图: {intent}（错误数: {count}）"
                 )
             elif is_multi_intent:
                 # 多意图类，归入单独列表
                 multi_intent_intents.append(intent_detail)
-                self.logger.debug(
+                logger.debug(
                     f"过滤多意图类意图: {intent}（错误数: {count}）"
                 )
             else:
@@ -195,7 +194,7 @@ class IntentAnalyzer:
         
         # 日志输出过滤结果
         if clarification_intents or multi_intent_intents:
-            self.logger.info(
+            logger.info(
                 f"[意图过滤] 单意图: {len(top_failing_intents)}, "
                 f"澄清类: {len(clarification_intents)}, "
                 f"多意图类: {len(multi_intent_intents)}"
@@ -240,7 +239,7 @@ class IntentAnalyzer:
             return {"analyses": [], "summary": "无错误数据"}
             
         if not self.llm_client:
-            self.logger.warning("未配置 LLM 客户端，跳过深度分析")
+            logger.warning("未配置 LLM 客户端，跳过深度分析")
             return {"analyses": [], "summary": "未配置 LLM 客户端"}
             
         # 先进行基础分析
@@ -254,12 +253,12 @@ class IntentAnalyzer:
         
         # 检查停止信号
         if should_stop and should_stop():
-            self.logger.info("意图深度分析被手动中止")
+            logger.info("意图深度分析被手动中止")
             return {"analyses": [], "summary": "用户中止"}
             
         total_count: int = intent_analysis.get("total_count", len(errors))
         
-        self.logger.info(f"[并发优化] 开始并发分析 {len(top_failures)} 个失败意图")
+        logger.info(f"[并发优化] 开始并发分析 {len(top_failures)} 个失败意图")
         
         async def analyze_single_failure(failure: Dict[str, Any]) -> Dict[str, Any]:
             """
@@ -318,10 +317,10 @@ class IntentAnalyzer:
                     "analysis": analysis_result
                 }
             except asyncio.CancelledError:
-                self.logger.info(f"意图 {intent} 深度分析被取消")
+                logger.info(f"意图 {intent} 深度分析被取消")
                 return None
             except Exception as e:
-                self.logger.error(f"深度分析意图 {intent} 失败: {e}")
+                logger.error(f"深度分析意图 {intent} 失败: {e}")
                 return {
                     "intent": intent,
                     "error_count": error_count,
@@ -347,14 +346,14 @@ class IntentAnalyzer:
         for result in results:
             # 跳过异常和取消的结果
             if isinstance(result, Exception):
-                self.logger.error(f"分析任务异常: {result}")
+                logger.error(f"分析任务异常: {result}")
                 continue
             if result is None:
                 # 被取消的任务
                 continue
             analyses.append(result)
         
-        self.logger.info(f"[并发优化] 完成分析，成功 {len(analyses)}/{len(top_failures)} 个意图")
+        logger.info(f"[并发优化] 完成分析，成功 {len(analyses)}/{len(top_failures)} 个意图")
                 
         # 生成整体总结
         summary: str = self._generate_overall_summary(analyses)
@@ -466,8 +465,8 @@ class IntentAnalyzer:
         extra_body: Dict = self.model_config.get("extra_body", {})
         
         # 记录 LLM 请求输入日志
-        self.logger.info(f"[LLM请求-意图深度分析] 输入提示词长度: {len(prompt)} 字符")
-        self.logger.debug(f"[LLM请求-意图深度分析] 输入内容:\n{prompt[:800]}...")
+        logger.info(f"[LLM请求-意图深度分析] 输入提示词长度: {len(prompt)} 字符")
+        logger.debug(f"[LLM请求-意图深度分析] 输入内容:\n{prompt[:800]}...")
         
         async with self.semaphore:
             try:
@@ -509,8 +508,8 @@ class IntentAnalyzer:
                     content: str = response.choices[0].message.content.strip()
                 
                 # 记录 LLM 响应输出日志（处理前）
-                self.logger.info(f"[LLM响应-意图深度分析] 原始输出长度: {len(content)} 字符")
-                self.logger.debug(f"[LLM响应-意图深度分析] 原始输出内容:\n{content[:800]}...")
+                logger.info(f"[LLM响应-意图深度分析] 原始输出长度: {len(content)} 字符")
+                logger.debug(f"[LLM响应-意图深度分析] 原始输出内容:\n{content[:800]}...")
                 
                 # 处理思考模型的 <think> 标签
                 content = re.sub(
@@ -521,11 +520,11 @@ class IntentAnalyzer:
                 ).strip()
                 
                 # 记录处理后的输出
-                self.logger.info(f"[LLM响应-意图深度分析] 处理后输出长度: {len(content)} 字符")
+                logger.info(f"[LLM响应-意图深度分析] 处理后输出长度: {len(content)} 字符")
                 
                 return content
             except Exception as e:
-                self.logger.error(f"[LLM请求-意图深度分析] 调用失败: {e}")
+                logger.error(f"[LLM请求-意图深度分析] 调用失败: {e}")
                 raise e
 
     async def _call_llm_with_cancellation(
@@ -557,10 +556,10 @@ class IntentAnalyzer:
             )
             return result
         except asyncio.CancelledError:
-            self.logger.info(f"[意图分析] {task_name} 被用户取消")
+            logger.info(f"[意图分析] {task_name} 被用户取消")
             return ""
         except Exception as e:
-            self.logger.error(f"[意图分析] {task_name} 失败: {e}")
+            logger.error(f"[意图分析] {task_name} 失败: {e}")
             return ""
         
     def generate_analysis_context(

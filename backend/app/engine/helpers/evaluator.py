@@ -1,12 +1,13 @@
 """提示词评估模块 - 封装验证集构建和快速评估逻辑"""
 import asyncio
-import logging
+from loguru import logger
+import asyncio
 import random
 from typing import List, Dict, Any, Callable, Optional
 
 from .cancellation import gather_with_cancellation
 from .cancellation import gather_with_cancellation
-from .llm_helper import LLMHelper
+from .llm import LLMHelper
 from .verifier import Verifier
 
 
@@ -33,7 +34,6 @@ class PromptEvaluator:
         self.llm_helper: LLMHelper = llm_helper
         self.verification_llm_client = verification_llm_client
         self.verification_model_config = verification_model_config
-        self.logger: logging.Logger = logging.getLogger(__name__)
     
     def build_validation_set(
         self,
@@ -86,7 +86,7 @@ class PromptEvaluator:
             # 根据实际正确案例反推错误案例数量
             adjusted_error_count: int = int(actual_correct_count / correct_error_ratio)
             actual_error_count = max(1, min(adjusted_error_count, actual_error_count))
-            self.logger.info(
+            logger.info(
                 f"[验证集构建] 正确案例不足，调整比例: "
                 f"正确={actual_correct_count}, 错误={actual_error_count}"
             )
@@ -127,7 +127,7 @@ class PromptEvaluator:
         ratio_str: str = (
             f"{correct_count / error_count:.2f}" if error_count > 0 else "N/A"
         )
-        self.logger.info(
+        logger.info(
             f"[验证集构建] 完成: 总计={len(validation_set)} "
             f"(正确={correct_count}, 错误={error_count}, 比例={ratio_str})"
         )
@@ -150,12 +150,12 @@ class PromptEvaluator:
         """
         # 优化：无候选时直接返回
         if not candidates:
-            self.logger.info("[快速筛选] 无候选方案，跳过筛选")
+            logger.info("[快速筛选] 无候选方案，跳过筛选")
             return candidates
         
         # 优化：仅一个候选时无须筛选，直接返回
         if len(candidates) == 1:
-            self.logger.info(
+            logger.info(
                 f"[快速筛选] 仅有 1 个候选方案 ({candidates[0]['strategy']})，"
                 f"跳过筛选步骤"
             )
@@ -165,10 +165,10 @@ class PromptEvaluator:
         
         # 优化：无验证集时直接返回
         if not validation_set:
-            self.logger.info("[快速筛选] 无验证集，跳过筛选")
+            logger.info("[快速筛选] 无验证集，跳过筛选")
             return candidates
         
-        self.logger.info(
+        logger.info(
             f"[快速筛选] 开始评估 {len(candidates)} 个候选方案，"
             f"验证集大小: {len(validation_set)}"
         )
@@ -177,13 +177,13 @@ class PromptEvaluator:
         for cand in candidates:
             # 每次评估前检查停止信号
             if should_stop and should_stop():
-                self.logger.info("[快速筛选] 评估阶段被手动中止")
+                logger.info("[快速筛选] 评估阶段被手动中止")
                 break
                 
             score: float = await self.evaluate_prompt(
                 cand["prompt"], validation_set, should_stop
             )
-            self.logger.info(
+            logger.info(
                 f"[快速筛选] 策略 '{cand['strategy']}' 评估完毕: 得分 = {score:.4f}"
             )
             cand["score"] = score
@@ -216,7 +216,7 @@ class PromptEvaluator:
             return 0.0
             
         total: int = len(test_cases)
-        self.logger.info(
+        logger.info(
             f"正在对提示词进行快速评估 (长度={len(prompt)})，测试案例数: {total}..."
         )
         
@@ -263,7 +263,7 @@ class PromptEvaluator:
                 except asyncio.CancelledError:
                     return 0
                 except Exception as e:
-                    self.logger.error(f"Evaluating prompt error: {e}")
+                    logger.error(f"Evaluating prompt error: {e}")
                     return 0
 
         tasks: list = [run_case(case) for case in test_cases]
@@ -294,11 +294,11 @@ class PromptEvaluator:
         :return: 最佳候选方案
         """
         if not candidates:
-            self.logger.info("[选择最佳方案] 无候选方案，返回原始提示词")
+            logger.info("[选择最佳方案] 无候选方案，返回原始提示词")
             return {"prompt": original_prompt, "strategy": "none", "score": 0}
         
         best: Dict[str, Any] = candidates[0]
-        self.logger.info(
+        logger.info(
             f"[选择最佳方案] 最终选定: '{best['strategy']}' "
             f"(评估得分: {best.get('score', 0):.4f})"
         )

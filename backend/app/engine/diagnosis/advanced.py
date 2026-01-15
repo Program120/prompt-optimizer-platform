@@ -3,24 +3,24 @@
 包括：上下文处理、多意图识别、领域混淆矩阵、澄清机制分析
 """
 import asyncio
-import logging
+from loguru import logger
 import re
 import json
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from collections import Counter, defaultdict
-from .cancellation import run_with_cancellation, gather_with_cancellation
+from openai import AsyncOpenAI
+from ..helpers.cancellation import run_with_cancellation, gather_with_cancellation
 
 class AdvancedDiagnoser:
     """高级诊断器 - 执行深度定向分析"""
     
     def __init__(
         self, 
-        llm_client: Any = None, 
-        model_config: Dict[str, Any] = None
+        llm_client: Optional[AsyncOpenAI] = None, 
+        model_config: Optional[Dict[str, Any]] = None
     ):
         self.llm_client = llm_client
         self.model_config = model_config or {}
-        self.logger = logging.getLogger(__name__)
 
     async def run_all_diagnoses(
         self, 
@@ -41,7 +41,7 @@ class AdvancedDiagnoser:
             
         # 检查停止信号
         if should_stop and should_stop():
-             self.logger.info("高级诊断被手动中止")
+             logger.info("高级诊断被手动中止")
              return {}
             
         dataset_intents = intents or self._extract_intents(errors)
@@ -54,7 +54,7 @@ class AdvancedDiagnoser:
             "clarification_analysis"
         ]
         
-        self.logger.info(f"[并发优化] 开始并行运行 {len(keys)} 个高级诊断任务")
+        logger.info(f"[并发优化] 开始并行运行 {len(keys)} 个高级诊断任务")
         
         # 创建并发协程列表
         coroutines = [
@@ -77,15 +77,15 @@ class AdvancedDiagnoser:
         final_results: Dict[str, Any] = {}
         for idx, (key, result) in enumerate(zip(keys, results)):
             if isinstance(result, Exception):
-                self.logger.error(f"高级诊断 {key} 失败: {result}")
+                logger.error(f"高级诊断 {key} 失败: {result}")
                 final_results[key] = {"error": str(result)}
             elif isinstance(result, asyncio.CancelledError):
-                self.logger.info(f"任务 {key} 已取消")
+                logger.info(f"任务 {key} 已取消")
                 final_results[key] = {"cancelled": True}
             else:
                 final_results[key] = result
         
-        self.logger.info(f"[并发优化] 高级诊断完成，成功 {len([r for r in results if not isinstance(r, Exception)])}/{len(keys)} 个任务")
+        logger.info(f"[并发优化] 高级诊断完成，成功 {len([r for r in results if not isinstance(r, Exception)])}/{len(keys)} 个任务")
                 
         return final_results
 
@@ -120,7 +120,7 @@ class AdvancedDiagnoser:
             if i % 50 == 0:
                 await asyncio.sleep(0)
                 if should_stop and should_stop():
-                    self.logger.info("上下文分析被取消")
+                    logger.info("上下文分析被取消")
                     raise asyncio.CancelledError()
                     
             query = str(err.get('query', '')).lower()
@@ -168,7 +168,7 @@ class AdvancedDiagnoser:
             if i % 50 == 0:
                 await asyncio.sleep(0)
                 if should_stop and should_stop():
-                    self.logger.info("多意图分析被取消")
+                    logger.info("多意图分析被取消")
                     raise asyncio.CancelledError()
                     
             target = str(err.get('target', ''))
@@ -266,7 +266,7 @@ class AdvancedDiagnoser:
 
         # 在 LLM 调用前检查停止信号
         if should_stop and should_stop():
-            self.logger.info("领域混淆分析在 LLM 调用前被中止")
+            logger.info("领域混淆分析在 LLM 调用前被中止")
             return {"cancelled": True, "message": "已中止"}
 
         try:
@@ -284,10 +284,10 @@ class AdvancedDiagnoser:
              analysis = json.loads(response.strip())
              return analysis
         except asyncio.CancelledError:
-            self.logger.info("领域混淆分析 LLM 调用被取消")
+            logger.info("领域混淆分析 LLM 调用被取消")
             return {"cancelled": True, "message": "已取消"}
         except Exception as e:
-            self.logger.warning(f"领域混淆分析失败: {e}")
+            logger.warning(f"领域混淆分析失败: {e}")
             return {"error": str(e)}
 
     # -------------------------------------------------------------------------
@@ -331,7 +331,7 @@ class AdvancedDiagnoser:
             if i % 50 == 0:
                 await asyncio.sleep(0)
                 if should_stop and should_stop():
-                    self.logger.info("澄清机制分析被取消")
+                    logger.info("澄清机制分析被取消")
                     raise asyncio.CancelledError()
                     
             target = str(err.get('target', '')).lower()
@@ -382,13 +382,12 @@ class AdvancedDiagnoser:
         :param prompt: 输入提示词
         :return: LLM 响应内容
         """
-        from openai import AsyncOpenAI
         
         model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
         temperature: float = float(self.model_config.get("temperature", 0.1))
         max_tokens: int = int(self.model_config.get("max_tokens", 4000))
         
-        self.logger.info(f"[LLM请求-高级诊断] 输入提示词长度: {len(prompt)} 字符")
+        logger.info(f"[LLM请求-高级诊断] 输入提示词长度: {len(prompt)} 字符")
         
         try:
             # 区分 AsyncOpenAI 和 OpenAI
@@ -419,7 +418,7 @@ class AdvancedDiagnoser:
             return result
             
         except Exception as e:
-            self.logger.warning(f"[LLM请求-高级诊断] JSON模式调用失败: {e}，尝试普通模式...")
+            logger.warning(f"[LLM请求-高级诊断] JSON模式调用失败: {e}，尝试普通模式...")
             try:
                 if isinstance(self.llm_client, AsyncOpenAI):
                     response = await self.llm_client.chat.completions.create(
@@ -443,9 +442,9 @@ class AdvancedDiagnoser:
                     
                 return result
             except Exception as e2:
-                self.logger.error(f"[LLM请求-高级诊断] 重试后仍失败: {e2}")
+                logger.error(f"[LLM请求-高级诊断] 重试后仍失败: {e2}")
                 raise e2
-
+    
     async def _call_llm_with_cancellation(
         self, 
         prompt: str,
@@ -475,8 +474,8 @@ class AdvancedDiagnoser:
             )
             return result
         except asyncio.CancelledError:
-            self.logger.info(f"[高级诊断] {task_name} 被用户取消")
+            logger.info(f"[高级诊断] {task_name} 被用户取消")
             return ""
         except Exception as e:
-            self.logger.error(f"[高级诊断] {task_name} 失败: {e}")
+            logger.error(f"[高级诊断] {task_name} 失败: {e}")
             return ""

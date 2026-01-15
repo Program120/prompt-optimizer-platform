@@ -6,6 +6,7 @@
 2. 定义输出字段（intent：意图数组；confidence：置信度；clarify：澄清话术）
 3. 给出各类场景的输出模板，要求模型严格遵循
 """
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -91,6 +92,7 @@ class OutputFormatOptimizationStrategy(BaseStrategy):
         :param diagnosis: 诊断分析结果
         :return: 优化后的提示词
         """
+        logger.info(f"策略 {self.name} 开始执行...")
         # 分析当前输出格式问题
         format_analysis: str = self._analyze_format_issues(prompt, errors, diagnosis)
         

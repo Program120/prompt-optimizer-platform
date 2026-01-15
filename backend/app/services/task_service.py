@@ -1,19 +1,25 @@
-import logging
 import threading
 import time
 import json
 import os
 import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Union
+from loguru import logger
 from app.db import storage
 from app.core.llm_factory import LLMFactory
-from app.engine.verifier import Verifier
+from app.engine.helpers.verifier import Verifier
 
 class TaskManager:
+    """
+    任务管理器单例类
+    
+    负责创建、管理、暂停、恢复和停止后台任务。
+    维护内存中的任务状态，并与磁盘存储同步。
+    """
     _instance = None
     _lock = threading.Lock()
     
-    def __new__(cls):
+    def __new__(cls) -> "TaskManager":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -21,7 +27,34 @@ class TaskManager:
                     cls._instance.tasks = {} # task_id -> {status, thread, stop_event, pause_event}
         return cls._instance
 
-    def create_task(self, project_id: str, file_path: str, query_col: str, target_col: str, prompt: str, model_config: Dict[str, str], extract_field: Optional[str] = None, original_filename: Optional[str] = None, validation_limit: Optional[int] = None, reason_col: Optional[str] = None):
+    def create_task(
+        self, 
+        project_id: str, 
+        file_path: str, 
+        query_col: str, 
+        target_col: str, 
+        prompt: str, 
+        model_config: Dict[str, Any], 
+        extract_field: Optional[str] = None, 
+        original_filename: Optional[str] = None, 
+        validation_limit: Optional[int] = None, 
+        reason_col: Optional[str] = None
+    ) -> str:
+        """
+        创建一个新的后台验证任务
+        
+        :param project_id: 项目 ID
+        :param file_path: 数据文件绝对路径
+        :param query_col: 问题列名
+        :param target_col: 目标列名
+        :param prompt: 提示词模板
+        :param model_config: 模型配置字典
+        :param extract_field: 提取字段 (可选)
+        :param original_filename: 原始文件名 (可选)
+        :param validation_limit: 验证数量限制 (可选)
+        :param reason_col: 原因列名 (可选)
+        :return: 任务 ID
+        """
         task_id = f"task_{int(time.time())}"
         
         # 加载数据以校验
@@ -71,7 +104,21 @@ class TaskManager:
         thread.start()
         return task_id
 
-    def _run_task(self, task_id, stop_event, pause_event, info_override=None):
+    def _run_task(
+        self, 
+        task_id: str, 
+        stop_event: threading.Event, 
+        pause_event: threading.Event, 
+        info_override: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        后台任务执行逻辑 (在独立线程中运行)
+        
+        :param task_id: 任务 ID
+        :param stop_event: 停止信号
+        :param pause_event: 暂停信号 (用于暂停/恢复)
+        :param info_override: 任务信息覆盖 (用于恢复已存在任务)
+        """
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import threading
         
@@ -91,7 +138,7 @@ class TaskManager:
         prompt = info["prompt"]
         extract_field = info.get("extract_field")
         model_config = info.get("model_config", {"base_url": "https://api.openai.com/v1", "api_key": ""})
-        model_config = info.get("model_config", {"base_url": "https://api.openai.com/v1", "api_key": ""})
+
         concurrency = int(model_config.get("concurrency", 1))
 
         # Apply validation limit if set
@@ -120,7 +167,7 @@ class TaskManager:
 
         # 初始化 client
         validation_mode = model_config.get("validation_mode", "llm")
-        logging.info(f"[Task {task_id}] Starting | Mode: {validation_mode} | Concurrency: {concurrency}")
+        logger.info(f"[Task {task_id}] Starting | Mode: {validation_mode} | Concurrency: {concurrency}")
         
         task_client = None
         if validation_mode != "interface":
@@ -130,7 +177,7 @@ class TaskManager:
         results_lock = threading.Lock()
         index_lock = threading.Lock()
         
-        def process_single_query(i):
+        def process_single_query(i: int) -> Optional[Dict[str, Any]]:
             """
             处理单个查询
             
@@ -192,7 +239,7 @@ class TaskManager:
                         info["current_index"] = completed_count
                         
                         if completed_count % 10 == 0:
-                            logging.info(f"[Task {task_id}] Progress: {completed_count}/{total}")
+                            logger.info(f"[Task {task_id}] Progress: {completed_count}/{total}")
                         
                         # 每10条保存一次状态
                         if completed_count % 10 == 0:
@@ -215,15 +262,21 @@ class TaskManager:
                     if project_id:
                         kb = OptimizationKnowledgeBase(project_id)
                         if kb.update_latest_accuracy_after(accuracy):
-                            logging.info(f"[Task {task_id}] 已回填知识库的 accuracy_after: {accuracy*100:.1f}%")
+                            logger.info(f"[Task {task_id}] 已回填知识库的 accuracy_after: {accuracy*100:.1f}%")
             except Exception as kb_err:
-                logging.warning(f"[Task {task_id}] 回填知识库准确率失败: {kb_err}")
+                logger.warning(f"[Task {task_id}] 回填知识库准确率失败: {kb_err}")
         
         storage.save_task_status(info["project_id"], task_id, info)
 
 
 
-    def pause_task(self, task_id: str):
+    def pause_task(self, task_id: str) -> bool:
+        """
+        暂停任务
+        
+        :param task_id: 任务 ID
+        :return: 是否暂停成功
+        """
         if task_id in self.tasks:
             self.tasks[task_id]["pause_event"].clear()
             self.tasks[task_id]["info"]["status"] = "paused"
@@ -234,7 +287,13 @@ class TaskManager:
             # 尝试从磁盘加载并暂停 (使用非破坏性更新)
             return storage.update_task_status_only(task_id, "paused")
 
-    def resume_task(self, task_id: str):
+    def resume_task(self, task_id: str) -> bool:
+        """
+        恢复任务
+        
+        :param task_id: 任务 ID
+        :return: 是否恢复成功
+        """
         if task_id in self.tasks:
             self.tasks[task_id]["pause_event"].set()
             self.tasks[task_id]["info"]["status"] = "running"
@@ -276,7 +335,13 @@ class TaskManager:
                 return True
         return False
 
-    def stop_task(self, task_id: str):
+    def stop_task(self, task_id: str) -> bool:
+        """
+        停止任务
+        
+        :param task_id: 任务 ID
+        :return: 是否停止成功
+        """
         if task_id in self.tasks:
             self.tasks[task_id]["stop_event"].set()
             self.tasks[task_id]["pause_event"].set() # 确保不被卡在暂停
@@ -288,7 +353,7 @@ class TaskManager:
             # 尝试从磁盘加载并标记为 stopped（使用非破坏性更新，防止清空 results）
             return storage.update_task_status_only(task_id, "stopped")
 
-    def get_task_status(self, task_id: str, include_results: bool = True):
+    def get_task_status(self, task_id: str, include_results: bool = True) -> Optional[Dict[str, Any]]:
         """
         获取任务状态
         

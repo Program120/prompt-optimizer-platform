@@ -1,4 +1,4 @@
-"""动态示例选择算法 - 智能选择few-shot示例"""
+from loguru import logger
 import random
 import math
 from typing import List, Dict, Any
@@ -7,20 +7,28 @@ from collections import defaultdict
 class FewShotSelector:
     """智能 Few-shot 示例选择器"""
     
-    def select(self, dataset: List[Dict[str, Any]], strategy: str, n: int = 5) -> List[Dict[str, Any]]:
+    def select(
+        self, 
+        dataset: List[Dict[str, Any]], 
+        strategy: str, 
+        n: int = 5
+    ) -> List[Dict[str, Any]]:
         """
         根据策略选择示例
         
-        Args:
-            dataset: 数据集列表
-            strategy: 选择策略 (random, diversity, difficulty, boundary, prototype, auto)
-            n: 需要选择的数量
+        :param dataset: 数据集列表
+        :param strategy: 选择策略 (random, diversity, difficulty, boundary, prototype, auto)
+        :param n: 需要选择的数量
+        :return: 选择的示例列表
         """
         if not dataset:
             return []
             
         if len(dataset) <= n:
+            logger.debug(f"数据集数量 ({len(dataset)}) 小于等于目标数量 ({n})，返回全部")
             return dataset
+            
+        logger.debug(f"执行 Few-shot 选择: 策略={strategy}, 目标数量={n}, 总数={len(dataset)}")
             
         if strategy == "diversity":
             return self.select_by_diversity(dataset, n)

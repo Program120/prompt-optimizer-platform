@@ -1,7 +1,7 @@
 """多意图优化模块 - 处理多意图拆分、优化和合并"""
+from loguru import logger
 import asyncio
 import json
-import logging
 import re
 from typing import Dict, Any, List, Optional, Callable
 from app.core.prompts import PROMPT_SPLIT_INTENT, PROMPT_MERGE_INTENTS
@@ -30,7 +30,6 @@ class MultiIntentOptimizer:
         """
         self.llm_helper = llm_helper
         self.optimizer_callback = optimizer_callback
-        self.logger: logging.Logger = logging.getLogger(__name__)
     
     def set_optimizer_callback(self, callback: Callable) -> None:
         """
@@ -56,7 +55,7 @@ class MultiIntentOptimizer:
         :param diagnosis: 诊断分析结果
         :return: 优化结果字典
         """
-        self.logger.info("=== 进入多意图优化流程 ===")
+        logger.info("=== 进入多意图优化流程 ===")
         
         # 1. 获取意图列表
         intent_analysis: Dict[str, Any] = diagnosis.get("intent_analysis", {})
@@ -66,27 +65,27 @@ class MultiIntentOptimizer:
         )
         
         if not all_intents:
-            self.logger.warning("未识别到明确意图，回退到普通优化流程")
+            logger.warning("未识别到明确意图，回退到普通优化流程")
             return {
                 "optimized_prompt": prompt,
                 "diagnosis": diagnosis,
                 "message": "无法识别意图，跳过多意图优化"
             }
 
-        self.logger.info(f"识别到的意图列表: {all_intents}")
+        logger.info(f"识别到的意图列表: {all_intents}")
         
         # 2. 拆分 Prompt
-        self.logger.info("Step 1: 拆分 Prompt 为子意图 Prompt...")
+        logger.info("Step 1: 拆分 Prompt 为子意图 Prompt...")
         sub_prompts: List[Dict] = await self._split_prompt_by_intents(
             prompt, all_intents
         )
         
         if not sub_prompts:
-            self.logger.error("各意图 Prompt 拆分失败，放弃多意图优化")
+            logger.error("各意图 Prompt 拆分失败，放弃多意图优化")
             return {"optimized_prompt": prompt, "message": "Prompt 拆分失败"}
              
         # 3. 独立优化每个子 Prompt
-        self.logger.info(f"Step 2: 并行优化 {len(sub_prompts)} 个子意图...")
+        logger.info(f"Step 2: 并行优化 {len(sub_prompts)} 个子意图...")
         optimized_sub_prompts: List[Dict] = []
         
         # 准备任务
@@ -101,13 +100,13 @@ class MultiIntentOptimizer:
             ]
             
             if not intent_errors:
-                self.logger.info(
+                logger.info(
                     f"意图 '{intent}' 无错误样例，跳过优化，保留原样"
                 )
                 optimized_sub_prompts.append(item)
                 continue
                 
-            self.logger.info(
+            logger.info(
                 f"意图 '{intent}' 关联 {len(intent_errors)} 个错误，准备优化..."
             )
             
@@ -136,7 +135,7 @@ class MultiIntentOptimizer:
                 final_sub_prompts_map.append(item)
                 
         # 4. 合并 Prompt
-        self.logger.info("Step 3: 合并优化后的子 Prompt...")
+        logger.info("Step 3: 合并优化后的子 Prompt...")
         merged_prompt: str = await self._merge_sub_prompts(
             prompt, final_sub_prompts_map
         )
@@ -184,7 +183,7 @@ class MultiIntentOptimizer:
                 }
             else:
                 # 如果没有回调，返回原始提示词
-                self.logger.warning(
+                logger.warning(
                     f"未设置优化回调，意图 '{intent}' 保持原样"
                 )
                 return {
@@ -192,7 +191,7 @@ class MultiIntentOptimizer:
                     "optimized_prompt": prompt
                 }
         except Exception as e:
-            self.logger.error(f"优化子意图 '{intent}' 失败: {e}")
+            logger.error(f"优化子意图 '{intent}' 失败: {e}")
             return {
                 "intent": intent,
                 "optimized_prompt": prompt  # 回退
@@ -229,7 +228,7 @@ class MultiIntentOptimizer:
             return []
             
         except Exception as e:
-            self.logger.error(f"拆分 Prompt 失败: {e}")
+            logger.error(f"拆分 Prompt 失败: {e}")
             return []
 
     async def _merge_sub_prompts(
@@ -260,7 +259,7 @@ class MultiIntentOptimizer:
             return clean_res.strip()
             
         except Exception as e:
-            self.logger.error(f"合并 Prompt 失败: {e}")
+            logger.error(f"合并 Prompt 失败: {e}")
             return original_prompt
     
     def _parse_json_response(self, response: str) -> Any:

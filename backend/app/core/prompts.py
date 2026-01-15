@@ -1,4 +1,9 @@
-DEFAULT_OPTIMIZATION_PROMPT = """你是由OpenAI/Google研发的顶尖提示词优化专家（Prompt Engineer）。你的唯一任务是修复和增强用户提供的【系统提示词】。
+"""
+提示词模板定义模块。
+存储项目中使用的各种系统提示词和验证模板。
+"""
+
+DEFAULT_OPTIMIZATION_PROMPT: str = """你是由OpenAI/Google研发的顶尖提示词优化专家（Prompt Engineer）。你的唯一任务是修复和增强用户提供的【系统提示词】。
 
 ## 任务背景
 用户将提供一份【原有提示词】以及一组该提示词在实际运行中产生的【错误样例】。你需要分析错误原因，通过修改指令、增加约束或补充示例，生成一份能够规避这些错误的【新版提示词】。
@@ -27,7 +32,7 @@ DEFAULT_OPTIMIZATION_PROMPT = """你是由OpenAI/Google研发的顶尖提示词�
 
 请直接输出优化后的提示词内容："""
 
-PROMPT_SPLIT_INTENT = """你是一个专业的系统提示词架构师。你的任务是将一个复杂的系统提示词（System Prompt）根据不同的业务意图（Intent）拆解为多个独立的子提示词。
+PROMPT_SPLIT_INTENT: str = """你是一个专业的系统提示词架构师。你的任务是将一个复杂的系统提示词（System Prompt）根据不同的业务意图（Intent）拆解为多个独立的子提示词。
 
 ## 输入数据
 [原始系统提示词]:
@@ -57,7 +62,7 @@ PROMPT_SPLIT_INTENT = """你是一个专业的系统提示词架构师。你的�
 ```
 """
 
-PROMPT_MERGE_INTENTS = """你是一个专业的系统提示词架构师。你的任务是将多个针对不同意图优化过的子提示词，合并为一个统一、连贯且无冲突的系统提示词。
+PROMPT_MERGE_INTENTS: str = """你是一个专业的系统提示词架构师。你的任务是将多个针对不同意图优化过的子提示词，合并为一个统一、连贯且无冲突的系统提示词。
 
 ## 输入数据 (JSON List)
 {sub_prompts_json}
@@ -75,7 +80,7 @@ PROMPT_MERGE_INTENTS = """你是一个专业的系统提示词架构师。你的
 
 
 # 提示词验证模板
-PROMPT_VALIDATE_OPTIMIZATION = """你是一位提示词质量审核专家。你的任务是对比【原始提示词】与【优化后提示词】，检验优化结果是否存在严重异常。
+PROMPT_VALIDATE_OPTIMIZATION: str = """你是一位提示词质量审核专家。你的任务是对比【原始提示词】与【优化后提示词】，检验优化结果是否存在严重异常。
 
 ## 输入数据
 [原始提示词]:

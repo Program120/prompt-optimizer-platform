@@ -6,6 +6,7 @@
 2. 添加缺失的边界条件和限制规则
 3. 优化负面约束（Negative Constraints）的表述
 """
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -82,6 +83,7 @@ class GlobalConstraintOptimizationStrategy(BaseStrategy):
         :param diagnosis: 诊断分析结果
         :return: 优化后的提示词
         """
+        logger.info(f"策略 {self.name} 开始执行...")
         # 分析当前约束问题
         constraint_analysis: str = self._analyze_constraints(errors, diagnosis)
         

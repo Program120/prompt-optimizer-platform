@@ -1,38 +1,90 @@
 """多策略优化引擎模块"""
-from .diagnosis import diagnose_prompt_performance
-from .strategy_matcher import StrategyMatcher, STRATEGY_PRESETS, STRATEGY_CLASSES
-from .multi_strategy import MultiStrategyOptimizer
-from .prompt_rewriter import PromptRewriter
-from .fewshot_selector import FewShotSelector
-from .knowledge_base import OptimizationKnowledgeBase
-from .intent_analyzer import IntentAnalyzer
-from .advanced_diagnosis import AdvancedDiagnoser
-from .strategies import (
-    BaseStrategy,
-    BoundaryClarificationStrategy,
-    InstructionRefinementStrategy,
-    DifficultExampleInjectionStrategy,
-    MetaOptimizationStrategy,
-    ContextEnhancementStrategy,
-    MultiIntentStrategy,
-    DomainDistinctionStrategy,
-    ClarificationMechanismStrategy
+
+# Core Components
+from .core.pipeline import MultiStrategyOptimizer
+from .core.matcher import StrategyMatcher, STRATEGY_PRESETS, STRATEGY_CLASSES
+from .core.models import (
+    OptimizationContext,
+    OptimizationResult,
+    DiagnosisResult,
+    OverallMetrics,
+    ErrorPatterns,
+    CandidateResult,
+    IntentAnalysisResult,
+    DeepAnalysisResult,
+    AdvancedDiagnosisResult
 )
 
+# Diagnosis Components
+from .diagnosis.service import diagnose_prompt_performance
+from .diagnosis.intent import IntentAnalyzer
+from .diagnosis.advanced import AdvancedDiagnoser
+from .diagnosis.detectors import (
+    detect_examples_in_prompt,
+    detect_constraints_in_prompt,
+    detect_cot_in_prompt
+)
+
+# Helper Components
+from .helpers.rewriter import PromptRewriter
+from .helpers.fewshot import FewShotSelector
+from .helpers.knowledge import OptimizationKnowledgeBase
+from .helpers.error_history import (
+    update_error_optimization_history,
+    identify_persistent_errors,
+    filter_clarification_samples,
+    inject_persistent_errors_to_hard_cases,
+    prepare_persistent_errors_for_knowledge_base
+)
+
+# Strategies
+from .strategies.base import BaseStrategy
+from .strategies.boundary import BoundaryClarificationStrategy
+from .strategies.instruction import InstructionRefinementStrategy
+from .strategies.difficult_example_injection import DifficultExampleInjectionStrategy
+from .strategies.meta_optimize import MetaOptimizationStrategy
+from .strategies.context_optimize import ContextEnhancementStrategy
+from .strategies.multi_intent_optimize import MultiIntentStrategy
+from .strategies.domain_optimize import DomainDistinctionStrategy
+from .strategies.clarification_optimize import ClarificationMechanismStrategy
+
 __all__ = [
-    # 主要类
+    # Core
     "MultiStrategyOptimizer",
     "StrategyMatcher",
+    
+    # Helpers
     "PromptRewriter",
     "FewShotSelector",
     "OptimizationKnowledgeBase",
+    
+    # Diagnosis
     "IntentAnalyzer",
     "AdvancedDiagnoser",
-    
-    # 诊断
     "diagnose_prompt_performance",
+    "detect_examples_in_prompt",
+    "detect_constraints_in_prompt",
+    "detect_cot_in_prompt",
     
-    # 策略
+    # Models
+    "OptimizationContext",
+    "OptimizationResult",
+    "DiagnosisResult",
+    "OverallMetrics",
+    "ErrorPatterns",
+    "CandidateResult",
+    "IntentAnalysisResult",
+    "DeepAnalysisResult",
+    "AdvancedDiagnosisResult",
+    
+    # Error History
+    "update_error_optimization_history",
+    "identify_persistent_errors",
+    "filter_clarification_samples",
+    "inject_persistent_errors_to_hard_cases",
+    "prepare_persistent_errors_for_knowledge_base",
+    
+    # Strategies
     "BaseStrategy",
     "BoundaryClarificationStrategy",
     "InstructionRefinementStrategy",
@@ -43,8 +95,7 @@ __all__ = [
     "DomainDistinctionStrategy",
     "ClarificationMechanismStrategy",
     
-    # 常量
+    # Constants
     "STRATEGY_PRESETS",
     "STRATEGY_CLASSES"
 ]
-

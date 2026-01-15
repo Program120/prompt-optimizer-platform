@@ -1,6 +1,6 @@
 """LLM 调用辅助模块 - 封装异步 LLM 调用和取消逻辑"""
+from loguru import logger
 import asyncio
-import logging
 import re
 from typing import Dict, Any, Optional, Callable
 from openai import AsyncOpenAI, OpenAI
@@ -36,7 +36,6 @@ class LLMHelper:
         self.model_config: Dict[str, Any] = model_config or {}
         self.semaphore: asyncio.Semaphore = semaphore or asyncio.Semaphore(5)
         self._should_stop: Optional[Callable[[], bool]] = should_stop_callback
-        self.logger: logging.Logger = logging.getLogger(__name__)
     
     def set_should_stop(self, callback: Optional[Callable[[], bool]]) -> None:
         """
@@ -72,11 +71,11 @@ class LLMHelper:
         extra_body: Dict = config.get("extra_body", {})
         
         # 记录 LLM 请求输入日志
-        self.logger.info(
+        logger.info(
             f"[LLM请求] 输入提示词长度: {len(prompt)} 字符 "
             f"(Model: {model_name}, Timeout: {timeout}s)"
         )
-        self.logger.debug(f"[LLM请求] 输入内容: {prompt[:500]}...")
+        logger.debug(f"[LLM请求] 输入内容: {prompt[:500]}...")
         
         async with self.semaphore:
             try:
@@ -119,16 +118,16 @@ class LLMHelper:
                 ).strip()
                 
                 # 记录 LLM 响应输出日志
-                self.logger.info(f"[LLM响应] 输出长度: {len(result)} 字符")
-                self.logger.debug(f"[LLM响应] 输出内容: {result[:500]}...")
+                logger.info(f"[LLM响应] 输出长度: {len(result)} 字符")
+                logger.debug(f"[LLM响应] 输出内容: {result[:500]}...")
                 
                 return result
 
             except Exception as e:
-                self.logger.error(f"[LLM请求] 调用失败: {e}")
+                logger.error(f"[LLM请求] 调用失败: {e}")
                 # 检查是否超时以提供更明确的警告
                 if "timeout" in str(e).lower():
-                    self.logger.error(
+                    logger.error(
                         f"LLM 请求超时 ({timeout}s). "
                         f"请考虑在模型配置中增加 timeout 值或检查网络。"
                     )
@@ -172,8 +171,8 @@ class LLMHelper:
             )
             return result
         except asyncio.CancelledError:
-            self.logger.info(f"[LLM调用] {task_name} 被用户取消")
+            logger.info(f"[LLM调用] {task_name} 被用户取消")
             return ""
         except Exception as e:
-            self.logger.error(f"[LLM调用] {task_name} 失败: {e}")
+            logger.error(f"[LLM调用] {task_name} 失败: {e}")
             return ""

@@ -3,6 +3,7 @@
 
 针对指代消解错误和上下文依赖丢失，增加显式指令和示例。
 """
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -53,6 +54,7 @@ class ContextEnhancementStrategy(BaseStrategy):
         :param diagnosis: 诊断分析结果
         :return: 优化后的提示词
         """
+        logger.info(f"策略 {self.name} 开始执行...")
         # 获取高级诊断结果
         adv_diag: Dict[str, Any] = diagnosis.get("advanced_diagnosis", {})
         ctx_analysis: Dict[str, Any] = adv_diag.get("context_analysis", {})

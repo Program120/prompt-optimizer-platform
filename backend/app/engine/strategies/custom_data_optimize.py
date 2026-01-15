@@ -5,6 +5,7 @@
 1. 利用用户提供的自定义数据（如特定领域知识、术语映射等）来优化提示词
 2. 支持在提示词中注入领域特定的规则和约束
 """
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -73,6 +74,7 @@ class CustomDataOptimizationStrategy(BaseStrategy):
         :param diagnosis: 诊断分析结果
         :return: 优化后的提示词
         """
+        logger.info(f"策略 {self.name} 开始执行...")
         # 提取自定义数据
         custom_data: Dict[str, Any] = diagnosis.get("custom_data", {})
         domain_knowledge: Dict[str, Any] = diagnosis.get("domain_knowledge", {})

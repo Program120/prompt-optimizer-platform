@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Form, HTTPException
-from typing import Optional, Dict, Any
 from datetime import datetime
 import threading
 import os
-import logging
 import time
 import asyncio
+from typing import Optional, Dict, Any, List, Set, Union
+
+from fastapi import APIRouter, Form, HTTPException
+from loguru import logger
 
 from app.db import storage
 from app.services.task_service import TaskManager
@@ -31,8 +32,23 @@ async def start_auto_iterate(
     extract_field: str = Form(""),
     strategy: str = Form("multi"),
     validation_limit: Optional[int] = Form(None)
-):
-    """启动自动迭代优化"""
+) -> Dict[str, Any]:
+    """
+    启动自动迭代优化任务
+    
+    :param project_id: 项目唯一标识
+    :param file_id: 数据集文件ID
+    :param query_col: 问题列名
+    :param target_col: 目标答案列名
+    :param reason_col: 推理过程列名 (可选)
+    :param prompt: 初始提示词
+    :param max_rounds: 最大迭代轮数
+    :param target_accuracy: 目标准确率 (0-1)
+    :param extract_field: 提取字段名 (可选)
+    :param strategy: 优化策略 ('multi' 或 'simple')
+    :param validation_limit: 验证数据量限制 (可选)
+    :return: 任务启动状态与项目ID
+    """
     
     # 查找文件路径
     file_path = None
@@ -95,7 +111,7 @@ async def start_auto_iterate(
                 status["current_round"] = round_num
                 status["message"] = f"第 {round_num}/{max_rounds} 轮: 正在执行任务..."
                 storage.save_auto_iterate_status(project_id, status)
-                logging.info(f"[AutoIterate {project_id}] Starting round {round_num}/{max_rounds}")
+                logger.info(f"[AutoIterate {project_id}] Starting round {round_num}/{max_rounds}")
                 
                 # 启动任务
                 # 获取模型配置 (优先使用项目配置)
@@ -108,7 +124,7 @@ async def start_auto_iterate(
                 
                 status["task_id"] = task_id
                 storage.save_auto_iterate_status(project_id, status)
-                logging.info(f"[AutoIterate {project_id}] Task {task_id} started")
+                logger.info(f"[AutoIterate {project_id}] Task {task_id} started")
                 
                 # 等待任务完成
                 while True:
@@ -128,12 +144,12 @@ async def start_auto_iterate(
 
                     task_status = tm.get_task_status(task_id)
                     if not task_status:
-                        logging.warning(f"[AutoIterate {project_id}] Task {task_id} status not found, waiting...")
+                        logger.warning(f"[AutoIterate {project_id}] Task {task_id} status not found, waiting...")
                         time.sleep(1)
                         continue
                         
                     if task_status["status"] in ["completed", "stopped"]:
-                        logging.info(f"[AutoIterate {project_id}] Task {task_id} finished with status: {task_status['status']}")
+                        logger.info(f"[AutoIterate {project_id}] Task {task_id} finished with status: {task_status['status']}")
                         break
                     
                     time.sleep(1)
@@ -166,9 +182,9 @@ async def start_auto_iterate(
                         if err["index"] in regression_indices:
                             regression_cases.append(err)
                     
-                    logging.info(f"[AutoIterate {project_id}] Round {round_num}: Found {len(regression_cases)} regression cases (indices: {regression_indices})")
+                    logger.info(f"[AutoIterate {project_id}] Round {round_num}: Found {len(regression_cases)} regression cases (indices: {regression_indices})")
                 else:
-                    logging.info(f"[AutoIterate {project_id}] Round {round_num}: No regression cases found.")
+                    logger.info(f"[AutoIterate {project_id}] Round {round_num}: No regression cases found.")
 
                 # 3. 更新 previous_success_indices 为本轮的，供下一轮使用
                 previous_success_indices = current_success_indices
@@ -183,7 +199,7 @@ async def start_auto_iterate(
                     status["status"] = "completed"
                     status["message"] = f"已达到目标准确率 {accuracy*100:.1f}% >= {target_accuracy*100:.1f}%，共 {round_num} 轮"
                     storage.save_auto_iterate_status(project_id, status)
-                    logging.info(f"[AutoIterate {project_id}] Target accuracy reached! {accuracy*100:.1f}%")
+                    logger.info(f"[AutoIterate {project_id}] Target accuracy reached! {accuracy*100:.1f}%")
                     return
                 
                 # 如果还有下一轮，优化提示词
@@ -191,7 +207,7 @@ async def start_auto_iterate(
                     # 在开始优化之前再次检查停止信号 (重要: 优化过程可能很耗时)
                     curr_status = auto_iterate_status.get(project_id)
                     if curr_status and curr_status["should_stop"]:
-                        logging.info(f"[AutoIterate {project_id}] Stop signal received before optimization")
+                        logger.info(f"[AutoIterate {project_id}] Stop signal received before optimization")
                         tm.stop_task(task_id)
                         curr_status["status"] = "stopped"
                         curr_status["message"] = f"已在第 {round_num} 轮停止 (优化前)"
@@ -206,7 +222,7 @@ async def start_auto_iterate(
 
                     status["message"] = f"第 {round_num}/{max_rounds} 轮: 正在优化提示词..."
                     storage.save_auto_iterate_status(project_id, status)
-                    logging.info(f"[AutoIterate {project_id}] Optimizing prompt with {len(task_status['errors'])} errors...")
+                    logger.info(f"[AutoIterate {project_id}] Optimizing prompt with {len(task_status['errors'])} errors...")
                     
 
                     try:
@@ -283,7 +299,7 @@ async def start_auto_iterate(
                         # 优化完成后再次检查停止信号
                         curr_status = auto_iterate_status.get(project_id)
                         if curr_status and curr_status["should_stop"]:
-                            logging.info(f"[AutoIterate {project_id}] Stop signal received after optimization")
+                            logger.info(f"[AutoIterate {project_id}] Stop signal received after optimization")
                             curr_status["status"] = "stopped"
                             curr_status["message"] = f"已在第 {round_num} 轮停止 (优化后)"
                             storage.save_auto_iterate_status(project_id, curr_status)
@@ -298,7 +314,7 @@ async def start_auto_iterate(
                         
                         if validation_failed:
                             # 验证失败：记录失败的迭代记录，但不更新提示词
-                            logging.warning(f"[AutoIterate {project_id}] 优化验证失败: {failure_reason}")
+                            logger.warning(f"[AutoIterate {project_id}] 优化验证失败: {failure_reason}")
                             status["message"] = f"第 {round_num}/{max_rounds} 轮: {failure_reason}"
                             
                             # 保存失败的迭代记录（包含备注说明）
@@ -327,7 +343,7 @@ async def start_auto_iterate(
                             # 继续下一轮迭代
                             continue
                         
-                        logging.info(f"[AutoIterate {project_id}] Prompt optimized successfully, strategies: {[s.get('name') for s in applied_strategies if s.get('success')]}")
+                        logger.info(f"[AutoIterate {project_id}] Prompt optimized successfully, strategies: {[s.get('name') for s in applied_strategies if s.get('success')]}")
                         
                         # 保存迭代记录
                         project = storage.get_project(project_id)
@@ -353,7 +369,7 @@ async def start_auto_iterate(
                         status["status"] = "error"
                         status["message"] = f"第 {round_num} 轮优化失败: {str(e)}"
                         storage.save_auto_iterate_status(project_id, status)
-                        logging.error(f"[AutoIterate {project_id}] Optimization failed: {str(e)}")
+                        logger.error(f"[AutoIterate {project_id}] Optimization failed: {str(e)}")
                         # 优化失败也应该停止任务（如果还在运行? 此时task已经跑完）
                         return
             
@@ -362,7 +378,7 @@ async def start_auto_iterate(
             storage.save_auto_iterate_status(project_id, status)
             
         except Exception as e:
-            logging.error(f"Auto iterate run error: {e}")
+            logger.error(f"Auto iterate run error: {e}")
             if project_id in auto_iterate_status:
                 auto_iterate_status[project_id]["status"] = "error"
                 auto_iterate_status[project_id]["message"] = f"系统错误: {str(e)}"
@@ -371,10 +387,10 @@ async def start_auto_iterate(
             # 关键修复：发生异常时，如果底层任务仍在运行，强制停止
             if task_id:
                 try:
-                    logging.info(f"[AutoIterate {project_id}] Emergency stopping task {task_id} due to exception")
+                    logger.info(f"[AutoIterate {project_id}] Emergency stopping task {task_id} due to exception")
                     tm.stop_task(task_id)
                 except Exception as stop_err:
-                     logging.error(f"[AutoIterate {project_id}] Failed to emergency stop task: {stop_err}")
+                     logger.error(f"[AutoIterate {project_id}] Failed to emergency stop task: {stop_err}")
     
     # 后台线程执行
     thread = threading.Thread(target=run_auto_iterate)
@@ -384,8 +400,13 @@ async def start_auto_iterate(
     return {"status": "started", "project_id": project_id}
 
 @router.get("/{project_id}/auto-iterate/status")
-async def get_auto_iterate_status(project_id: str):
-    """获取自动迭代状态"""
+async def get_auto_iterate_status(project_id: str) -> Dict[str, Any]:
+    """
+    获取自动迭代状态
+    
+    :param project_id: 项目ID
+    :return: 迭代状态详情
+    """
     # 优先从内存获取
     if project_id in auto_iterate_status:
         return auto_iterate_status[project_id]
@@ -402,23 +423,23 @@ async def get_auto_iterate_status(project_id: str):
              task_id = status.get("task_id")
              if task_id:
                  storage.update_task_status_only(task_id, "stopped")
-                 logging.info(f"[AutoIterate {project_id}] 服务重启检测: 已将任务 {task_id} 标记为 stopped")
+                 logger.info(f"[AutoIterate {project_id}] 服务重启检测: 已将任务 {task_id} 标记为 stopped")
         auto_iterate_status[project_id] = status
         return status
         
     return {"status": "idle"}
 
 @router.post("/{project_id}/auto-iterate/stop")
-async def stop_auto_iterate(project_id: str):
+async def stop_auto_iterate(project_id: str) -> Dict[str, str]:
     """
-    停止自动迭代
+    停止自动迭代任务
     
-    设置停止标志后，迭代会在下一个检查点停止：
-    - 每轮开始前
-    - 任务执行中每秒检查
-    - 优化前后
+    设置停止标志后，迭代会在下一个检查点停止（如每轮开始前、优化前后等）。
+    
+    :param project_id: 项目ID
+    :return: 停止请求的处理状态
     """
-    logging.info(f"[AutoIterate {project_id}] Received STOP request")
+    logger.info(f"[AutoIterate {project_id}] Received STOP request")
     
     if project_id in auto_iterate_status:
         status = auto_iterate_status[project_id]
@@ -429,7 +450,7 @@ async def stop_auto_iterate(project_id: str):
         # 同时尝试停止当前正在执行的任务
         task_id = status.get("task_id")
         if task_id:
-            logging.info(f"[AutoIterate {project_id}] Stopping current task: {task_id}")
+            logger.info(f"[AutoIterate {project_id}] Stopping current task: {task_id}")
             tm.stop_task(task_id)
         
         return {"status": "stopping"}
@@ -444,7 +465,7 @@ async def stop_auto_iterate(project_id: str):
         task_id = status.get("task_id")
         if task_id:
             storage.update_task_status_only(task_id, "stopped")
-            logging.info(f"[AutoIterate {project_id}] 从磁盘停止: 已将任务 {task_id} 标记为 stopped")
+            logger.info(f"[AutoIterate {project_id}] 从磁盘停止: 已将任务 {task_id} 标记为 stopped")
         storage.save_auto_iterate_status(project_id, status)
         auto_iterate_status[project_id] = status
         return {"status": "stopping"}

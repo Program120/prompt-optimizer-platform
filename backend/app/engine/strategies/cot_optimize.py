@@ -1,6 +1,7 @@
 """
 CoT 推理优化策略 - 增强提示词的思维链逻辑
 """
+from loguru import logger
 from typing import List, Dict, Any
 from .base import BaseStrategy
 
@@ -61,6 +62,7 @@ class CoTReasoningStrategy(BaseStrategy):
         返回:
             优化后的提示词
         """
+        logger.info(f"策略 {self.name} 开始执行...")
         
         # 构造优化指令
         prompt_analysis: Dict[str, Any] = diagnosis.get("prompt_analysis", {})

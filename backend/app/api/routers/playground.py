@@ -5,26 +5,28 @@
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-import logging
 import time
 import asyncio
 from app.core.llm_factory import LLMFactory
-from loguru import logger as loguru_logger
+from loguru import logger
 
 router = APIRouter(prefix="/playground", tags=["playground"])
-logger = logging.getLogger(__name__)
 
 class TestPromptRequest(BaseModel):
+    """
+    提示词测试请求模型
+    """
     prompt: str
     query: str
     llm_config: Dict[str, Any]
 
 @router.post("/test")
-async def test_prompt_output(request: TestPromptRequest):
+async def test_prompt_output(request: TestPromptRequest) -> Dict[str, Any]:
     """
     测试提示词输出
-    :param request: 请求参数
-    :return: 模型输出和耗时
+    
+    :param request: 测试请求参数，包含提示词、查询输入和模型配置
+    :return: 包含模型输出结果、耗时及使用的模型名称
     """
     prompt = request.prompt
     query = request.query
@@ -84,7 +86,7 @@ async def test_prompt_output(request: TestPromptRequest):
             if model_config.get("extra_body"):
                 params["extra_body"] = model_config.get("extra_body")
 
-            loguru_logger.info(f"Playground Test - Model: {model_name}, Prompt Len: {len(prompt)}, Query Len: {len(query)}")
+            logger.info(f"Playground Test - Model: {model_name}, Prompt Len: {len(prompt)}, Query Len: {len(query)}")
             
             response = await client.chat.completions.create(**params)
             output = response.choices[0].message.content
@@ -101,5 +103,5 @@ async def test_prompt_output(request: TestPromptRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        loguru_logger.error(f"Playground Test Failed: {str(e)}")
+        logger.error(f"Playground Test Failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"调用失败: {str(e)}")

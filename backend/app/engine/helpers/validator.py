@@ -1,6 +1,6 @@
 """提示词验证模块 - 验证优化后的提示词质量"""
+from loguru import logger
 import json
-import logging
 import re
 from typing import Dict, Any, List, Optional, Callable
 from app.core.prompts import PROMPT_VALIDATE_OPTIMIZATION
@@ -25,7 +25,6 @@ class PromptValidator:
         :param llm_helper: LLM 辅助类实例
         """
         self.llm_helper = llm_helper
-        self.logger: logging.Logger = logging.getLogger(__name__)
     
     async def validate_optimized_prompt(
         self,
@@ -41,11 +40,11 @@ class PromptValidator:
         :param should_stop: 停止回调函数
         :return: 验证结果字典，包含 is_valid, issues, severity, failure_reason
         """
-        self.logger.info("验证优化后的提示词...")
+        logger.info("验证优化后的提示词...")
         
         # 如果优化后的提示词与原始提示词相同，则无需验证
         if original_prompt == optimized_prompt:
-            self.logger.info("优化后的提示词与原始提示词相同，跳过验证")
+            logger.info("优化后的提示词与原始提示词相同，跳过验证")
             return {
                 "is_valid": True,
                 "issues": [],
@@ -67,9 +66,10 @@ class PromptValidator:
                 should_stop=should_stop,
                 task_name="提示词验证"
             )
+
             
             if not response:
-                self.logger.warning("验证 LLM 返回为空，默认通过验证")
+                logger.warning("验证 LLM 返回为空，默认通过验证")
                 return {
                     "is_valid": True,
                     "issues": [],
@@ -84,9 +84,9 @@ class PromptValidator:
             issues: List[str] = result.get("issues", [])
             severity: str = result.get("severity", "none")
             
-            self.logger.info(f"验证结果: is_valid={is_valid}, severity={severity}")
+            logger.info(f"验证结果: is_valid={is_valid}, severity={severity}")
             if issues:
-                self.logger.warning(f"检测到的问题: {issues}")
+                logger.warning(f"检测到的问题: {issues}")
             
             # 如果严重程度为 "high"，则标记为验证失败
             if severity == "high":
@@ -108,7 +108,7 @@ class PromptValidator:
             }
             
         except json.JSONDecodeError as e:
-            self.logger.error(f"验证响应 JSON 解析失败: {e}")
+            logger.error(f"验证响应 JSON 解析失败: {e}")
             # JSON 解析失败时，默认通过验证（避免误杀）
             return {
                 "is_valid": True,
@@ -117,7 +117,7 @@ class PromptValidator:
                 "failure_reason": ""
             }
         except Exception as e:
-            self.logger.error(f"验证过程发生错误: {e}")
+            logger.error(f"验证过程发生错误: {e}")
             # 其他错误时，默认通过验证
             return {
                 "is_valid": True,
