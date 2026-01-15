@@ -390,6 +390,28 @@ def update_error_optimization_history(
 
 # ============== 任务相关操作 ==============
 
+def update_task_status_only(task_id: str, status: str) -> bool:
+    """
+    仅更新任务状态，不修改其他字段（如结果列表）
+    防止因 results 为空覆盖导致数据丢失
+    
+    :param task_id: 任务 ID
+    :param status: 新状态
+    :return: 是否成功更新
+    """
+    with get_db_session() as session:
+        # 规范化任务 ID
+        normalized_id: str = task_id if task_id.startswith("task_") else f"task_{task_id}"
+        
+        task = session.get(Task, normalized_id)
+        if task:
+            task.status = status
+            session.commit()
+            logger.info(f"仅更新任务状态: {normalized_id} -> {status}")
+            return True
+        return False
+
+
 def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]) -> None:
     """
     保存任务状态

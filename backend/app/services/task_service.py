@@ -230,7 +230,9 @@ class TaskManager:
             # 保存状态变更到磁盘，以便前端获取历史时能看到最新状态
             storage.save_task_status(self.tasks[task_id]["info"]["project_id"], task_id, self.tasks[task_id]["info"])
             return True
-        return False
+        else:
+            # 尝试从磁盘加载并暂停 (使用非破坏性更新)
+            return storage.update_task_status_only(task_id, "paused")
 
     def resume_task(self, task_id: str):
         if task_id in self.tasks:
@@ -240,8 +242,8 @@ class TaskManager:
             storage.save_task_status(self.tasks[task_id]["info"]["project_id"], task_id, self.tasks[task_id]["info"])
             return True
         else:
-            # 尝试从磁盘加载并启动（不需要加载完整的 results/errors）
-            info = storage.get_task_status(task_id, include_results=False)
+            # 尝试从磁盘加载并启动（关键修复：必须加载完整的 results/errors 才能追加）
+            info = storage.get_task_status(task_id, include_results=True)
             if info and info["status"] != "completed":
                 # 重新查找文件路径并启动
                 project_id = info["project_id"]
@@ -283,13 +285,8 @@ class TaskManager:
             storage.save_task_status(self.tasks[task_id]["info"]["project_id"], task_id, self.tasks[task_id]["info"])
             return True
         else:
-            # 尝试从磁盘加载并标记为 stopped（不需要加载完整的 results/errors）
-            info = storage.get_task_status(task_id, include_results=False)
-            if info:
-                info["status"] = "stopped"
-                storage.save_task_status(info.get("project_id", ""), task_id, info)
-                return True
-        return False
+            # 尝试从磁盘加载并标记为 stopped（使用非破坏性更新，防止清空 results）
+            return storage.update_task_status_only(task_id, "stopped")
 
     def get_task_status(self, task_id: str, include_results: bool = True):
         """
