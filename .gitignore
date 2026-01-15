@@ -38,3 +38,5 @@ backend/data/*.json
 # data
 data/
 /.joycode/
+
+**.xlsx
