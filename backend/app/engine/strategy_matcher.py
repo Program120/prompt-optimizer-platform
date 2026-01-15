@@ -334,9 +334,10 @@ class StrategyMatcher:
                         model_config=self.model_config,
                         semaphore=self.semaphore
                     )
-                    if strategy.is_applicable(diagnosis):
-                        priority: float = strategy.get_priority(diagnosis)
-                        candidates.append((priority, strategy))
+                    candidates.append((strategy.get_priority(diagnosis), strategy))
+                    # if strategy.is_applicable(diagnosis):
+                    #     priority: float = strategy.get_priority(diagnosis)
+                    #     candidates.append((priority, strategy))
         else:
             # 未指定模块时，遍历所有非模块策略
             for name, strategy_class in STRATEGY_CLASSES.items():
