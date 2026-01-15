@@ -51,7 +51,8 @@ def save_projects(projects: List[Dict[str, Any]]) -> None:
         for proj_dict in projects:
             existing = session.get(Project, proj_dict.get("id"))
             if existing:
-                _update_project_from_dict(existing, proj_dict)
+                # 传递 session 以便同步迭代记录
+                _update_project_from_dict(session, existing, proj_dict)
             else:
                 new_project = _create_project_from_dict(proj_dict)
                 session.add(new_project)
@@ -246,6 +247,57 @@ def _sync_project_iterations(session: Session, project: Project, iterations_data
             created_at=iter_data.get("created_at", datetime.now().isoformat())
         )
         session.add(new_iter)
+
+
+def _sync_project_iterations_from_legacy(session: Session, project: Project, iterations_data: List[Dict[str, Any]]) -> None:
+    """
+    同步项目迭代记录（处理旧格式的迭代数据）
+    旧格式使用 old_prompt/new_prompt，新格式使用 previous_prompt/optimized_prompt
+    
+    :param session: 数据库会话
+    :param project: 项目对象
+    :param iterations_data: 迭代记录数据列表（旧格式）
+    """
+    # 删除现有迭代
+    for existing_iter in project.iterations:
+        session.delete(existing_iter)
+    
+    # 添加新迭代（将旧格式字段映射到新格式）
+    for idx, iter_data in enumerate(iterations_data):
+        # 兼容旧格式字段映射
+        previous_prompt: str = iter_data.get("previous_prompt") or iter_data.get("old_prompt") or ""
+        optimized_prompt: str = iter_data.get("optimized_prompt") or iter_data.get("new_prompt") or ""
+        
+        # 获取准确率（旧格式可能是单个 accuracy 字段）
+        accuracy_before: float = iter_data.get("accuracy_before", 0.0)
+        accuracy_after = iter_data.get("accuracy_after")
+        # 如果只有单个 accuracy 字段，将其视为 accuracy_before
+        if "accuracy" in iter_data and accuracy_before == 0.0:
+            accuracy_before = iter_data.get("accuracy", 0.0)
+        
+        # 获取策略信息
+        strategy: str = iter_data.get("strategy") or ""
+        applied_strategies = iter_data.get("applied_strategies", [])
+        if applied_strategies and not strategy:
+            # 将策略列表转换为字符串
+            strategy = ", ".join([str(s) for s in applied_strategies]) if applied_strategies else ""
+        
+        new_iter = ProjectIteration(
+            project_id=project.id,
+            version=iter_data.get("version", idx + 1),
+            previous_prompt=previous_prompt,
+            optimized_prompt=optimized_prompt,
+            strategy=strategy,
+            accuracy_before=accuracy_before,
+            accuracy_after=accuracy_after,
+            task_id=iter_data.get("task_id"),
+            analysis=json.dumps(iter_data.get("analysis") or {}, ensure_ascii=False),
+            note=iter_data.get("note") or "",
+            created_at=iter_data.get("created_at", datetime.now().isoformat())
+        )
+        session.add(new_iter)
+    
+    logger.info(f"同步项目迭代记录: {project.id}, 数量: {len(iterations_data)}")
 
 
 def delete_project_iteration(project_id: str, timestamp: str) -> bool:
@@ -831,8 +883,14 @@ def _create_project_from_dict(data: Dict[str, Any]) -> Project:
     )
 
 
-def _update_project_from_dict(project: Project, data: Dict[str, Any]) -> None:
-    """从字典更新项目对象"""
+def _update_project_from_dict(session: Session, project: Project, data: Dict[str, Any]) -> None:
+    """
+    从字典更新项目对象
+    
+    :param session: 数据库会话
+    :param project: 项目对象
+    :param data: 更新数据字典
+    """
     if "name" in data:
         project.name = data["name"]
     if "current_prompt" in data:
@@ -849,3 +907,7 @@ def _update_project_from_dict(project: Project, data: Dict[str, Any]) -> None:
         project.optimization_prompt = data["optimization_prompt"]
     if "updated_at" in data:
         project.updated_at = data["updated_at"]
+    
+    # 处理迭代记录更新（关键修复：确保 iterations 被正确同步）
+    if "iterations" in data:
+        _sync_project_iterations_from_legacy(session, project, data["iterations"])

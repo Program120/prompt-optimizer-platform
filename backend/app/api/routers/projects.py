@@ -292,6 +292,9 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
             # 添加备注说明未应用提示词及原因
             iteration_record["note"] = f"未应用提示词, 原因: {failure_reason}"
 
+        from loguru import logger
+        logger.info(f"Preparing to save iteration for project {project_id}, Task ID: {task_id}")
+
         # 重新获取项目以避免并发覆盖 (虽然这里还是有风险，但比直接用旧对象好)
         curr_project = storage.get_project(project_id)
         if curr_project:
@@ -300,13 +303,25 @@ def background_optimize_task(project_id: str, task_id: str, strategy: str, model
             # 只有验证通过时才更新 current_prompt
             if not validation_failed:
                 curr_project["current_prompt"] = new_prompt
+                logger.info(f"Validation passed, updating current_prompt to: {new_prompt[:50]}...")
+            else:
+                logger.warning(f"Validation failed (reason: {failure_reason}), NOT updating current_prompt.")
             
             projects = storage.get_projects()
+            project_found = False
             for idx, p in enumerate(projects):
                 if p["id"] == project_id:
                     projects[idx] = curr_project
+                    project_found = True
                     break
-            storage.save_projects(projects)
+            
+            if project_found:
+                storage.save_projects(projects)
+                logger.info(f"Successfully saved projects with new iteration. Iteration count: {len(curr_project['iterations'])}")
+            else:
+                logger.error(f"Project {project_id} not found in projects list during save!")
+        else:
+            logger.error(f"Could not retrieve project {project_id} from storage for saving iteration.")
         
         # 如果验证失败，返回失败状态
         if validation_failed:
