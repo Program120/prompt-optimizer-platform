@@ -369,6 +369,72 @@ def check_migration_needed() -> bool:
     return False
 
 
+def check_and_migrate_schema() -> None:
+    """
+    检查并迁移数据库模式
+    确保所有必需的列都存在，如果缺失则自动添加
+    此函数应在每次系统启动时调用
+    """
+    import sqlite3
+    
+    db_path: str = os.path.join(DATA_DIR, "app.db")
+    
+    # 如果数据库文件不存在，跳过模式迁移（init_db 会创建完整的表）
+    if not os.path.exists(db_path):
+        logger.debug("数据库文件不存在，跳过模式迁移")
+        return
+    
+    logger.info("检查数据库模式...")
+    
+    # 定义需要检查的列迁移配置
+    # 格式: (表名, 列名, 列类型, 默认值, 数据同步SQL)
+    schema_migrations: List[tuple] = [
+        (
+            "projects",
+            "initial_prompt",
+            "TEXT",
+            "''",
+            "UPDATE projects SET initial_prompt = current_prompt WHERE initial_prompt IS NULL OR initial_prompt = ''"
+        ),
+    ]
+    
+    conn: sqlite3.Connection = sqlite3.connect(db_path)
+    cursor: sqlite3.Cursor = conn.cursor()
+    
+    try:
+        for table_name, column_name, column_type, default_value, sync_sql in schema_migrations:
+            # 检查列是否已存在
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+            column_names = [col[1] for col in columns]
+            
+            if column_name not in column_names:
+                logger.info(f"发现缺失列: {table_name}.{column_name}，正在添加...")
+                
+                # 添加列
+                alter_sql = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type} DEFAULT {default_value}"
+                cursor.execute(alter_sql)
+                
+                # 执行数据同步
+                if sync_sql:
+                    cursor.execute(sync_sql)
+                
+                conn.commit()
+                logger.info(f"成功添加列: {table_name}.{column_name}")
+            else:
+                logger.debug(f"列已存在: {table_name}.{column_name}")
+                
+    except Exception as e:
+        logger.error(f"模式迁移失败: {e}")
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+    
+    logger.info("数据库模式检查完成")
+
+
 def run_migration() -> None:
     """
     执行完整的数据迁移
