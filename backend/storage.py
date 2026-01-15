@@ -3,6 +3,9 @@ import json
 import pandas as pd
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import tempfile
+import shutil
+from loguru import logger
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 PROJECTS_FILE = os.path.join(DATA_DIR, "projects.json")
@@ -11,16 +14,63 @@ def init_storage():
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
     if not os.path.exists(PROJECTS_FILE):
-        with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
-            json.dump([], f)
+        _atomic_save_json(PROJECTS_FILE, [])
+
+def _atomic_save_json(file_path: str, data: Any):
+    """
+    Atomically save JSON data to a file using a temporary file.
+    This prevents data corruption (e.g. 'Extra data') if the process crashes or concurrent writes happen.
+    """
+    dir_name = os.path.dirname(file_path)
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+    
+    # Create temp file
+    try:
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=dir_name, encoding="utf-8", suffix=".tmp") as tmp:
+            json.dump(data, tmp, indent=2, ensure_ascii=False)
+            temp_path = tmp.name
+        
+        # Atomically replace
+        os.replace(temp_path, file_path)
+    except Exception as e:
+        logger.error(f"Failed to save JSON to {file_path}: {e}")
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise e
+
+def _safe_load_json(file_path: str) -> Any:
+    """
+    Safely load JSON from file, identifying and recovering from 'Extra data' corruption.
+    """
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+        
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        if "Extra data" in str(e):
+            logger.warning(f"Detected corrupted JSON in {file_path} (Extra data). Attempting recovery.")
+            try:
+                # Attempt to recover by taking the valid part up to the extra data
+                recovered_data = json.loads(content[:e.pos])
+                logger.info(f"Successfully recovered JSON data from {file_path}")
+                
+                # Optionally auto-fix the file on disk? 
+                # Better to just return valid data for now, the next save will fix it.
+                return recovered_data
+            except Exception as recovery_error:
+                logger.error(f"Failed to recover JSON from {file_path}: {recovery_error}")
+                raise e
+        else:
+            logger.error(f"JSON decode error in {file_path}: {e}")
+            raise e
 
 def get_projects() -> List[Dict[str, Any]]:
-    with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return _safe_load_json(PROJECTS_FILE)
 
 def save_projects(projects: List[Dict[str, Any]]):
-    with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(projects, f, indent=2, ensure_ascii=False)
+    _atomic_save_json(PROJECTS_FILE, projects)
 
 def get_project(project_id: str) -> Optional[Dict[str, Any]]:
     projects = get_projects()
@@ -56,22 +106,19 @@ def delete_project(project_id: str) -> bool:
 
 def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]):
     task_file = os.path.join(DATA_DIR, f"task_{task_id}.json")
-    with open(task_file, "w", encoding="utf-8") as f:
-        json.dump(status, f, indent=2, ensure_ascii=False)
+    _atomic_save_json(task_file, status)
 
 def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
     task_file = os.path.join(DATA_DIR, f"task_{task_id}.json")
     if os.path.exists(task_file):
-        with open(task_file, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return _safe_load_json(task_file)
     return None
 
 MODEL_CONFIG_FILE = os.path.join(DATA_DIR, "model_config.json")
 
 def get_model_config() -> Dict[str, str]:
     if os.path.exists(MODEL_CONFIG_FILE):
-        with open(MODEL_CONFIG_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return _safe_load_json(MODEL_CONFIG_FILE)
     return {
         "base_url": "https://api.openai.com/v1", 
         "api_key": "",
@@ -82,8 +129,7 @@ def get_model_config() -> Dict[str, str]:
     }
 
 def save_model_config(config: Dict[str, str]):
-    with open(MODEL_CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
+    _atomic_save_json(MODEL_CONFIG_FILE, config)
 
 def update_project(project_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """更新项目信息"""
@@ -119,9 +165,13 @@ def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
     for filename in os.listdir(DATA_DIR):
         if filename.startswith("task_") and filename.endswith(".json"):
             task_path = os.path.join(DATA_DIR, filename)
-            with open(task_path, "r", encoding="utf-8") as f:
-                task_data = json.load(f)
-                if task_data.get("project_id") == project_id:
+            try:
+                task_data = _safe_load_json(task_path)
+            except Exception as e:
+                logger.error(f"Error loading task file {filename}: {e}")
+                continue
+                
+            if task_data.get("project_id") == project_id:
                     # 从文件路径提取数据集名称
                     file_path = task_data.get("file_path", "")
                     original_filename = task_data.get("original_filename")
@@ -155,15 +205,13 @@ def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
 
 def save_auto_iterate_status(project_id: str, status: Dict[str, Any]):
     file_path = os.path.join(DATA_DIR, f"auto_iterate_{project_id}.json")
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(status, f, indent=2, ensure_ascii=False)
+    _atomic_save_json(file_path, status)
 
 def get_auto_iterate_status(project_id: str) -> Optional[Dict[str, Any]]:
     file_path = os.path.join(DATA_DIR, f"auto_iterate_{project_id}.json")
     if os.path.exists(file_path):
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            return _safe_load_json(file_path)
         except:
             return None
     return None
@@ -188,8 +236,7 @@ def get_all_project_errors(project_id: str) -> List[Dict[str, Any]]:
         if filename.startswith("task_") and filename.endswith(".json"):
             try:
                 task_path = os.path.join(DATA_DIR, filename)
-                with open(task_path, "r", encoding="utf-8") as f:
-                    task_data = json.load(f)
+                task_data = _safe_load_json(task_path)
                     
                 # 检查是否属于该项目
                 if task_data.get("project_id") == project_id:
@@ -198,7 +245,7 @@ def get_all_project_errors(project_id: str) -> List[Dict[str, Any]]:
                     if errors:
                         all_errors.extend(errors)
             except Exception as e:
-                print(f"Error reading task file {filename}: {e}")
+                logger.error(f"Error reading task file {filename}: {e}")
                 continue
                 
     return all_errors
@@ -214,8 +261,7 @@ def get_global_models() -> List[Dict[str, Any]]:
     @return: 公共模型配置列表
     """
     if os.path.exists(GLOBAL_MODELS_FILE):
-        with open(GLOBAL_MODELS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return _safe_load_json(GLOBAL_MODELS_FILE)
     return []
 
 
@@ -224,8 +270,7 @@ def _save_global_models(models: List[Dict[str, Any]]) -> None:
     保存公共模型配置列表到文件
     @param models: 公共模型配置列表
     """
-    with open(GLOBAL_MODELS_FILE, "w", encoding="utf-8") as f:
-        json.dump(models, f, indent=2, ensure_ascii=False)
+    _atomic_save_json(GLOBAL_MODELS_FILE, models)
 
 
 
@@ -243,7 +288,7 @@ def delete_task(task_id: str) -> bool:
             os.remove(task_file)
             success = True
         except Exception as e:
-            print(f"Error deleting task file {task_file}: {e}")
+            logger.error(f"Error deleting task file {task_file}: {e}")
             
     # 删除结果文件 (可能有多个，包括带进度的)
     # results_{task_id}.xlsx 或 results_{task_id}_*.xlsx
@@ -252,7 +297,7 @@ def delete_task(task_id: str) -> bool:
             try:
                 os.remove(os.path.join(DATA_DIR, f))
             except Exception as e:
-                print(f"Error deleting result file {f}: {e}")
+                logger.error(f"Error deleting result file {f}: {e}")
                 
     return success
 
