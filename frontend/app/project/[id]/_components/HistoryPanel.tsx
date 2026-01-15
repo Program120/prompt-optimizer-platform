@@ -431,14 +431,14 @@ export default function HistoryPanel({
                                 </div>
                                 <div className={`text-xs rounded-lg p-3 border transition-colors ${it.not_applied || it.is_failed ? "bg-orange-500/5 border-orange-500/20 hover:bg-orange-500/10" : "bg-white/5 border-white/5 hover:bg-white/10"}`}>
                                     <div className="flex justify-between items-start mb-1">
-                                        <div className={it.not_applied || it.is_failed ? "text-orange-400 font-bold" : "text-emerald-400 font-bold"}>准确率: {(it.accuracy * 100).toFixed(1)}%</div>
+                                        <div className={it.not_applied || it.is_failed ? "text-orange-400 font-bold" : "text-emerald-400 font-bold"}>准确率: {(it.accuracy_before * 100).toFixed(1)}%</div>
                                         {it.dataset_name && (
                                             <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded-full truncate max-w-[120px]" title={it.dataset_name}>
                                                 {it.dataset_name}
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-slate-500 line-clamp-3 italic mb-2">"{it.new_prompt}"</p>
+                                    <p className="text-slate-500 line-clamp-3 italic mb-2">"{it.optimized_prompt}"</p>
 
                                     <div className="flex justify-end pt-2 border-t border-white/5">
                                         <a

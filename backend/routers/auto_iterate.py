@@ -293,17 +293,17 @@ async def start_auto_iterate(
                                 not_applied_note = f"未应用提示词, 原因: {failure_reason}"
                                 
                                 project["iterations"].append({
-                                    "old_prompt": current_prompt,
-                                    "new_prompt": new_prompt,
+                                    "previous_prompt": current_prompt,
+                                    "optimized_prompt": new_prompt,
                                     "task_id": task_id,
-                                    "accuracy": accuracy,
-                                    "round": round_num,
+                                    "accuracy_before": accuracy,
+                                    "version": round_num,
                                     "created_at": datetime.now().isoformat(),
                                     "is_failed": True,
                                     "failure_reason": failure_reason,
                                     "not_applied": True,
                                     "note": not_applied_note,
-                                    "applied_strategies": [s.get("name") for s in applied_strategies if s.get("success")]
+                                    "strategy": ", ".join([s.get("name") for s in applied_strategies if s.get("success")])
                                 })
                                 # 不更新 current_prompt，保持原提示词
                                 storage.update_project(project_id, project)
@@ -318,11 +318,11 @@ async def start_auto_iterate(
                         project = storage.get_project(project_id)
                         if project:
                             project["iterations"].append({
-                                "old_prompt": current_prompt,
-                                "new_prompt": new_prompt,
+                                "previous_prompt": current_prompt,
+                                "optimized_prompt": new_prompt,
                                 "task_id": task_id,
-                                "accuracy": accuracy,
-                                "round": round_num,
+                                "accuracy_before": accuracy,
+                                "version": round_num,
                                 "created_at": datetime.now().isoformat()
                             })
                             project["current_prompt"] = new_prompt
