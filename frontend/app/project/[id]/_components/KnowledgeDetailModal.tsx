@@ -5,6 +5,23 @@ import { X, Save, Trash2, Clock, TrendingUp, Layers, FileText, AlertCircle } fro
 import axios from "axios";
 
 /**
+ * 差异对象接口定义
+ */
+interface DiffItem {
+    type: string;
+    content: string;
+}
+
+/**
+ * 新增失败案例接口定义
+ */
+interface FailedCase {
+    query: string;
+    target: string;
+    output?: string;
+}
+
+/**
  * 知识库记录接口定义
  */
 interface KnowledgeRecord {
@@ -13,12 +30,15 @@ interface KnowledgeRecord {
     original_prompt: string;
     optimized_prompt: string;
     analysis_summary: string;
-    intent_analysis: Record<string, any>;
-    deep_analysis?: Record<string, any>;
+    intent_analysis: Record<string, unknown>;
+    deep_analysis?: Record<string, unknown>;
     applied_strategies: string[];
     accuracy_before: number;
     accuracy_after?: number;
     updated_at?: string;
+    // 新增字段
+    newly_failed_cases?: FailedCase[];
+    diff?: DiffItem[];
 }
 
 /**
@@ -248,13 +268,90 @@ export default function KnowledgeDetailModal({
                         )}
                     </div>
 
-                    {/* 意图分析 (如果存在) */}
+                    {/* 意图分析 (如果存在) - 固定高度 + 滚动条 */}
                     {record.intent_analysis && Object.keys(record.intent_analysis).length > 0 && (
                         <div className="bg-white/5 border border-white/10 rounded-xl p-4">
                             <div className="text-xs text-slate-400 mb-2">意图分析</div>
-                            <pre className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto custom-scrollbar">
-                                {JSON.stringify(record.intent_analysis, null, 2)}
-                            </pre>
+                            {/* 固定高度容器，防止内容过长 */}
+                            <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                                <pre className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text">
+                                    {JSON.stringify(record.intent_analysis, null, 2)}
+                                </pre>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 深度分析 (如果存在) */}
+                    {record.deep_analysis && Object.keys(record.deep_analysis).length > 0 && (
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                            <div className="text-xs text-slate-400 mb-2 flex items-center gap-1">
+                                <Layers size={12} />
+                                深度分析
+                            </div>
+                            {/* 固定高度容器 */}
+                            <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                                <pre className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text">
+                                    {JSON.stringify(record.deep_analysis, null, 2)}
+                                </pre>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 新增失败案例 (如果存在) */}
+                    {record.newly_failed_cases && record.newly_failed_cases.length > 0 && (
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                            <div className="text-xs text-slate-400 mb-2 flex items-center gap-1">
+                                <AlertCircle size={12} />
+                                新增失败案例 ({record.newly_failed_cases.length})
+                            </div>
+                            {/* 固定高度容器 */}
+                            <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-2">
+                                {record.newly_failed_cases.map((item: FailedCase, idx: number) => (
+                                    <div
+                                        key={idx}
+                                        className="bg-black/30 rounded-lg p-3 border border-red-500/20"
+                                    >
+                                        <div className="text-xs text-slate-500 mb-1">查询:</div>
+                                        <div className="text-sm text-slate-300 mb-2 break-words">
+                                            {item.query || "无"}
+                                        </div>
+                                        <div className="text-xs text-slate-500 mb-1">预期结果:</div>
+                                        <div className="text-sm text-red-400 break-words">
+                                            {item.target || "无"}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Diff 变更 (如果存在) */}
+                    {record.diff && record.diff.length > 0 && (
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                            <div className="text-xs text-slate-400 mb-2 flex items-center gap-1">
+                                <FileText size={12} />
+                                提示词变更
+                            </div>
+                            {/* 固定高度容器 */}
+                            <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                                <div className="bg-black/30 rounded-lg p-3 font-mono text-xs space-y-1">
+                                    {record.diff.map((line: DiffItem, idx: number) => (
+                                        <div
+                                            key={idx}
+                                            className={`whitespace-pre-wrap break-words ${line.type === 'added'
+                                                    ? 'text-green-400 bg-green-500/10'
+                                                    : line.type === 'removed'
+                                                        ? 'text-red-400 bg-red-500/10'
+                                                        : 'text-slate-400'
+                                                }`}
+                                        >
+                                            {line.type === 'added' && '+ '}
+                                            {line.type === 'removed' && '- '}
+                                            {line.content}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
