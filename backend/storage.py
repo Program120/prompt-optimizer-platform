@@ -193,19 +193,19 @@ def update_project(project_id: str, updates: Dict[str, Any]) -> Optional[Dict[st
         
         # 更新允许的字段
         if "name" in updates:
-            project.name = updates["name"]
+            project.name = updates["name"] or ""
         if "current_prompt" in updates:
-            project.current_prompt = updates["current_prompt"]
+            project.current_prompt = updates["current_prompt"] or ""
         if "last_task_id" in updates:
             project.last_task_id = updates["last_task_id"]
         if "config" in updates:
-            project.config = json.dumps(updates["config"], ensure_ascii=False)
+            project.config = json.dumps(updates["config"] or {}, ensure_ascii=False)
         if "model_config" in updates:
-            project.model_config_data = json.dumps(updates["model_config"], ensure_ascii=False)
+            project.model_config_data = json.dumps(updates["model_config"] or {}, ensure_ascii=False)
         if "optimization_model_config" in updates:
-            project.optimization_model_config = json.dumps(updates["optimization_model_config"], ensure_ascii=False)
+            project.optimization_model_config = json.dumps(updates["optimization_model_config"] or {}, ensure_ascii=False)
         if "optimization_prompt" in updates:
-            project.optimization_prompt = updates["optimization_prompt"]
+            project.optimization_prompt = updates["optimization_prompt"] or ""
         
         # 处理迭代记录更新
         if "iterations" in updates:
@@ -235,14 +235,14 @@ def _sync_project_iterations(session: Session, project: Project, iterations_data
         new_iter = ProjectIteration(
             project_id=project.id,
             version=iter_data.get("version", idx + 1),
-            previous_prompt=iter_data.get("previous_prompt", ""),
-            optimized_prompt=iter_data.get("optimized_prompt", ""),
-            strategy=iter_data.get("strategy", ""),
+            previous_prompt=iter_data.get("previous_prompt") or "",
+            optimized_prompt=iter_data.get("optimized_prompt") or "",
+            strategy=iter_data.get("strategy") or "",
             accuracy_before=iter_data.get("accuracy_before", 0.0),
             accuracy_after=iter_data.get("accuracy_after"),
             task_id=iter_data.get("task_id"),
-            analysis=json.dumps(iter_data.get("analysis", {}), ensure_ascii=False),
-            note=iter_data.get("note", ""),
+            analysis=json.dumps(iter_data.get("analysis") or {}, ensure_ascii=False),
+            note=iter_data.get("note") or "",
             created_at=iter_data.get("created_at", datetime.now().isoformat())
         )
         session.add(new_iter)
@@ -311,13 +311,13 @@ def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]) -> N
         
         if existing_task:
             # 更新现有任务
-            existing_task.status = status.get("status", existing_task.status)
+            existing_task.status = status.get("status") or existing_task.status
             existing_task.current_index = status.get("current_index", existing_task.current_index)
             existing_task.total_count = status.get("total_count", existing_task.total_count)
-            existing_task.prompt = status.get("prompt", existing_task.prompt)
-            existing_task.file_path = status.get("file_path", existing_task.file_path)
+            existing_task.prompt = status.get("prompt") or existing_task.prompt or ""
+            existing_task.file_path = status.get("file_path") or existing_task.file_path or ""
             existing_task.original_filename = status.get("original_filename") or existing_task.original_filename or ""
-            existing_task.note = status.get("note", existing_task.note)
+            existing_task.note = status.get("note") or existing_task.note or ""
             
             # 保存额外配置
             extra_fields = {k: v for k, v in status.items() if k not in [
@@ -337,10 +337,10 @@ def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]) -> N
                 status=status.get("status", "pending"),
                 current_index=status.get("current_index", 0),
                 total_count=status.get("total_count", 0),
-                prompt=status.get("prompt", ""),
-                file_path=status.get("file_path", ""),
+                prompt=status.get("prompt") or "",
+                file_path=status.get("file_path") or "",
                 original_filename=status.get("original_filename") or "",
-                note=status.get("note", ""),
+                note=status.get("note") or "",
                 created_at=datetime.now().isoformat()
             )
             
@@ -702,7 +702,10 @@ def update_global_model(model_id: str, updates: Dict[str, Any]) -> Optional[Dict
         ]
         for field in allowed_fields:
             if field in updates:
-                setattr(model, field, updates[field])
+                val = updates[field]
+                if val is None and field in ["name", "base_url", "api_key", "model_name"]:
+                    val = ""
+                setattr(model, field, val)
         
         # 处理 JSON 字段
         if "extra_body" in updates:
@@ -747,12 +750,12 @@ def save_auto_iterate_status(project_id: str, status: Dict[str, Any]) -> None:
         existing = session.get(AutoIterateStatus, project_id)
         
         if existing:
-            existing.status = status.get("status", existing.status)
+            existing.status = status.get("status") or existing.status
             existing.current_round = status.get("current_round", existing.current_round)
             existing.max_rounds = status.get("max_rounds", existing.max_rounds)
             existing.target_accuracy = status.get("target_accuracy", existing.target_accuracy)
             existing.current_accuracy = status.get("current_accuracy", existing.current_accuracy)
-            existing.error_message = status.get("error_message", existing.error_message)
+            existing.error_message = status.get("error_message") or existing.error_message or ""
             
             # 保存额外数据
             extra_fields = {k: v for k, v in status.items() if k not in [
@@ -768,12 +771,12 @@ def save_auto_iterate_status(project_id: str, status: Dict[str, Any]) -> None:
             ]}
             new_status = AutoIterateStatus(
                 project_id=project_id,
-                status=status.get("status", "idle"),
+                status=status.get("status") or "idle",
                 current_round=status.get("current_round", 0),
                 max_rounds=status.get("max_rounds", 5),
                 target_accuracy=status.get("target_accuracy", 95.0),
                 current_accuracy=status.get("current_accuracy", 0.0),
-                error_message=status.get("error_message", ""),
+                error_message=status.get("error_message") or "",
                 extra_data=json.dumps(extra_fields, ensure_ascii=False),
                 updated_at=datetime.now().isoformat()
             )
