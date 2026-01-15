@@ -396,6 +396,43 @@ class MultiStrategyOptimizer:
             diagnosis["newly_failed_cases"] = newly_failed_cases
             self.logger.info(f"注入新增失败案例到 diagnosis，数量: {len(newly_failed_cases)}")
         
+        # 阶段 3.6：获取错误优化历史并识别顽固错误
+        error_history: Dict[str, Any] = {}
+        persistent_samples: List[Dict[str, Any]] = []
+        
+        if project_id:
+            # 从存储获取错误优化历史
+            from app.db.storage import get_error_optimization_history
+            error_history = get_error_optimization_history(project_id)
+            
+            if error_history:
+                # 识别顽固错误样本
+                persistent_samples = self._identify_persistent_errors(error_history)
+                
+                if persistent_samples:
+                    # 将顽固错误样本注入 diagnosis，供策略匹配使用
+                    diagnosis["persistent_error_samples"] = persistent_samples
+                    
+                    # 同时将顽固错误添加到 error_patterns.hard_cases（触发 difficult 策略）
+                    if "error_patterns" not in diagnosis:
+                        diagnosis["error_patterns"] = {}
+                    existing_hard_cases: List[Dict[str, Any]] = diagnosis["error_patterns"].get("hard_cases", [])
+                    
+                    # 合并顽固错误到 hard_cases
+                    for ps in persistent_samples:
+                        existing_hard_cases.append({
+                            "query": ps.get("query", ""),
+                            "target": ps.get("target", ""),
+                            "output": "",
+                            "_persistent": True,
+                            "_optimization_count": ps.get("optimization_count", 0)
+                        })
+                    diagnosis["error_patterns"]["hard_cases"] = existing_hard_cases
+                    
+                    self.logger.info(
+                        f"[顽固错误] 已注入 {len(persistent_samples)} 个顽固错误样本到 hard_cases"
+                    )
+        
         # 阶段 4：策略匹配
         if on_progress:
             on_progress("正在匹配优化策略...")
@@ -588,6 +625,26 @@ class MultiStrategyOptimizer:
         else:
             result["validation_failed"] = False
             result["failure_reason"] = ""
+        
+        # 阶段 9：更新错误优化历史（优化完成后追踪）
+        if project_id and optimized_intents:
+            try:
+                from app.db.storage import update_error_optimization_history
+                
+                # 更新错误优化历史
+                updated_history: Dict[str, Any] = self._update_error_optimization_history(
+                    errors, 
+                    error_history, 
+                    optimized_intents
+                )
+                
+                # 保存更新后的历史
+                update_error_optimization_history(project_id, updated_history)
+                self.logger.info(
+                    f"[错误追踪] 已更新错误优化历史，记录数: {len(updated_history)}"
+                )
+            except Exception as e:
+                self.logger.warning(f"更新错误优化历史失败: {e}")
         
         return result
 
