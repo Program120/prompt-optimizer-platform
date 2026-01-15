@@ -42,7 +42,7 @@ class TaskManager:
             "prompt": prompt,
             "extract_field": extract_field, # 保存需要提取的字段名
             "model_config": model_config,   # 保存模型配置
-            "original_filename": original_filename, # 保存原始文件名
+            "original_filename": original_filename if original_filename is not None else "", # 保存原始文件名
             "validation_limit": validation_limit,
             "results": [],
             "errors": []

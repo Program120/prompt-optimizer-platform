@@ -316,7 +316,7 @@ def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]) -> N
             existing_task.total_count = status.get("total_count", existing_task.total_count)
             existing_task.prompt = status.get("prompt", existing_task.prompt)
             existing_task.file_path = status.get("file_path", existing_task.file_path)
-            existing_task.original_filename = status.get("original_filename", existing_task.original_filename)
+            existing_task.original_filename = status.get("original_filename") or existing_task.original_filename or ""
             existing_task.note = status.get("note", existing_task.note)
             
             # 保存额外配置
@@ -339,7 +339,7 @@ def save_task_status(project_id: str, task_id: str, status: Dict[str, Any]) -> N
                 total_count=status.get("total_count", 0),
                 prompt=status.get("prompt", ""),
                 file_path=status.get("file_path", ""),
-                original_filename=status.get("original_filename", ""),
+                original_filename=status.get("original_filename") or "",
                 note=status.get("note", ""),
                 created_at=datetime.now().isoformat()
             )
