@@ -62,9 +62,10 @@ async def test_prompt_output(request: TestPromptRequest):
         if model_config.get("max_tokens"):
             params["max_tokens"] = int(model_config.get("max_tokens"))
             
-        # 处理 extra_body (例如 Ollama 可能需要)
+        # 处理 extra_body (例如 Ollama 可能需要的 chat_template_kwargs 等)
+        # 正确方式: 作为 extra_body 参数传递，而不是合并到顶层参数
         if model_config.get("extra_body"):
-            params.update(model_config.get("extra_body"))
+            params["extra_body"] = model_config.get("extra_body")
 
         loguru_logger.info(f"Playground Test - Model: {model_name}, Prompt Len: {len(prompt)}, Query Len: {len(query)}")
         
