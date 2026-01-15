@@ -306,12 +306,7 @@ async def start_auto_iterate(
                                     "applied_strategies": [s.get("name") for s in applied_strategies if s.get("success")]
                                 })
                                 # 不更新 current_prompt，保持原提示词
-                                projects = storage.get_projects()
-                                for idx, p in enumerate(projects):
-                                    if p["id"] == project_id:
-                                        projects[idx] = project
-                                        break
-                                storage.save_projects(projects)
+                                storage.update_project(project_id, project)
                             
                             storage.save_auto_iterate_status(project_id, status)
                             # 继续下一轮迭代
@@ -331,12 +326,7 @@ async def start_auto_iterate(
                                 "created_at": datetime.now().isoformat()
                             })
                             project["current_prompt"] = new_prompt
-                            projects = storage.get_projects()
-                            for idx, p in enumerate(projects):
-                                if p["id"] == project_id:
-                                    projects[idx] = project
-                                    break
-                            storage.save_projects(projects)
+                            storage.update_project(project_id, project)
                         
                         # 重要：更新 prompt 用于下一轮
                         current_prompt = new_prompt
