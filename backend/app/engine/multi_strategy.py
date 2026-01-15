@@ -558,6 +558,8 @@ class MultiStrategyOptimizer:
         current_strategy_name = best_result.get("strategy", "")
         
         if has_persistent and current_strategy_name != "difficult_example_injection":
+            if on_progress:
+                on_progress("正在执行困难样本注入...")
             self.logger.info(f"[顽固样本处理] 检测到顽固困难样本，且当前策略({current_strategy_name})非注入策略，尝试二次优化...")
             
             try:
@@ -593,7 +595,7 @@ class MultiStrategyOptimizer:
                 self.logger.error(f"[顽固样本处理] 二次注入执行失败: {e}")
 
         # 阶段 7：记录到知识库
-        if self.knowledge_base and best_result.get("prompt") != prompt:
+        if self.knowledge_base:
             if on_progress:
                 on_progress("正在保存知识库记录...")
             self.logger.info("步骤 7: 记录优化结果到知识库...")

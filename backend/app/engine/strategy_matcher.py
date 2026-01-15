@@ -2,6 +2,7 @@
 from typing import List, Dict, Any, Type
 import json
 import asyncio
+from loguru import logger
 from .strategies.base import BaseStrategy
 from .strategies.boundary import BoundaryClarificationStrategy
 from .strategies.instruction import InstructionRefinementStrategy
@@ -135,10 +136,14 @@ class StrategyMatcher:
         :param should_stop: 停止回调函数
         :return: 评分后的策略列表 [(score, strategy), ...]
         """
+        logger.info(f"[StrategyMatcher] 开始策略评分，候选策略数量: {len(candidates)}")
+        
         if should_stop and should_stop():
+            logger.debug("[StrategyMatcher] 收到停止信号，跳过策略评分")
             return candidates
 
         if not self.llm_client or not candidates:
+            logger.warning(f"[StrategyMatcher] 跳过策略评分: llm_client={bool(self.llm_client)}, candidates={len(candidates)}")
             return candidates
 
         # 1. 准备 Prompt
@@ -253,6 +258,7 @@ class StrategyMatcher:
         try:
             # 再次检查停止信号
             if should_stop and should_stop():
+                logger.debug("[StrategyMatcher] 收到停止信号，跳过策略评分")
                 return candidates
 
             # 2. 调用 LLM
@@ -261,23 +267,37 @@ class StrategyMatcher:
                 {"role": "user", "content": prompt}
             ]
             
+            # 获取模型名称 - 注意：正确的字段名是 model_name 而不是 model
+            model_name: str = self.model_config.get("model_name", "gpt-3.5-turbo")
+            logger.info(f"[StrategyMatcher] 准备调用 LLM 进行策略评分，模型: {model_name}")
+            logger.debug(f"[StrategyMatcher] model_config 完整内容: {json.dumps(self.model_config, ensure_ascii=False, default=str)}")
+            
             # 使用 openai 库调用，需处理并发
-            if hasattr(self.llm_client, "chat"): # 兼容 AsyncOpenAI
-                 response = await self.llm_client.chat.completions.create(
-                    model=self.model_config.get("model", "gpt-3.5-turbo"),
+            if hasattr(self.llm_client, "chat"):
+                # 兼容 AsyncOpenAI
+                logger.debug(f"[StrategyMatcher] 使用 AsyncOpenAI 客户端调用，消息长度: {len(prompt)} 字符")
+                response = await self.llm_client.chat.completions.create(
+                    model=model_name,
                     messages=messages,
                     temperature=0.2,
                     response_format={"type": "json_object"}
                 )
-                 content = response.choices[0].message.content
+                content = response.choices[0].message.content
+                logger.debug(f"[StrategyMatcher] LLM 返回内容长度: {len(content) if content else 0} 字符")
             else:
-                 # 可能是同步 client 或其他封装
-                 # 这里假设是标准 pattern，如果不是需调整
-                 return candidates
+                # 可能是同步 client 或其他封装
+                # 这里假设是标准 pattern，如果不是需调整
+                logger.warning("[StrategyMatcher] LLM 客户端不支持 chat 属性，跳过策略评分")
+                return candidates
 
             # 3. 解析结果
             result = json.loads(content)
-            scores_map = {item["strategy_name"]: item["score"] for item in result.get("scores", [])}
+            scores_list = result.get("scores", [])
+            scores_map = {item["strategy_name"]: item["score"] for item in scores_list}
+            
+            logger.info(f"[StrategyMatcher] LLM 评分结果解析成功，共 {len(scores_list)} 个策略评分")
+            for item in scores_list:
+                logger.debug(f"[StrategyMatcher] 策略评分 - {item.get('strategy_name')}: {item.get('score')} 分, 理由: {item.get('reason', '无')[:50]}...")
             
             # 4. 重新排序
             scored_candidates = []
@@ -291,12 +311,17 @@ class StrategyMatcher:
                 # new_score = score (LLM) vs priority (Hardcoded)
                 # 优先使用 LLM 分数
                 scored_candidates.append((float(score), strategy))
+                logger.debug(f"[StrategyMatcher] 策略 {strategy.strategy_name} 最终评分: {score}")
                 
+            logger.info(f"[StrategyMatcher] 策略评分完成，共 {len(scored_candidates)} 个候选策略")
             return scored_candidates
             
+        except json.JSONDecodeError as e:
+            logger.error(f"[StrategyMatcher] 解析 LLM 返回的 JSON 失败: {e}, 返回内容: {content[:200] if content else '空'}...")
+            return candidates
         except Exception as e:
-            print(f"Warning: Strategy scoring failed: {e}")
-            return candidates # 降级回原优先级
+            logger.error(f"[StrategyMatcher] 策略评分过程发生异常: {type(e).__name__}: {e}")
+            return candidates  # 降级回原优先级
 
     async def match_strategies(
         self, 
@@ -318,6 +343,8 @@ class StrategyMatcher:
         :param should_stop: 停止回调函数
         :return: 策略实例列表（按推荐优先级排序）
         """
+        logger.info(f"[StrategyMatcher] 开始匹配策略，max_strategies={max_strategies}, selected_modules={selected_modules}")
+        
         candidates: List[tuple[float, BaseStrategy]] = []
         
         # 获取所有模块策略类型的集合（用于快速判断）
@@ -325,6 +352,7 @@ class StrategyMatcher:
         
         # 当 selected_modules 有值时，只处理选中的模块策略
         if selected_modules and len(selected_modules) > 0:
+            logger.info(f"[StrategyMatcher] 模块策略模式：处理选中的 {len(selected_modules)} 个模块")
             for module_id in selected_modules:
                 strategy_type: str = MODULE_STRATEGY_MAP.get(module_id)
                 if strategy_type and strategy_type in STRATEGY_CLASSES:
@@ -334,12 +362,14 @@ class StrategyMatcher:
                         model_config=self.model_config,
                         semaphore=self.semaphore
                     )
-                    candidates.append((strategy.get_priority(diagnosis), strategy))
-                    # if strategy.is_applicable(diagnosis):
-                    #     priority: float = strategy.get_priority(diagnosis)
-                    #     candidates.append((priority, strategy))
+                    priority = strategy.get_priority(diagnosis)
+                    candidates.append((priority, strategy))
+                    logger.debug(f"[StrategyMatcher] 添加模块策略: module_id={module_id}, type={strategy_type}, priority={priority}")
+                else:
+                    logger.warning(f"[StrategyMatcher] 未找到模块策略: module_id={module_id}, strategy_type={strategy_type}")
         else:
             # 未指定模块时，遍历所有非模块策略
+            logger.info("[StrategyMatcher] 非模块策略模式：遍历所有非模块策略")
             for name, strategy_class in STRATEGY_CLASSES.items():
                 # 跳过所有模块策略
                 if name in all_module_strategy_types:
@@ -354,21 +384,32 @@ class StrategyMatcher:
                 if strategy.is_applicable(diagnosis):
                     priority: float = strategy.get_priority(diagnosis)
                     candidates.append((priority, strategy))
+                    logger.debug(f"[StrategyMatcher] 添加非模块策略: name={name}, priority={priority}")
+                else:
+                    logger.debug(f"[StrategyMatcher] 非模块策略不适用: name={name}")
+        
+        logger.info(f"[StrategyMatcher] 候选策略收集完成，共 {len(candidates)} 个")
         
         # --- 动态评分逻辑 ---
         # 如果有 LLM 客户端，且候选策略超过1个，则使用 LLM 评分
         if self.llm_client and len(candidates) > 1:
+            logger.info(f"[StrategyMatcher] 启用 LLM 动态评分，候选策略数量: {len(candidates)}")
             try:
                 candidates = await self.score_strategies(diagnosis, candidates, should_stop=should_stop)
             except Exception as e:
-                print(f"Error in dynamic scoring: {e}")
+                logger.error(f"[StrategyMatcher] LLM 动态评分失败: {type(e).__name__}: {e}")
                 # 出错时保持原有优先级
+        else:
+            logger.debug(f"[StrategyMatcher] 跳过 LLM 动态评分: llm_client={bool(self.llm_client)}, candidates={len(candidates)}")
         
         # 按分数/优先级降序排序
         candidates.sort(key=lambda x: x[0], reverse=True)
         
         # 返回前 N 个策略
-        return [strategy for _, strategy in candidates[:max_strategies]]
+        result_strategies = [strategy for _, strategy in candidates[:max_strategies]]
+        logger.info(f"[StrategyMatcher] 策略匹配完成，返回 {len(result_strategies)} 个策略: {[s.strategy_name for s in result_strategies]}")
+        
+        return result_strategies
 
     
     def get_preset_strategies(
