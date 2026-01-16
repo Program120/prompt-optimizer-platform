@@ -540,7 +540,7 @@ class ProjectReason(SQLModel, table=True):
     project_id: str = Field(foreign_key="projects.id", index=True)
 
     # Query 文本 (需要建索引以快速查找)
-    query: str = Field(index=True, sa_column=Column(Text))
+    query: str = Field(sa_column=Column(Text, index=True))
 
     # 预期结果
     target: str = Field(default="", sa_column=Column(Text))
