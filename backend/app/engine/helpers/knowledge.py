@@ -157,12 +157,18 @@ class OptimizationKnowledgeBase:
             # Added: Filtered clarification and multi-intent intents
             "clarification_intents": clarification_intents,
             "multi_intent_intents": multi_intent_intents,
-            # Added: Strategy selection details
+            # Added: Strategy selection details (Grouped for UI display)
+            "strategy_analysis": {
+                "best_strategy": best_strategy,
+                "selection_reason": strategy_selection_reason,
+                "evaluations": strategy_evaluations
+            },
+            # Backward compatibility (Optional, can be removed if frontend fully switches)
             "best_strategy": best_strategy,
             "strategy_selection_reason": strategy_selection_reason,
-            # Added: Validation set and strategy evaluations
             "validation_set": validation_set,
             "strategy_evaluations": strategy_evaluations,
+            
             "diff": self._compute_diff(original_prompt, optimized_prompt)
         }
         

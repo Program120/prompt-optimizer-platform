@@ -9,6 +9,14 @@ interface IterationDetailModalProps {
     onApply: (newPrompt: string, message?: string) => void;
 }
 
+/**
+ * 迭代详情模态框组件
+ * 显示迭代前后的提示词对比, 并允许用户应用或回退提示词
+ *
+ * @param selectedIteration 选中的迭代记录详情
+ * @param onClose 关闭模态框的回调函数
+ * @param onApply 应用版本的回调函数
+ */
 export default function IterationDetailModal({ selectedIteration, onClose, onApply }: IterationDetailModalProps) {
     const [diffResult, setDiffResult] = useState<any[]>([]);
     const [isDiffing, setIsDiffing] = useState(false);
@@ -82,11 +90,17 @@ export default function IterationDetailModal({ selectedIteration, onClose, onApp
     const isLargeContent = (selectedIteration.previous_prompt || "").length > TRUNCATE_LENGTH || (selectedIteration.optimized_prompt || "").length > TRUNCATE_LENGTH;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+            // 点击遮罩层关闭模态框
+            onClick={onClose}
+        >
             <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 className="glass w-full max-w-4xl p-6 rounded-3xl max-h-[85vh] overflow-y-auto"
+                // 阻止事件冒泡, 避免点击模态框内部触发关闭
+                onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex justify-between items-start mb-6">
                     <div>

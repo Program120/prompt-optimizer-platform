@@ -294,7 +294,8 @@ class StrategyMatcher:
             # 3. 解析结果
             result = json.loads(content)
             scores_list = result.get("scores", [])
-            scores_map = {item["strategy_name"]: item["score"] for item in scores_list}
+            # Map strategy_name -> (score, reason)
+            scores_map = {item["strategy_name"]: (item["score"], item.get("reason", "")) for item in scores_list}
             
             logger.info(f"[StrategyMatcher] LLM 评分结果解析成功，共 {len(scores_list)} 个策略评分")
             for item in scores_list:
@@ -304,13 +305,18 @@ class StrategyMatcher:
             scored_candidates = []
             for _, strategy in candidates:
                 # 尝试用 strategy_name 或 class name 匹配
-                score = scores_map.get(strategy.strategy_name, 0)
-                # 如果没匹配到，尝试用 type name (需要策略类有 type 属性或类似)
-                # 这里暂时只用 strategy_name，需确保 LLM 返回的一致
+                score_info = scores_map.get(strategy.strategy_name, (0, ""))
+                score = score_info[0]
+                reason = score_info[1]
                 
                 # 记录原来的优先级作为辅助参考
                 # new_score = score (LLM) vs priority (Hardcoded)
                 # 优先使用 LLM 分数
+                
+                # 将元数据附加到策略对象上(临时)
+                strategy.selection_score = float(score)
+                strategy.selection_reason = reason
+                
                 scored_candidates.append((float(score), strategy))
                 logger.debug(f"[StrategyMatcher] 策略 {strategy.strategy_name} 最终评分: {score}")
                 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Settings, Plus, Trash2, Edit2, Save, X, Loader2, Check } from "lucide-react";
+import { Settings, Plus, Trash2, Edit2, Save, X, Loader2, Check, Copy, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "./ui/Toast";
 
@@ -55,6 +55,8 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
     const [saving, setSaving] = useState<boolean>(false);
     // 测试连接状态
     const [testing, setTesting] = useState<string | null>(null);
+    // 是否显示退出确认弹窗
+    const [showExitConfirm, setShowExitConfirm] = useState<boolean>(false);
 
     // 编辑表单数据
     // 数值字段使用字符串存储，便于用户清空后重新输入
@@ -141,15 +143,16 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
 
     /**
      * 保存模型配置
+     * @returns 是否保存成功
      */
-    const handleSave = async (): Promise<void> => {
+    const handleSave = async (): Promise<boolean> => {
         if (!formData.name.trim()) {
             error("请输入模型名称");
-            return;
+            return false;
         }
         if (!formData.base_url.trim()) {
             error("请输入 Base URL");
-            return;
+            return false;
         }
 
         setSaving(true);
@@ -165,7 +168,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                 } catch {
                     error("Extra Body 格式错误，请输入有效的 JSON");
                     setSaving(false);
-                    return;
+                    return false;
                 }
             }
 
@@ -175,7 +178,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                 } catch {
                     error("Default Headers 格式错误，请输入有效的 JSON");
                     setSaving(false);
-                    return;
+                    return false;
                 }
             }
 
@@ -208,9 +211,11 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
 
             await fetchModels();
             cancelEdit();
+            return true;
         } catch (e) {
             console.error("保存失败", e);
             error("保存失败");
+            return false;
         } finally {
             setSaving(false);
         }
@@ -232,6 +237,39 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
         } catch (e) {
             console.error("删除失败", e);
             error("删除失败");
+        }
+    };
+
+    /**
+     * 复制模型配置
+     * @param model 要复制的模型
+     */
+    const handleCopy = async (model: GlobalModel): Promise<void> => {
+        setSaving(true);
+        try {
+            // 生成新名称：名称 - 复制
+            const newName = `${model.name} - 复制`;
+
+            const payload = {
+                name: newName,
+                base_url: model.base_url,
+                api_key: model.api_key,
+                model_name: model.model_name,
+                max_tokens: model.max_tokens,
+                temperature: model.temperature,
+                timeout: model.timeout,
+                extra_body: model.extra_body,
+                default_headers: model.default_headers
+            };
+
+            await axios.post(`${API_BASE}/global-models`, payload);
+            success("模型配置已复制");
+            await fetchModels();
+        } catch (e) {
+            console.error("复制失败", e);
+            error("复制失败");
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -268,6 +306,37 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
         } finally {
             setTesting(null);
         }
+    };
+
+    /**
+     * 处理关闭请求
+     * 如果有未保存的内容，显示确认弹窗
+     */
+    const handleCloseRequest = () => {
+        if (isCreating || editingId) {
+            setShowExitConfirm(true);
+        } else {
+            onClose();
+        }
+    };
+
+    /**
+     * 退出并保存
+     */
+    const handleSaveAndExit = async () => {
+        const result = await handleSave();
+        if (result) {
+            setShowExitConfirm(false);
+            onClose();
+        }
+    };
+
+    /**
+     * 直接退出（不保存）
+     */
+    const handleForceExit = () => {
+        setShowExitConfirm(false);
+        onClose();
     };
 
     /**
@@ -392,7 +461,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                     取消
                 </button>
                 <button
-                    onClick={handleSave}
+                    onClick={() => handleSave()}
                     disabled={saving}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm transition-colors disabled:opacity-50"
                 >
@@ -404,11 +473,15 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
     );
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+            onClick={handleCloseRequest}
+        >
             <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="glass w-full max-w-3xl p-8 rounded-3xl max-h-[85vh] overflow-hidden flex flex-col"
+                className="glass w-full max-w-3xl p-8 rounded-3xl max-h-[85vh] overflow-hidden flex flex-col relative"
+                onClick={(e) => e.stopPropagation()}
             >
                 {/* 标题栏 */}
                 <div className="flex items-center justify-between mb-6">
@@ -417,7 +490,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                         <h2 className="text-2xl font-bold">公共模型配置</h2>
                     </div>
                     <button
-                        onClick={onClose}
+                        onClick={handleCloseRequest}
                         className="p-2 hover:bg-white/10 rounded-lg transition-colors"
                     >
                         <X size={20} className="text-slate-400" />
@@ -484,6 +557,13 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                                                         )}
                                                     </button>
                                                     <button
+                                                        onClick={() => handleCopy(model)}
+                                                        className="p-2 hover:bg-white/10 rounded-lg transition-colors text-slate-400"
+                                                        title="复制配置"
+                                                    >
+                                                        <Copy size={16} />
+                                                    </button>
+                                                    <button
                                                         onClick={() => startEdit(model)}
                                                         className="p-2 hover:bg-white/10 rounded-lg transition-colors text-blue-400"
                                                         title="编辑"
@@ -527,12 +607,54 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                         添加模型配置
                     </button>
                     <button
-                        onClick={onClose}
+                        onClick={handleCloseRequest}
                         className="px-6 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium text-sm border border-white/10"
                     >
                         关闭
                     </button>
                 </div>
+
+                {/* 退出的确认弹窗 */}
+                {showExitConfirm && (
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-8 z-50 rounded-3xl" onClick={(e) => e.stopPropagation()}>
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-slate-900 border border-white/10 p-6 rounded-2xl max-w-sm w-full shadow-2xl"
+                        >
+                            <div className="flex flex-col items-center text-center mb-6">
+                                <div className="w-12 h-12 bg-yellow-500/20 rounded-full flex items-center justify-center text-yellow-500 mb-4">
+                                    <AlertTriangle size={24} />
+                                </div>
+                                <h3 className="text-xl font-bold mb-2">确认退出？</h3>
+                                <p className="text-slate-400 text-sm">
+                                    您当前有未保存的编辑内容。如果直接退出，所有更改将丢失。
+                                </p>
+                            </div>
+                            <div className="space-y-3">
+                                <button
+                                    onClick={handleSaveAndExit}
+                                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-medium transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <Save size={16} />
+                                    退出并保存
+                                </button>
+                                <button
+                                    onClick={handleForceExit}
+                                    className="w-full py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 font-medium transition-colors border border-red-500/20"
+                                >
+                                    退出（放弃更改）
+                                </button>
+                                <button
+                                    onClick={() => setShowExitConfirm(false)}
+                                    className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 font-medium transition-colors"
+                                >
+                                    取消
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
             </motion.div>
         </div>
     );

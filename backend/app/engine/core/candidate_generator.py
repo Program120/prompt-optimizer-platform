@@ -153,10 +153,16 @@ class CandidateGenerator:
             else:
                 logger.info(f"策略 {strategy.name} 未产生任何实质性变更。")
             
+            # 提取策略选择元数据
+            selection_score = getattr(strategy, "selection_score", 0)
+            selection_reason = getattr(strategy, "selection_reason", "")
+            
             return {
                 "strategy": strategy.name,
                 "prompt": new_prompt,
-                "original_prompt": prompt
+                "original_prompt": prompt,
+                "selection_score": selection_score,
+                "selection_reason": selection_reason
             }
         except Exception as e:
             logger.error(f"应用策略 {strategy.name} 时发生错误: {e}")

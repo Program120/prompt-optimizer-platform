@@ -174,9 +174,17 @@ async def select_best(
             ctx.best_result = prompt_evaluator.select_best_candidate(
                 ctx.filtered_candidates, ctx.prompt
             )
-            ctx.strategy_selection_reason = (
-                f"在该策略下验证集评估得分最高: {ctx.best_result.get('score', 0):.4f}"
-            )
+            # 获取选择理由元数据
+            selection_reason = ctx.best_result.get("selection_reason", "")
+            selection_score = ctx.best_result.get("selection_score", 0)
+            
+            reason_parts = []
+            if selection_reason:
+                reason_parts.append(f"策略匹配理由: {selection_reason} (匹配得分: {selection_score})")
+            
+            reason_parts.append(f"验证集评估得分: {ctx.best_result.get('score', 0):.4f}")
+            
+            ctx.strategy_selection_reason = "\n".join(reason_parts)
         except Exception as e:
             logger.error(f"选择最佳方案时发生异常: {e}, 默认选择第一个。")
             ctx.best_result = ctx.filtered_candidates[0]

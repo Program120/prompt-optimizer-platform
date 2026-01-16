@@ -92,7 +92,7 @@ async def record_knowledge(
                     "strategy": c.get("strategy"),
                     "score": c.get("score"),
                     "prompt_len": len(c.get("prompt", "")),
-                    "prompt_preview": c.get("prompt", "")[:50] + "..." if c.get("prompt") else ""
+                    "prompt_preview": c.get("prompt", "")[:500] + "..." if c.get("prompt") else ""
                 }
                 for c in ctx.filtered_candidates
             ]
