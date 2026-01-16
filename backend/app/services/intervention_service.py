@@ -96,37 +96,88 @@ def import_dataset_to_interventions(
     file_id: str = ""
 ) -> int:
     """
-    批量导入数据集到意图干预库
+    批量导入数据集到意图干预库 (优化版: 批量提交)
     """
-    count = 0
     try:
-        for _, row in df.iterrows():
-            q = row.get(query_col)
-            t = row.get(target_col)
-            r = None
-            if reason_col and reason_col in df.columns:
-                r = row.get(reason_col)
+        from datetime import datetime
+        
+        # 1. 获取现有数据映射 {query: intervention}
+        with get_db_session() as session:
+            statement = select(IntentIntervention).where(
+                IntentIntervention.project_id == project_id
+            )
+            if file_id:
+                statement = statement.where(IntentIntervention.file_id == file_id)
             
-            if pd.notna(q):
+            existing_records = session.exec(statement).all()
+            existing_map = {r.query: r for r in existing_records}
+            
+            new_objects = []
+            updated_count = 0
+            
+            # 2. 遍历 DataFrame
+            for _, row in df.iterrows():
+                q = row.get(query_col)
+                if pd.isna(q):
+                    continue
+                
+                query_str = str(q)
+                t = row.get(target_col)
                 target_val = str(t) if pd.notna(t) else ""
                 
-                # 检查是否存在，存在则跳过 (避免覆盖用户的修改)
-                # 或者：仅当 DB 为空时才调用此函数。目前逻辑是 DB 为空时才自动导入。
-                # Update: 这里直接 Upsert，但需要注意 initial import 时 original_target = target
+                r = None
+                if reason_col and reason_col in df.columns:
+                    r_val = row.get(reason_col)
+                    r = str(r_val) if pd.notna(r_val) else ""
+                else:
+                    r = ""
                 
-                upsert_intervention(
-                    project_id=project_id,
-                    query=str(q),
-                    target=target_val,
-                    reason=str(r) if pd.notna(r) else "",
-                    is_import=True, # Flag to indicate this is an import
-                    file_id=file_id
-                )
-                count += 1
-        logger.info(f"Imported {count} interventions for project {project_id}")
-        return count
+                # 3. 检查是否存在
+                if query_str in existing_map:
+                    # Update existing
+                    existing_obj = existing_map[query_str]
+                    
+                    # 仅当内容有变化时才更新 (这里简化逻辑，直接赋值，SQLAlchemy 会处理脏检查)
+                    existing_obj.target = target_val
+                    existing_obj.reason = r
+                    existing_obj.updated_at = datetime.now().isoformat()
+                    
+                    # Target Modification Check
+                    if existing_obj.original_target is not None:
+                        existing_obj.is_target_modified = (existing_obj.target != existing_obj.original_target)
+                    
+                    # Import default logic: if original is None, fill it
+                    if existing_obj.original_target is None:
+                        existing_obj.original_target = target_val
+                        existing_obj.is_target_modified = False
+                        
+                    session.add(existing_obj)
+                    updated_count += 1
+                else:
+                    # Create new
+                    new_obj = IntentIntervention(
+                        project_id=project_id,
+                        query=query_str,
+                        target=target_val,
+                        reason=r,
+                        original_target=target_val,
+                        is_target_modified=False,
+                        file_id=file_id
+                    )
+                    new_objects.append(new_obj)
+            
+            # 4. 批量提交
+            if new_objects:
+                session.add_all(new_objects)
+            
+            total_affected = len(new_objects) + updated_count
+            session.commit()
+            
+            logger.info(f"Batch imported {total_affected} interventions (New: {len(new_objects)}, Updated: {updated_count}) for project {project_id}")
+            return total_affected
+            
     except Exception as e:
-        logger.error(f"Failed to import dataset: {e}")
+        logger.error(f"Failed to batch import dataset: {e}")
         return 0
 
 
