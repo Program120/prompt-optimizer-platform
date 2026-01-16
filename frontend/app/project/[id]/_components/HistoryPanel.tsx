@@ -187,6 +187,7 @@ export default function HistoryPanel({
                     <RunLogTab
                         taskId={taskStatus?.id}
                         totalCount={taskStatus?.total_count}
+                        currentIndex={taskStatus?.current_index}
                         reasons={reasons}
                         saveReason={saveReason}
                         onSelectLog={onSelectLog}

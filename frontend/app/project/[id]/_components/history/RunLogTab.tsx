@@ -6,12 +6,13 @@ const API_BASE = "/api";
 interface RunLogTabProps {
     taskId?: string;
     totalCount?: number; // From taskStatus
+    currentIndex?: number; // 当前处理进度，用于实时刷新
     reasons: Record<string, any>;
     saveReason: (query: string, reason: string, target: string) => Promise<void>;
     onSelectLog: (log: any) => void;
 }
 
-export default function RunLogTab({ taskId, totalCount, reasons, saveReason, onSelectLog }: RunLogTabProps) {
+export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, saveReason, onSelectLog }: RunLogTabProps) {
     // Local State for Pagination & Data
     const [results, setResults] = useState<any[]>([]);
     const [page, setPage] = useState(1);
@@ -55,6 +56,18 @@ export default function RunLogTab({ taskId, totalCount, reasons, saveReason, onS
             fetchResults(1, true, searchQuery);
         }
     }, [taskId]);
+
+    // 实时更新：每隔3秒刷新一次数据（当任务有新进度时）
+    useEffect(() => {
+        if (!taskId || !currentIndex) return;
+
+        // 当有新进度时，定期刷新
+        const interval = setInterval(() => {
+            fetchResults(1, true, searchQuery);
+        }, 3000);
+
+        return () => clearInterval(interval);
+    }, [taskId, currentIndex && currentIndex > 0 ? Math.floor(currentIndex / 10) : 0]);
 
     // Search Debounce
     useEffect(() => {

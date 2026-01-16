@@ -326,7 +326,8 @@ export default function ProjectDetail() {
     const fetchTaskStatus = async () => {
         if (!taskStatus?.id) return;
         try {
-            const res = await axios.get(`${API_BASE}/tasks/${taskStatus.id}?include_results=false`);
+            // 使用 include_results=true 以获取 errors 数组用于实时显示错误详情
+            const res = await axios.get(`${API_BASE}/tasks/${taskStatus.id}?include_results=true`);
             const newData = res.data;
             setTaskStatus(newData);
 
