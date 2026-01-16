@@ -547,6 +547,10 @@ class IntentIntervention(SQLModel, table=True):
 
     # 标注原因
     reason: str = Field(default="", sa_column=Column(Text))
+    
+    # 新增字段：意图干预增强
+    original_target: Optional[str] = Field(default=None, sa_column=Column(Text)) # 原始 Target
+    is_target_modified: bool = Field(default=False) # 是否修改过 Target
 
     # 创建时间
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
@@ -565,7 +569,8 @@ class IntentIntervention(SQLModel, table=True):
             "query": self.query,
             "target": self.target,
             "reason": self.reason,
+            "original_target": self.original_target,
+            "is_target_modified": self.is_target_modified,
             "created_at": self.created_at,
             "updated_at": self.updated_at
         }
-

@@ -36,7 +36,8 @@ def get_interventions_paginated(
     project_id: str, 
     page: int = 1, 
     page_size: int = 50,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    filter_type: Optional[str] = None # 'all', 'modified', 'reason_added'
 ) -> Dict[str, Any]:
     """
     分页获取意图干预数据
@@ -47,6 +48,12 @@ def get_interventions_paginated(
             
             # Base query
             query = select(IntentIntervention).where(IntentIntervention.project_id == project_id)
+            
+            # Filter Type
+            if filter_type == "modified":
+                query = query.where(IntentIntervention.is_target_modified == True)
+            elif filter_type == "reason_added":
+                query = query.where(IntentIntervention.reason != "")
             
             # Search
             if search:
@@ -97,9 +104,18 @@ def import_dataset_to_interventions(
             if pd.notna(q):
                 upsert_intervention(
                     project_id=project_id,
+                target_val = str(t) if pd.notna(t) else ""
+                
+                # 检查是否存在，存在则跳过 (避免覆盖用户的修改)
+                # 或者：仅当 DB 为空时才调用此函数。目前逻辑是 DB 为空时才自动导入。
+                # Update: 这里直接 Upsert，但需要注意 initial import 时 original_target = target
+                
+                upsert_intervention(
+                    project_id=project_id,
                     query=str(q),
-                    target=str(t) if pd.notna(t) else "",
-                    reason=str(r) if pd.notna(r) else ""
+                    target=target_val,
+                    reason=str(r) if pd.notna(r) else "",
+                    is_import=True # Flag to indicate this is an import
                 )
                 count += 1
         logger.info(f"Imported {count} interventions for project {project_id}")
@@ -120,7 +136,7 @@ def get_intervention_map(project_id: str) -> Dict[str, str]:
     return {r.query: r.reason for r in interventions if r.reason}
 
 
-def upsert_intervention(project_id: str, query: str, reason: str, target: str = "") -> Optional[IntentIntervention]:
+def upsert_intervention(project_id: str, query: str, reason: str, target: str = "", is_import: bool = False) -> Optional[IntentIntervention]:
     """
     添加或更新意图干预项
     
@@ -145,7 +161,16 @@ def upsert_intervention(project_id: str, query: str, reason: str, target: str = 
             if existing:
                 existing.reason = reason
                 existing.target = target
-                # existing.updated_at = datetime.now(...) # SQLModel usually handles defaults, but good to update
+                
+                # Check target modification
+                if existing.original_target is not None:
+                    existing.is_target_modified = (existing.target != existing.original_target)
+                
+                # 如果是导入模式，且 original_target 为空，则补充 original_target
+                if is_import and existing.original_target is None:
+                    existing.original_target = target
+                    existing.is_target_modified = False
+
                 session.add(existing)
                 session.commit()
                 session.refresh(existing)
@@ -156,7 +181,9 @@ def upsert_intervention(project_id: str, query: str, reason: str, target: str = 
                     project_id=project_id,
                     query=query,
                     reason=reason,
-                    target=target
+                    target=target,
+                    original_target=target, # 新建时，原始值即为当前值
+                    is_target_modified=False
                 )
                 session.add(new_intervention)
                 session.commit()
@@ -166,6 +193,36 @@ def upsert_intervention(project_id: str, query: str, reason: str, target: str = 
     except Exception as e:
         logger.error(f"Failed to upsert intervention for project {project_id}, query {query[:20]}...: {e}")
         return None
+
+
+def reset_intervention(project_id: str, query: str) -> bool:
+    """
+    重置单条干预记录：恢复 Target 为 Original Target，清空 Reason
+    """
+    try:
+        with get_db_session() as session:
+            statement = select(IntentIntervention).where(
+                IntentIntervention.project_id == project_id,
+                IntentIntervention.query == query
+            )
+            existing = session.exec(statement).first()
+            if existing:
+                # 恢复原始 Target (如果有)
+                if existing.original_target is not None:
+                    existing.target = existing.original_target
+                
+                # 清空 Reason
+                existing.reason = ""
+                existing.is_target_modified = False
+                
+                session.add(existing)
+                session.commit()
+                logger.info(f"Reset intervention for query: {query[:20]}... in project {project_id}")
+                return True
+            return False
+    except Exception as e:
+        logger.error(f"Failed to reset intervention: {e}")
+        return False
 
 
 def delete_intervention(project_id: str, query: str) -> bool:

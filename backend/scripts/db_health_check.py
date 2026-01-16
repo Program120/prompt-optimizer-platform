@@ -435,6 +435,21 @@ def check_and_migrate_schema() -> None:
             "''",
             None
         ),
+        # 新增：IntentIntervention 增强字段
+        (
+            "intent_interventions",
+            "original_target",
+            "TEXT",
+            "NULL",
+            None
+        ),
+        (
+            "intent_interventions",
+            "is_target_modified",
+            "BOOLEAN",
+            "0",
+            None
+        ),
     ]
     
     conn: sqlite3.Connection = sqlite3.connect(db_path)

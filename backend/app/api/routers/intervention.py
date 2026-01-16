@@ -28,6 +28,12 @@ class InterventionResponse(BaseModel):
     query: str
     reason: str
     target: str
+    target: str
+    original_target: Optional[str] = None
+    is_target_modified: bool = False
+    target: str
+    original_target: Optional[str] = None
+    is_target_modified: bool = False
     updated_at: str
 
 @router.get("/projects/{project_id}/interventions", response_model=Dict[str, Any])
@@ -35,7 +41,8 @@ async def list_interventions(
     project_id: str, 
     page: int = 1, 
     page_size: int = 50,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    filter_type: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     获取项目下所有意图干预数据 (分页)
@@ -43,7 +50,7 @@ async def list_interventions(
     # logger.info(f"Fetching interventions for project: {project_id}, page: {page}")
     try:
         # 使用分页获取
-        result = intervention_service.get_interventions_paginated(project_id, page, page_size, search)
+        result = intervention_service.get_interventions_paginated(project_id, page, page_size, search, filter_type)
         # Convert items to dict
         result["items"] = [r.to_dict() for r in result["items"]]
         return result
@@ -94,6 +101,26 @@ async def delete_intervention(project_id: str, query: str) -> Dict[str, str]:
         raise
     except Exception as e:
         logger.error(f"Error deleting intervention: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class InterventionResetRequest(BaseModel):
+    query: str
+
+@router.post("/projects/{project_id}/interventions/reset")
+async def reset_intervention(project_id: str, request: InterventionResetRequest) -> Dict[str, Any]:
+    """
+    重置干预项
+    """
+    logger.info(f"Resetting intervention for project {project_id}, query: {request.query[:20]}...")
+    try:
+        success = intervention_service.reset_intervention(project_id, request.query)
+        if not success:
+             raise HTTPException(status_code=404, detail="Intervention not found")
+        return {"message": "Reset successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resetting intervention: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 class InterventionImportRequest(BaseModel):

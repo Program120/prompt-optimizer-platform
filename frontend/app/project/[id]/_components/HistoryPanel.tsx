@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy, Layers, TrendingUp, Trash2, Edit3, Save, Search } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy, Layers, TrendingUp, Trash2, Edit3, Save, Search, RotateCcw } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -68,6 +68,7 @@ export default function HistoryPanel({
     const [intentTotal, setIntentTotal] = useState(0);
     const [intentLoading, setIntentLoading] = useState(false);
     const [intentSearch, setIntentSearch] = useState("");
+    const [intentFilter, setIntentFilter] = useState("all"); // all, modified, reason_added
 
     // Fetch Intent Data
     const fetchIntentData = async (pageNum: number = 1, search: string = "") => {
@@ -76,6 +77,7 @@ export default function HistoryPanel({
         try {
             let url = `${API_BASE}/projects/${project.id}/interventions?page=${pageNum}&page_size=20`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (intentFilter !== "all") url += `&filter_type=${intentFilter}`;
 
             const res = await fetch(url);
             if (res.ok) {
@@ -92,7 +94,7 @@ export default function HistoryPanel({
         if (activeTab === "intent") {
             fetchIntentData(intentPage, intentSearch);
         }
-    }, [activeTab, intentPage, intentSearch, project?.id]);
+    }, [activeTab, intentPage, intentSearch, intentFilter, project?.id]);
 
     // Intent CRUD
     const handleAddIntentRow = async () => {
@@ -109,6 +111,22 @@ export default function HistoryPanel({
 
     const handleExportIntent = () => {
         window.open(`${API_BASE}/projects/${project?.id}/interventions/export`, '_blank');
+    };
+
+    const handleResetIntervention = async (query: string) => {
+        if (!window.confirm("确定要重置这条记录吗？\n这将恢复原始 Target 并清空失败原因。")) return;
+        try {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/interventions/reset`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query })
+            });
+            if (res.ok) {
+                fetchIntentData(intentPage, intentSearch);
+            } else {
+                alert("重置失败");
+            }
+        } catch (e) { console.error(e); alert("重置出错"); }
     };
 
     // Debounce search
@@ -1063,37 +1081,54 @@ export default function HistoryPanel({
                     <div className="space-y-3">
                         {/* Toolbar */}
                         <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5 mb-4 space-y-3">
+                            {/* Filter & Actions Row */}
                             <div className="flex justify-between items-center gap-4">
-                                {/* Search */}
-                                <div className="flex-1 flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-lg border border-white/5">
-                                    <Search size={14} className="text-slate-500" />
-                                    <input
-                                        type="text"
-                                        value={intentSearch}
-                                        onChange={(e) => setIntentSearch(e.target.value)}
-                                        className="bg-transparent border-none text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-0 w-full"
-                                        placeholder="搜索 Query, 预期结果 或 原因..."
-                                    />
-                                    {intentSearch && (
-                                        <button onClick={() => setIntentSearch("")} className="text-slate-600 hover:text-slate-400">
-                                            <X size={12} />
-                                        </button>
-                                    )}
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-400">筛选:</span>
+                                    <select
+                                        value={intentFilter}
+                                        onChange={(e) => {
+                                            setIntentFilter(e.target.value);
+                                            setIntentPage(1);
+                                        }}
+                                        className="bg-black/20 border border-white/10 rounded px-2 py-1.5 text-xs text-slate-300 outline-none focus:border-blue-500/50"
+                                    >
+                                        <option value="all">全部数据</option>
+                                        <option value="modified">意图干预 (Target 修改)</option>
+                                        <option value="reason_added">原因干预 (Reason 标注)</option>
+                                    </select>
                                 </div>
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={handleAddIntentRow}
-                                        className="px-3 py-1.5 text-xs bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors flex items-center gap-1"
+                                        onClick={() => handleAddIntentRow()}
+                                        className="px-3 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded text-xs border border-blue-500/20 flex items-center gap-1"
                                     >
-                                        <Edit3 size={12} /> 新增数据
+                                        <Edit3 size={12} /> 新增
                                     </button>
                                     <button
                                         onClick={handleExportIntent}
-                                        className="px-3 py-1.5 text-xs bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors flex items-center gap-1"
+                                        className="px-3 py-1.5 bg-white/5 text-slate-400 hover:text-slate-300 rounded text-xs flex items-center gap-1 border border-white/10"
                                     >
-                                        <Download size={12} /> 导出全部
+                                        <Download size={12} /> 导出
                                     </button>
                                 </div>
+                            </div>
+
+                            {/* Search */}
+                            <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-lg border border-white/5">
+                                <Search size={14} className="text-slate-500" />
+                                <input
+                                    type="text"
+                                    value={intentSearch}
+                                    onChange={(e) => setIntentSearch(e.target.value)}
+                                    className="bg-transparent border-none text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-0 w-full"
+                                    placeholder="搜索 Query, 预期结果 或 原因..."
+                                />
+                                {intentSearch && (
+                                    <button onClick={() => setIntentSearch("")} className="text-slate-600 hover:text-slate-400">
+                                        <X size={12} />
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -1105,32 +1140,34 @@ export default function HistoryPanel({
                                 {intentItems.map((item: any, idx: number) => {
                                     const isEditing = editingReason?.query === item.query;
                                     return (
-                                        <div key={item.id || idx} className="p-4 rounded-xl border border-white/5 bg-white/5 gap-3 flex flex-col group">
-                                            {/* Header: Query & Actions */}
-                                            <div className="flex justify-between items-start border-b border-white/5 pb-2 mb-2">
-                                                <div className="flex gap-2 items-center flex-1">
-                                                    <span className="text-xs font-mono text-slate-300 break-all">{item.query}</span>
+                                        <div key={item.id || idx} className="p-4 rounded-xl border border-white/5 bg-white/5 gap-3 flex flex-col group relative">
+                                            {/* Header: Query & Badges */}
+                                            <div className="mb-2">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className="text-indigo-400 font-medium text-xs">Query</span>
+                                                    {item.is_target_modified && (
+                                                        <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 text-[10px] rounded border border-indigo-500/30">
+                                                            意图干预
+                                                        </span>
+                                                    )}
+                                                    {item.reason && (
+                                                        <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] rounded border border-amber-500/30">
+                                                            原因干预
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <button
-                                                    onClick={() => {
-                                                        if (window.confirm("确定删除此条数据吗?")) {
-                                                            deleteReason(item.query).then(() => fetchIntentData(intentPage, intentSearch));
-                                                        }
-                                                    }}
-                                                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
-                                                    title="删除"
-                                                >
-                                                    <Trash2 size={12} />
-                                                </button>
+                                                <div className="bg-black/20 p-2 rounded border border-white/5 text-slate-300 min-h-[36px] break-all text-xs font-mono">
+                                                    {item.query}
+                                                </div>
                                             </div>
 
                                             {/* Body: Target & Reason (Editable) */}
                                             {isEditing ? (
-                                                <div className="space-y-2">
+                                                <div className="space-y-2 bg-black/20 p-3 rounded-lg border border-white/5">
                                                     <div className="space-y-1">
                                                         <label className="text-[10px] text-slate-500">预期结果 (Target)</label>
                                                         <textarea
-                                                            className="w-full bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
+                                                            className="w-full bg-black/40 border border-white/10 rounded p-1.5 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
                                                             rows={2}
                                                             value={editingReason?.target || ""}
                                                             onChange={(e) => setEditingReason(prev => prev ? { ...prev, target: e.target.value } : null)}
@@ -1139,7 +1176,7 @@ export default function HistoryPanel({
                                                     <div className="space-y-1">
                                                         <label className="text-[10px] text-slate-500">原因 (Reason)</label>
                                                         <textarea
-                                                            className="w-full bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-amber-500/50 outline-none resize-none"
+                                                            className="w-full bg-black/40 border border-white/10 rounded p-1.5 text-xs text-slate-300 focus:border-amber-500/50 outline-none resize-none"
                                                             rows={2}
                                                             value={editingReason?.value || ""}
                                                             onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
@@ -1153,13 +1190,13 @@ export default function HistoryPanel({
                                                                     fetchIntentData(intentPage, intentSearch);
                                                                 }
                                                             }}
-                                                            className="px-2 py-1 text-xs bg-emerald-500/10 text-emerald-400 rounded hover:bg-emerald-500/20"
+                                                            className="px-3 py-1 text-xs bg-emerald-500/10 text-emerald-400 rounded hover:bg-emerald-500/20 border border-emerald-500/20"
                                                         >
                                                             保存
                                                         </button>
                                                         <button
                                                             onClick={() => setEditingReason(null)}
-                                                            className="px-2 py-1 text-xs bg-slate-500/10 text-slate-400 rounded hover:bg-slate-500/20"
+                                                            className="px-3 py-1 text-xs bg-slate-500/10 text-slate-400 rounded hover:bg-slate-500/20 border border-white/10"
                                                         >
                                                             取消
                                                         </button>
@@ -1167,24 +1204,55 @@ export default function HistoryPanel({
                                                 </div>
                                             ) : (
                                                 <div
-                                                    className="space-y-3 cursor-pointer hover:bg-white/5 rounded transition-colors -m-2 p-2"
+                                                    className="space-y-3 cursor-pointer hover:bg-white/5 rounded transition-colors -m-2 p-2 relative group/item"
                                                     onClick={() => setEditingReason({ query: item.query, target: item.target, value: item.reason })}
                                                 >
                                                     <div className="grid grid-cols-1 gap-2">
                                                         <div>
                                                             <span className="text-[10px] text-slate-500 block mb-0.5">预期结果:</span>
-                                                            <div className="text-xs text-slate-400">{item.target || <span className="text-slate-600 italic">未设置</span>}</div>
+                                                            <div className="text-xs text-slate-400 break-words">{item.target || <span className="text-slate-600 italic">未设置</span>}</div>
                                                         </div>
                                                         <div>
                                                             <span className="text-[10px] text-amber-500/70 block mb-0.5">标注原因:</span>
-                                                            <div className="text-xs text-amber-500/90">{item.reason || <span className="text-slate-600 italic">未设置</span>}</div>
+                                                            <div className="text-xs text-amber-500/90 break-words">{item.reason || <span className="text-slate-600 italic">未设置</span>}</div>
                                                         </div>
                                                     </div>
-                                                    <div className="text-[10px] text-slate-600 text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        点击编辑
+                                                    <div className="absolute right-2 top-2 text-[10px] text-blue-400/50 opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center gap-1 bg-black/40 px-2 py-0.5 rounded-full">
+                                                        <Edit3 size={10} /> 点击编辑
                                                     </div>
                                                 </div>
                                             )}
+
+                                            {/* Footer: Date & Actions */}
+                                            <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
+                                                <span className="text-[10px] text-slate-600">
+                                                    更新于: {new Date(item.updated_at).toLocaleString()}
+                                                </span>
+                                                <div className="flex gap-1">
+                                                    {/* Reset Button */}
+                                                    {(item.is_target_modified || item.reason) && (
+                                                        <button
+                                                            onClick={() => handleResetIntervention(item.query)}
+                                                            className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                                                            title="重置为原始值 (清除干预)"
+                                                        >
+                                                            <RotateCcw size={14} />
+                                                        </button>
+                                                    )}
+                                                    {/* Delete Button */}
+                                                    <button
+                                                        onClick={() => {
+                                                            if (window.confirm("确定删除此条数据吗?")) {
+                                                                deleteReason(item.query).then(() => fetchIntentData(intentPage, intentSearch));
+                                                            }
+                                                        }}
+                                                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                                        title="删除"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     );
                                 })}
