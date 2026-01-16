@@ -198,6 +198,13 @@ class TaskManager:
         extract_field = info.get("extract_field")
         model_config = info.get("model_config", {"base_url": "https://api.openai.com/v1", "api_key": ""})
 
+        # 调试日志：打印 DataFrame 信息和使用的列名
+        logger.info(f"[Task {task_id}] DataFrame columns: {list(df.columns)}")
+        logger.info(f"[Task {task_id}] Using columns - query: '{query_col}', target: '{target_col}', reason: '{reason_col}'")
+        if len(df) > 0:
+            sample_row = df.iloc[0]
+            logger.info(f"[Task {task_id}] Sample row[0] - query: '{sample_row.get(query_col, 'N/A')}', target: '{sample_row.get(target_col, 'N/A')}'")
+
         concurrency = int(model_config.get("concurrency", 1))
 
         # Apply validation limit if set
@@ -427,10 +434,13 @@ class TaskManager:
             # 内存中的任务包含了 results，如果不需要，我们可以过滤掉以减少传输
             task_info = self.tasks[task_id]["info"]
             if not include_results:
-                # 返回副本并去除 heavy 字段
+                # 返回副本并去除 heavy 字段，但保留计数信息用于前端显示准确率
                 info_copy = task_info.copy()
-                info_copy.pop("results", None)
-                info_copy.pop("errors", None)
+                results = info_copy.pop("results", [])
+                errors = info_copy.pop("errors", [])
+                # 添加计数信息
+                info_copy["results_count"] = len(results)
+                info_copy["errors_count"] = len(errors)
                 return info_copy
             return task_info
             

@@ -373,9 +373,15 @@ export default function ExecutionPanel({
                             <div className="text-right">
                                 <span className="text-sm font-medium text-slate-400">准确率: </span>
                                 <span className="text-lg font-bold text-emerald-400">
-                                    {taskStatus.results?.length > 0
-                                        ? (((taskStatus.results.length - taskStatus.errors.length) / taskStatus.results.length) * 100).toFixed(1)
-                                        : "0.0"}%
+                                    {(() => {
+                                        // 优先使用 count 字段 (轻量级轮询)，否则回退到 length 计算
+                                        const resultsCount = taskStatus.results_count ?? taskStatus.results?.length ?? 0;
+                                        const errorsCount = taskStatus.errors_count ?? taskStatus.errors?.length ?? 0;
+                                        if (resultsCount > 0) {
+                                            return (((resultsCount - errorsCount) / resultsCount) * 100).toFixed(1);
+                                        }
+                                        return "0.0";
+                                    })()}%
                                 </span>
                             </div>
                         </div>

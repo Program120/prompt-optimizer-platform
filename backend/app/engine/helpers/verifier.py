@@ -164,6 +164,9 @@ class Verifier:
         # 使用统一提取器
         extracted_val = ResultExtractor.extract(output, extract_field)
         
+        # 调试日志
+        logger.debug(f"[Verifier] check_match - target: '{target}', extract_field: '{extract_field}', extracted_val: '{extracted_val}', output[:100]: '{output[:100]}'")
+        
         # 1. 提取到具体值的情况
         if extracted_val is not None:
             # 如果提取结果是字典（说明 extract_field 为空或无效），需要遍历值
@@ -175,7 +178,9 @@ class Verifier:
                 # 提取到了具体值（布尔或字符串等）
                 if isinstance(extracted_val, bool):
                     return extracted_val
-                return str(extracted_val).lower() == target
+                result = str(extracted_val).lower() == target
+                logger.debug(f"[Verifier] Extracted comparison: '{str(extracted_val).lower()}' == '{target}' => {result}")
+                return result
         
         # 2. 兜底逻辑：直接匹配字符串
         if target == output:
