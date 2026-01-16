@@ -142,7 +142,7 @@ class OptimizationContext(BaseModel):
     max_strategies: int = 1
     project_id: Optional[str] = None
     selected_modules: Optional[List[int]] = None
-    custom_extraction_code: Optional[str] = None
+    extraction_rule: Optional[str] = None
     strategy_selection_reason: Optional[str] = None
     
     # 阶段结果

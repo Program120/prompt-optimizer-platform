@@ -128,7 +128,7 @@ async def generate_candidates(
         )
         
         ctx.filtered_candidates = await prompt_evaluator.rapid_evaluation(
-            ctx.candidates, validation_set, ctx.should_stop
+            ctx.candidates, validation_set, ctx.should_stop, ctx.extraction_rule
         )
     except Exception as e:
         logger.error(f"快速评估筛选候选方案失败: {e}")

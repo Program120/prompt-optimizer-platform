@@ -138,7 +138,8 @@ class PromptEvaluator:
         self, 
         candidates: List[Dict[str, Any]], 
         validation_set: List[Dict[str, Any]],
-        should_stop: Optional[Callable[[], bool]] = None
+        should_stop: Optional[Callable[[], bool]] = None,
+        extraction_rule: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         快速评估候选效果（支持取消）
@@ -181,7 +182,7 @@ class PromptEvaluator:
                 break
                 
             score: float = await self.evaluate_prompt(
-                cand["prompt"], validation_set, should_stop
+                cand["prompt"], validation_set, should_stop, extraction_rule
             )
             logger.info(
                 f"[快速筛选] 策略 '{cand['strategy']}' 评估完毕: 得分 = {score:.4f}"
@@ -197,7 +198,8 @@ class PromptEvaluator:
         self, 
         prompt: str, 
         test_cases: List[Dict[str, Any]],
-        should_stop: Optional[Callable[[], bool]] = None
+        should_stop: Optional[Callable[[], bool]] = None,
+        extraction_rule: Optional[str] = None
     ) -> float:
         """
         评估 Prompt 在测试集上的表现 (0-1)（支持取消）
@@ -254,7 +256,8 @@ class PromptEvaluator:
                             query=query,
                             target=target,
                             prompt=prompt,
-                            model_config=config
+                            model_config=config,
+                            extract_field=extraction_rule
                         )
                     )
                     

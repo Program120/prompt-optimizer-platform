@@ -524,3 +524,48 @@ class AutoIterateStatus(SQLModel, table=True):
             pass
             
         return result
+
+
+class ProjectReason(SQLModel, table=True):
+    """
+    项目原因库
+    存储 Query 的标注原因，用于后续优化
+    """
+    __tablename__ = "project_reasons"
+
+    # 主键 ID
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # 外键：关联项目
+    project_id: str = Field(foreign_key="projects.id", index=True)
+
+    # Query 文本 (需要建索引以快速查找)
+    query: str = Field(index=True, sa_column=Column(Text))
+
+    # 预期结果
+    target: str = Field(default="", sa_column=Column(Text))
+
+    # 标注原因
+    reason: str = Field(default="", sa_column=Column(Text))
+
+    # 创建时间
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+    # 更新时间
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        转换为字典格式
+        :return: 包含模型字段的字典
+        """
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "query": self.query,
+            "target": self.target,
+            "reason": self.reason,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at
+        }
+

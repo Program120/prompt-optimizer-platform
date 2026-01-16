@@ -63,29 +63,22 @@ class IntentAnalyzer:
 - 聚焦核心问题，不要冗余描述"""
 
     @staticmethod
-    def _extract_intent_from_output(output_str: str, custom_code: Optional[str] = None) -> Optional[str]:
+    def _extract_intent_from_output(output_str: str, rule: Optional[str] = None) -> Optional[str]:
         """
         从模型输出的 JSON 响应中提取意图名称
         
         完全通用化设计：
-        - 如果提供 custom_code，执行该代码提取
-        - 否则执行 DEFAULT_INTENT_RULE 提取
+        - 直接使用 ResultExtractor 执行提取 (支持 'py:' 前缀或 JSON 字段名)
+        - 如果 rule 为空，尝试直接返回内容
         
         :param output_str: 模型输出的 JSON 字符串
-        :param custom_code: 自定义提取代码 (可选)
+        :param rule: 提取规则 (可选)
         :return: 提取的意图名称，解析失败返回 None
         """
-        import json
         from ..helpers.extractor import ResultExtractor
         
         if not output_str or not output_str.strip():
             return None
-            
-        # 构造提取规则
-        # 如果有自定义代码，使用 `py: code` 格式
-        # 否则使用默认规则
-        if custom_code:
-            rule = f"py: {custom_code}"
             
         # 执行提取
         extracted = ResultExtractor.extract(output_str, rule)
@@ -94,9 +87,9 @@ class IntentAnalyzer:
             return str(extracted)
             
         # 如果规则提取返回 None (说明没匹配到或执行失败)
-        # 且没有自定义代码 (即使用默认兜底时)，尝试最后的字符串回退
+        # 且没有规则 (即使用默认兜底时)，尝试最后的字符串回退
         # 如果不是 JSON，直接返回 raw string (假设它就是意图)
-        if not custom_code:
+        if not rule:
             # check if it looks like json
             if output_str.strip().startswith("{"):
                 return None
@@ -126,7 +119,7 @@ class IntentAnalyzer:
         self,
         errors: List[Dict[str, Any]],
         total_count: Optional[int] = None,
-        custom_extraction_code: Optional[str] = None
+        extraction_rule: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         按意图统计错误
@@ -137,7 +130,7 @@ class IntentAnalyzer:
         
         :param errors: 错误样例列表，每个样例包含 query, target, output
         :param total_count: 总样本数（用于计算错误率）
-        :param custom_extraction_code: 自定义提取代码（可选）
+        :param extraction_rule: 提取规则（可选）
         :return: 按意图分组的错误分析
         """
         if not errors:
@@ -169,7 +162,7 @@ class IntentAnalyzer:
                 # 从 output 中提取真正的意图名称，而不是使用整个 JSON 字符串
                 if output and output != target:
                     confused_intent: Optional[str] = self._extract_intent_from_output(
-                        output, custom_extraction_code
+                        output, extraction_rule
                     )
                     if confused_intent and confused_intent != target:
                         intent_confusion[target][confused_intent] += 1
@@ -267,7 +260,7 @@ class IntentAnalyzer:
         errors: List[Dict[str, Any]],
         top_n: int = 3,
         should_stop: Any = None,
-        custom_extraction_code: Optional[str] = None
+        extraction_rule: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         对 Top N 失败意图进行 LLM 深度分析 (并发版本)
@@ -275,7 +268,7 @@ class IntentAnalyzer:
         :param errors: 错误样例列表
         :param top_n: 分析的失败意图数量，默认 3
         :param should_stop: 停止回调函数
-        :param custom_extraction_code: 自定义提取代码（可选）
+        :param extraction_rule: 提取规则（可选）
         :return: 深度分析结果
         """
         if not errors:
@@ -288,7 +281,7 @@ class IntentAnalyzer:
         # 先进行基础分析
         intent_analysis: Dict[str, Any] = self.analyze_errors_by_intent(
             errors, 
-            custom_extraction_code=custom_extraction_code
+            extraction_rule=extraction_rule
         )
         top_failures: List[Dict[str, Any]] = (
             intent_analysis.get("top_failing_intents", [])[:top_n]

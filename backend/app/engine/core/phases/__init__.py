@@ -10,8 +10,10 @@ from .analysis import (
     advanced_diagnosis,
     deep_intent_analysis,
     filter_and_prepare,
-    load_error_history
+    load_error_history,
 )
+
+from .preparation import enrich_with_reasons, load_extraction_rule
 
 from .execution import (
     match_strategies,
@@ -48,5 +50,7 @@ __all__ = [
     "validate_result",
     "update_history",
     "build_final_result",
-    "generate_optimization_summary"
+    "generate_optimization_summary",
+    "enrich_with_reasons",
+    "load_extraction_rule"
 ]

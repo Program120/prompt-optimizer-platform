@@ -47,6 +47,48 @@ export default function HistoryPanel({
     // This allows immediate feedback while background refresh happens
     const [localNotes, setLocalNotes] = useState<Record<string, string>>({});
 
+    // Reasons state
+    const [reasons, setReasons] = useState<Record<string, any>>({});
+    // Reason editing state
+    const [editingReason, setEditingReason] = useState<{ query: string, value: string, target: string } | null>(null);
+
+    const fetchReasons = async () => {
+        if (!project?.id) return;
+        try {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/reasons`);
+            if (res.ok) {
+                const data = await res.json();
+                const map: Record<string, any> = {};
+                data.reasons.forEach((r: any) => map[r.query] = r);
+                setReasons(map);
+            }
+        } catch (e) { console.error("Failed to fetch reasons", e); }
+    };
+
+    useEffect(() => {
+        fetchReasons();
+    }, [project?.id]);
+
+    const saveReason = async (query: string, reason: string, target: string) => {
+        try {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/reasons`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query, reason, target })
+            });
+            if (res.ok) {
+                await fetchReasons();
+                setEditingReason(null);
+            } else {
+                alert("保存原因失败");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("保存原因出错");
+        }
+    };
+
+
     // 格式化时间戳
     const formatTime = (timestamp: string) => {
         if (!timestamp) return "未知";
@@ -272,6 +314,12 @@ export default function HistoryPanel({
                 >
                     优化分析
                 </button>
+                <button
+                    onClick={() => setActiveTab("marked")}
+                    className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "marked" ? "bg-white/5 text-amber-400 border-b-2 border-amber-500" : "text-slate-500 hover:text-slate-300"}`}
+                >
+                    已标数据
+                </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -285,26 +333,83 @@ export default function HistoryPanel({
                                 </span>
                             </div>
                         )}
-                        {taskStatus?.results?.slice().reverse().map((r: any, idx: number) => (
-                            <div
-                                key={idx}
-                                onClick={() => onSelectLog(r)}
-                                className={`p-3 rounded-xl border text-xs cursor-pointer hover:opacity-80 transition-opacity mb-2 ${r.is_correct ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}
-                            >
-                                <div className="flex justify-between items-center mb-1">
-                                    <span className="font-medium text-slate-500">Query {r.index + 1}</span>
-                                    {r.is_correct ? <CheckCircle2 size={14} className="text-emerald-500" /> : <AlertCircle size={14} className="text-red-500" />}
+                        {taskStatus?.results?.map((r: any, idx: number) => {
+                            const reasonItem = reasons[r.query];
+                            const currentReason = reasonItem?.reason || r.reason;
+                            const isEditing = editingReason?.query === r.query;
+
+                            return (
+                                <div
+                                    key={idx}
+                                    className={`p-3 rounded-xl border text-xs mb-2 group relative ${r.is_correct ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}
+                                >
+                                    <div className="flex justify-between items-center mb-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-slate-500">Query {r.index + 1}</span>
+                                            {r.is_correct ? <CheckCircle2 size={14} className="text-emerald-500" /> : <AlertCircle size={14} className="text-red-500" />}
+                                        </div>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingReason({ query: r.query, value: currentReason || "", target: r.target });
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 transition-opacity"
+                                            title="标注原因"
+                                        >
+                                            <Edit3 size={12} />
+                                        </button>
+                                    </div>
+                                    <p className="text-slate-300 mb-1 font-mono break-all" title={r.query}>{r.query}</p>
+                                    <div className="flex items-center gap-2 text-slate-500 mb-2">
+                                        <span className="truncate flex-1" title={r.target}>预期: {r.target}</span>
+                                        <ArrowRight size={10} />
+                                        <span className="truncate flex-1 text-slate-400" title={r.output}>输出: {r.output}</span>
+                                    </div>
+
+                                    {/* Reason Display/Edit */}
+                                    {(currentReason || isEditing) && (
+                                        <div className="mt-2 pt-2 border-t border-white/5" onClick={e => e.stopPropagation()}>
+                                            {isEditing ? (
+                                                <div className="flex gap-2 items-start">
+                                                    <textarea
+                                                        className="flex-1 bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
+                                                        rows={2}
+                                                        value={editingReason?.value || ""}
+                                                        onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
+                                                        placeholder="输入错误原因..."
+                                                        autoFocus
+                                                    />
+                                                    <div className="flex flex-col gap-1">
+                                                        <button
+                                                            onClick={() => editingReason && saveReason(r.query, editingReason.value, r.target)}
+                                                            className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
+                                                        >
+                                                            <Save size={12} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setEditingReason(null)}
+                                                            className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-between items-start">
+                                                    <div className="text-xs text-amber-500/80">
+                                                        <span className="font-medium mr-1">原因:</span>
+                                                        {currentReason}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                                <p className="text-slate-300 mb-1 truncate">{r.query}</p>
-                                <div className="flex items-center gap-2 text-slate-500">
-                                    <span className="truncate flex-1">预期: {r.target}</span>
-                                    <ArrowRight size={10} />
-                                    <span className="truncate flex-1 text-slate-400">输出: {r.output}</span>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                         {!taskStatus?.results?.length && <p className="text-center text-slate-600 mt-20">暂无运行日志</p>}
                     </>
+
                 ) : activeTab === "runHistory" ? (
                     // 运行历史 Tab
                     <div className="space-y-3">
@@ -538,6 +643,73 @@ export default function HistoryPanel({
                                 <Layers size={32} className="mx-auto text-slate-600 mb-2" />
                                 <p className="text-slate-600 text-sm">暂无优化分析记录</p>
                                 <p className="text-slate-700 text-xs mt-1">完成优化后将自动记录分析历史</p>
+                            </div>
+                        )}
+                    </div>
+                ) : activeTab === "marked" ? (
+                    // 已标数据 Tab
+                    <div className="space-y-3">
+                        {Object.values(reasons).length > 0 ? (
+                            Object.values(reasons).map((r: any, idx: number) => {
+                                const isEditing = editingReason?.query === r.query;
+                                return (
+                                    <div
+                                        key={idx}
+                                        className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 mb-2 group"
+                                    >
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs text-slate-500 font-mono break-all">{r.query}</span>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setEditingReason({ query: r.query, value: r.reason, target: r.target })}
+                                                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-blue-400 transition-all"
+                                                >
+                                                    <Edit3 size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="text-xs text-slate-400 mb-2">
+                                            <span className="text-slate-500">预期: </span>{r.target}
+                                        </div>
+
+                                        {/* Edit Mode */}
+                                        {isEditing ? (
+                                            <div className="flex gap-2 items-start pt-2 border-t border-white/5">
+                                                <textarea
+                                                    className="flex-1 bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-amber-500/50 outline-none resize-none"
+                                                    rows={2}
+                                                    value={editingReason?.value || ""}
+                                                    onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
+                                                />
+                                                <div className="flex flex-col gap-1">
+                                                    <button
+                                                        onClick={() => editingReason && saveReason(r.query, editingReason.value, r.target)}
+                                                        className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
+                                                    >
+                                                        <Save size={12} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setEditingReason(null)}
+                                                        className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-xs text-amber-400 pt-2 border-t border-white/5 flex gap-1">
+                                                <span className="font-medium">原因:</span>
+                                                {r.reason}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="text-center mt-20">
+                                <FileText size={32} className="mx-auto text-slate-600 mb-2" />
+                                <p className="text-slate-600 text-sm">暂无标注数据</p>
+                                <p className="text-slate-700 text-xs mt-1">在运行日志中点击编辑图标进行标注</p>
                             </div>
                         )}
                     </div>

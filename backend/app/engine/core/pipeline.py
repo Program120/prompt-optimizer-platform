@@ -146,6 +146,9 @@ class MultiStrategyOptimizer:
         on_progress: Optional[Callable[[str], None]] = None
     ) -> Dict[str, Any]:
         """执行多策略优化 - 流水线模式"""
+        # 尝试合并原因库中的标注信息 (在创建 Context 之前)
+        phases.enrich_with_reasons(project_id, errors, dataset)
+
         # 创建上下文
         ctx = OptimizationContext(
             prompt=prompt, 
@@ -161,33 +164,8 @@ class MultiStrategyOptimizer:
             on_progress=on_progress
         )
         
-        # 尝试从项目配置中获取自定义提取代码
-        if project_id:
-            try:
-                # 延迟导入以避免循环依赖
-                from app.db.storage import get_project
-                project = get_project(project_id)
-                if project and project.get("config"):
-                    import json
-                    config = project.get("config")
-                    if isinstance(config, str):
-                        try:
-                            config = json.loads(config)
-                        except:
-                            config = {}
-                            
-                    # 查找提取规则: extract_field (兼容 val_config)
-                    extract_code = config.get("extract_field")
-                    if not extract_code:
-                        val_config = config.get("validation_config", {})
-                        extract_code = val_config.get("extract_field")
-                        
-                    # 仅当规则以 py: 开头时才视为代码
-                    if extract_code and str(extract_code).startswith("py:"):
-                        ctx.custom_extraction_code = str(extract_code)[3:].strip()
-                        logger.info(f"已加载自定义意图提取逻辑 (长度: {len(ctx.custom_extraction_code)})")
-            except Exception as e:
-                logger.warning(f"加载项目自定义提取逻辑失败: {e}")
+        # 尝试从项目配置中获取提取规则
+        phases.load_extraction_rule(project_id, ctx)
         
         if not errors:
             return {"optimized_prompt": prompt, "message": "无错误样例，无需优化"}
