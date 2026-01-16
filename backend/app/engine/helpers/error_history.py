@@ -25,6 +25,7 @@ def update_error_optimization_history(
     :return: 更新后的历史记录
     """
     updated_history: Dict[str, Any] = history.copy() if history else {}
+    processed_keys: set = set()  # Track keys processed in this round to avoid double counting
     
     for err in errors:
         target: str = str(err.get("target", ""))
@@ -39,6 +40,12 @@ def update_error_optimization_history(
         hash_key: str = hashlib.md5(
             f"{query}:{target}".encode()
         ).hexdigest()[:16]
+        
+        # Check if already processed in this round
+        if hash_key in processed_keys:
+            continue
+            
+        processed_keys.add(hash_key)
         
         if hash_key in updated_history:
             # 已存在，增加优化次数
