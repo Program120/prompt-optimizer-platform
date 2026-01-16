@@ -131,7 +131,7 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason, pro
                                     placeholder="选择或输入预期意图..."
                                 />
                                 <datalist id="target-options">
-                                    {availableTargets.map((t, i) => (
+                                    {(availableTargets || []).map((t, i) => (
                                         <option key={i} value={t} />
                                     ))}
                                 </datalist>
