@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Plus, Rocket, FileText, ChevronRight, Activity, Settings, Trash2, Database } from "lucide-react";
+import { Plus, Rocket, FileText, ChevronRight, Activity, Settings, Trash2, Database, Copy } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import GlobalModelsConfig from "./components/GlobalModelsConfig";
 import TestOutputModal from "./components/TestOutputModal";
@@ -15,6 +15,7 @@ export default function Home() {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [newProject, setNewProject] = useState({ name: "", prompt: "" });
+  const [copySourceProject, setCopySourceProject] = useState<any>(null);
 
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; projectId: string | null }>({ show: false, projectId: null });
   const [password, setPassword] = useState("");
@@ -44,12 +45,50 @@ export default function Home() {
     formData.append("prompt", newProject.prompt || "你是一个意图分类专家，请根据用户的输入进行分类。");
 
     try {
-      await axios.post(`${API_BASE}/projects`, formData);
+      const res = await axios.post(`${API_BASE}/projects`, formData);
+      const createdProject = res.data;
+
+      // 如果是拷贝项目，则需要把源项目的配置更新过去
+      if (copySourceProject && createdProject.id) {
+        const updateData = new FormData();
+        updateData.append("current_prompt", newProject.prompt || createdProject.current_prompt);
+
+        // 1. 基础配置映射
+        if (copySourceProject.config) {
+          const cfg = copySourceProject.config;
+          if (cfg.query_col) updateData.append("query_col", cfg.query_col);
+          if (cfg.target_col) updateData.append("target_col", cfg.target_col);
+          if (cfg.reason_col) updateData.append("reason_col", cfg.reason_col);
+          if (cfg.extract_field) updateData.append("extract_field", cfg.extract_field);
+          if (cfg.validation_limit) updateData.append("validation_limit", cfg.validation_limit);
+          if (cfg.auto_iterate_config) updateData.append("auto_iterate_config", JSON.stringify(cfg.auto_iterate_config));
+          // file_info 通常不拷贝，因为新文件需要重新上传，或者看需求。这里暂不拷贝文件路径，只拷贝配置。
+        }
+
+        // 2. 模型配置
+        if (copySourceProject.model_config) {
+          updateData.append("model_cfg", JSON.stringify(copySourceProject.model_config));
+        }
+
+        // 3. 优化模型配置
+        if (copySourceProject.optimization_model_config) {
+          updateData.append("optimization_model_config", JSON.stringify(copySourceProject.optimization_model_config));
+        }
+
+        // 4. 优化提示词
+        if (copySourceProject.optimization_prompt) {
+          updateData.append("optimization_prompt", copySourceProject.optimization_prompt);
+        }
+
+        await axios.put(`${API_BASE}/projects/${createdProject.id}`, updateData);
+      }
+
       setNewProject({ name: "", prompt: "" });
+      setCopySourceProject(null);
       setShowCreate(false);
       fetchProjects();
-    } catch (e) {
-      alert("创建失败");
+    } catch (e: any) {
+      alert("创建失败: " + (e.response?.data?.detail || e.message));
     }
   };
 
@@ -65,6 +104,22 @@ export default function Home() {
     } catch (e: any) {
       alert(e.response?.data?.detail || "删除失败，请检查密码");
     }
+  };
+
+  const openCreateModal = () => {
+    setCopySourceProject(null);
+    setNewProject({ name: "", prompt: "" });
+    setShowCreate(true);
+  };
+
+  const openCopyModal = (e: any, project: any) => {
+    e.stopPropagation();
+    setCopySourceProject(project);
+    setNewProject({
+      name: `${project.name} - 副本`,
+      prompt: project.current_prompt
+    });
+    setShowCreate(true);
   };
 
   return (
@@ -93,7 +148,7 @@ export default function Home() {
             公共模型
           </button>
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={openCreateModal}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 transition-colors px-6 py-3 rounded-xl font-medium shadow-lg shadow-blue-900/20"
           >
             <Plus size={20} />
@@ -122,6 +177,13 @@ export default function Home() {
                     <Rocket size={24} />
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => openCopyModal(e, p)}
+                      className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                      title="复制项目配置"
+                    >
+                      <Copy size={14} />
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -160,7 +222,14 @@ export default function Home() {
             animate={{ scale: 1, opacity: 1 }}
             className="glass w-full max-w-lg p-8 rounded-3xl"
           >
-            <h2 className="text-2xl font-bold mb-6">创建新项目</h2>
+            <h2 className="text-2xl font-bold mb-6">
+              {copySourceProject ? "复制项目" : "创建新项目"}
+            </h2>
+            {copySourceProject && (
+              <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-sm text-blue-300">
+                正在复制项目 <strong>{copySourceProject.name}</strong> 的配置（包含模型参数、批处理配置等），不包含历史记录。
+              </div>
+            )}
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-2">项目名称</label>
@@ -192,7 +261,7 @@ export default function Home() {
                   onClick={handleCreate}
                   className="flex-1 bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20"
                 >
-                  创建
+                  {copySourceProject ? "复制并创建" : "创建"}
                 </button>
               </div>
             </div>
