@@ -41,6 +41,50 @@ export default function HistoryPanel({
     const [showPromptModal, setShowPromptModal] = useState(false);
     const [currentPrompt, setCurrentPrompt] = useState("");
 
+    // Results pagination state
+    const [results, setResults] = useState<any[]>([]);
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(true);
+    const [isLoadingResults, setIsLoadingResults] = useState(false);
+    const [totalResults, setTotalResults] = useState(0);
+
+    // Reset results when task changes
+    useEffect(() => {
+        if (taskStatus?.id) {
+            setResults([]);
+            setPage(1);
+            setHasMore(true);
+            setTotalResults(0);
+            fetchResults(taskStatus.id, 1, true);
+        }
+    }, [taskStatus?.id]);
+
+    // Fetch results function
+    const fetchResults = async (taskId: string, pageNum: number, reset: boolean = false) => {
+        if (!taskId) return;
+        setIsLoadingResults(true);
+        try {
+            const res = await fetch(`${API_BASE}/tasks/${taskId}/results?page=${pageNum}&page_size=50`);
+            if (res.ok) {
+                const data = await res.json();
+                setResults(prev => reset ? data.results : [...prev, ...data.results]);
+                setTotalResults(data.total);
+                setHasMore(data.results.length === 50); // If less than page_size, no more
+            }
+        } catch (e) {
+            console.error("Failed to fetch results", e);
+        } finally {
+            setIsLoadingResults(false);
+        }
+    };
+
+    const loadMoreResults = () => {
+        if (!hasMore || isLoadingResults || !taskStatus?.id) return;
+        const nextPage = page + 1;
+        setPage(nextPage);
+        fetchResults(taskStatus.id, nextPage);
+    };
+
     // Note editing state
     const [editingNote, setEditingNote] = useState<{ type: 'task' | 'iteration' | 'knowledge', id: string, value: string } | null>(null);
 
@@ -414,14 +458,14 @@ export default function HistoryPanel({
                 {activeTab === "run" ? (
                     <>
                         {/* 进度信息 (移除了下载按钮) */}
-                        {taskStatus?.id && taskStatus?.results?.length > 0 && (
+                        {taskStatus?.id && (
                             <div className="mb-3 flex justify-between items-center">
                                 <span className="text-xs text-slate-500">
-                                    已完成 {taskStatus.results.length}/{taskStatus.total_count || '?'} 条
+                                    已加载 {results.length}/{totalResults || taskStatus.total_count || '?'} 条
                                 </span>
                             </div>
                         )}
-                        {taskStatus?.results?.map((r: any, idx: number) => {
+                        {results.map((r: any, idx: number) => {
                             const reasonItem = reasons[r.query];
                             const currentReason = reasonItem?.reason || r.reason;
                             const isEditing = editingReason?.query === r.query;
@@ -501,7 +545,21 @@ export default function HistoryPanel({
                                 </div>
                             );
                         })}
-                        {!taskStatus?.results?.length && <p className="text-center text-slate-600 mt-20">暂无运行日志</p>}
+
+                        {/* Load More Button */}
+                        {hasMore && (
+                            <div className="py-2 text-center">
+                                <button
+                                    onClick={loadMoreResults}
+                                    disabled={isLoadingResults}
+                                    className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                                >
+                                    {isLoadingResults ? "加载中..." : "加载更多"}
+                                </button>
+                            </div>
+                        )}
+
+                        {!results.length && !isLoadingResults && <p className="text-center text-slate-600 mt-20">暂无运行日志</p>}
                     </>
 
                 ) : activeTab === "runHistory" ? (

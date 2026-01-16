@@ -88,20 +88,47 @@ async def start_task(
         raise HTTPException(status_code=500, detail=f"启动任务失败: {str(e)}")
 
 @router.get("/{task_id}")
-async def get_task_status(task_id: str) -> Dict[str, Any]:
+async def get_task_status(
+    task_id: str,
+    include_results: bool = True
+) -> Dict[str, Any]:
     """
     获取任务状态
     
     :param task_id: 任务ID
-    :return: 任务状态详情，包含结果和错误信息
+    :param include_results: 是否包含完整的 results 和 errors 数据 (默认 True 以保持兼容)
+    :return: 任务状态详情
     :raises HTTPException: 如果任务未找到
     """
-    # 获取任务状态时需要包含完整的 results 和 errors 数据
-    status = tm.get_task_status(task_id, include_results=True)
+    # 获取任务状态
+    status = tm.get_task_status(task_id, include_results=include_results)
     if not status:
         logger.warning(f"获取任务状态失败（未找到）: task_id={task_id}")
         raise HTTPException(status_code=404, detail="任务未找到")
     return status
+
+@router.get("/{task_id}/results")
+async def get_task_results(
+    task_id: str,
+    page: int = 1,
+    page_size: int = 50,
+    type: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    获取分页的任务结果
+    
+    :param task_id: 任务ID
+    :param page: 页码
+    :param page_size: 每页数量
+    :param type: 结果类型过滤 'success' | 'error' | None
+    :return: 分页结果
+    """
+    # 验证任务是否存在
+    status = tm.get_task_status(task_id, include_results=False)
+    if not status:
+        raise HTTPException(status_code=404, detail="任务未找到")
+
+    return tm.get_task_results(task_id, page, page_size, type)
 
 @router.post("/{task_id}/pause")
 async def pause_task(task_id: str) -> Dict[str, str]:

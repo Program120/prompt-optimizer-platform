@@ -556,6 +556,56 @@ def get_task_status(task_id: str, include_results: bool = False) -> Optional[Dic
         return None
 
 
+def get_task_results_paginated(
+    task_id: str, 
+    page: int = 1, 
+    page_size: int = 50,
+    result_type: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    获取分页的任务结果
+    
+    :param task_id: 任务 ID
+    :param page: 页码 (1-based)
+    :param page_size: 每页数量
+    :param result_type: 结果类型过滤 'success' | 'error' | None
+    :return: 包含 results 列表和 total 总数的字典
+    """
+    from sqlalchemy import func
+    
+    with get_db_session() as session:
+        # 规范化任务 ID
+        normalized_id: str = task_id if task_id.startswith("task_") else f"task_{task_id}"
+        
+        # 构建基础查询
+        statement = select(TaskResult).where(TaskResult.task_id == normalized_id)
+        
+        # 应用类型过滤
+        if result_type == 'success':
+            statement = statement.where(TaskResult.is_correct == True)
+        elif result_type == 'error':
+            statement = statement.where(TaskResult.is_correct == False)
+            
+        # 获取总数
+        count_stmt = select(func.count()).select_from(statement.subquery())
+        total = session.exec(count_stmt).one()
+        
+        # 分页查询
+        offset = (page - 1) * page_size
+        statement = statement.offset(offset).limit(page_size)
+        
+        # 执行查询
+        results = session.exec(statement).all()
+        
+        return {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "results": [r.to_dict() for r in results]
+        }
+
+
+
 def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
     """
     获取项目关联的所有任务（仅返回摘要信息，不包含完整的 results/errors）

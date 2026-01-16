@@ -363,8 +363,61 @@ class TaskManager:
                                从数据库加载时按此参数决定
         :return: 任务状态字典
         """
-        # 优先从内存拿实时数据（内存中的任务始终包含 results 和 errors）
+        # 优先从内存拿实时数据
         if task_id in self.tasks:
-            return self.tasks[task_id]["info"]
+            # 内存中的任务包含了 results，如果不需要，我们可以过滤掉以减少传输
+            task_info = self.tasks[task_id]["info"]
+            if not include_results:
+                # 返回副本并去除 heavy 字段
+                info_copy = task_info.copy()
+                info_copy.pop("results", None)
+                info_copy.pop("errors", None)
+                return info_copy
+            return task_info
+            
         # 从数据库加载，按需包含 results/errors
         return storage.get_task_status(task_id, include_results=include_results)
+
+    def get_task_results(
+        self, 
+        task_id: str, 
+        page: int = 1, 
+        page_size: int = 50,
+        result_type: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        获取分页的任务结果
+        
+        :param task_id: 任务 ID
+        :param page: 页码
+        :param page_size: 每页数量
+        :param result_type: 结果类型 'success' | 'error' | None
+        :return: 分页结果
+        """
+        # 1. 如果任务在内存中，从内存分页
+        if task_id in self.tasks:
+            info = self.tasks[task_id]["info"]
+            all_results = info.get("results", [])
+            
+            # 过滤
+            if result_type == 'success':
+                filtered = [r for r in all_results if r.get('is_correct')]
+            elif result_type == 'error':
+                filtered = [r for r in all_results if not r.get('is_correct')]
+            else:
+                filtered = all_results
+                
+            total = len(filtered)
+            start = (page - 1) * page_size
+            end = start + page_size
+            page_results = filtered[start:end]
+            
+            return {
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "results": page_results
+            }
+            
+        # 2. 如果任务不在内存中，从数据库查询
+        return storage.get_task_results_paginated(task_id, page, page_size, result_type)

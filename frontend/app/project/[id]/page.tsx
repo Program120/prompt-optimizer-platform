@@ -301,7 +301,7 @@ export default function ProjectDetail() {
     const fetchTaskStatus = async () => {
         if (!taskStatus?.id) return;
         try {
-            const res = await axios.get(`${API_BASE}/tasks/${taskStatus.id}`);
+            const res = await axios.get(`${API_BASE}/tasks/${taskStatus.id}?include_results=false`);
             const newData = res.data;
             setTaskStatus(newData);
 
