@@ -59,12 +59,84 @@ export default function HistoryPanel({
         }
     }, [taskStatus?.id]);
 
+    // Search state
+    const [searchQuery, setSearchQuery] = useState("");
+
+    // Intent Intervention State
+    const [intentItems, setIntentItems] = useState<any[]>([]);
+    const [intentPage, setIntentPage] = useState(1);
+    const [intentTotal, setIntentTotal] = useState(0);
+    const [intentLoading, setIntentLoading] = useState(false);
+    const [intentSearch, setIntentSearch] = useState("");
+
+    // Fetch Intent Data
+    const fetchIntentData = async (pageNum: number = 1, search: string = "") => {
+        if (!project?.id) return;
+        setIntentLoading(true);
+        try {
+            let url = `${API_BASE}/projects/${project.id}/interventions?page=${pageNum}&page_size=20`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                setIntentItems(data.items || []);
+                setIntentTotal(data.total || 0);
+                setIntentPage(data.page || 1);
+            }
+        } catch (e) { console.error("Failed to fetch intent data", e); }
+        finally { setIntentLoading(false); }
+    };
+
+    useEffect(() => {
+        if (activeTab === "intent") {
+            fetchIntentData(intentPage, intentSearch);
+        }
+    }, [activeTab, intentPage, intentSearch, project?.id]);
+
+    // Intent CRUD
+    const handleAddIntentRow = async () => {
+        // Placeholder for adding new row - maybe open modal or just insert empty row?
+        // For simple UX, let's insert a temp row at top or ask user.
+        // Or implement inline 'New Row' form.
+        // Prompt user for Query?
+        const q = prompt("请输入 Query:");
+        if (q && q.trim()) {
+            await saveReason(q, "", ""); // Create empty
+            fetchIntentData(1, intentSearch); // Refresh
+        }
+    };
+
+    const handleExportIntent = () => {
+        window.open(`${API_BASE}/projects/${project?.id}/interventions/export`, '_blank');
+    };
+
+    // Debounce search
+
+    // Debounce search
+    useEffect(() => {
+        if (taskStatus?.id) {
+            const timer = setTimeout(() => {
+                setResults([]);
+                setPage(1);
+                setHasMore(true);
+                setTotalResults(0);
+                fetchResults(taskStatus.id, 1, true, searchQuery);
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [searchQuery, taskStatus?.id]);
+
     // Fetch results function
-    const fetchResults = async (taskId: string, pageNum: number, reset: boolean = false) => {
+    const fetchResults = async (taskId: string, pageNum: number, reset: boolean = false, search: string = "") => {
         if (!taskId) return;
         setIsLoadingResults(true);
         try {
-            const res = await fetch(`${API_BASE}/tasks/${taskId}/results?page=${pageNum}&page_size=50`);
+            let url = `${API_BASE}/tasks/${taskId}/results?page=${pageNum}&page_size=50`;
+            if (search) {
+                url += `&search=${encodeURIComponent(search)}`;
+            }
+            const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 setResults(prev => reset ? data.results : [...prev, ...data.results]);
@@ -82,7 +154,7 @@ export default function HistoryPanel({
         if (!hasMore || isLoadingResults || !taskStatus?.id) return;
         const nextPage = page + 1;
         setPage(nextPage);
-        fetchResults(taskStatus.id, nextPage);
+        fetchResults(taskStatus.id, nextPage, false, searchQuery);
     };
 
     // Note editing state
@@ -131,7 +203,7 @@ export default function HistoryPanel({
 
     const deleteReason = async (query: string) => {
         try {
-            const res = await fetch(`${API_BASE}/projects/${project.id}/reasons?query=${encodeURIComponent(query)}`, {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/interventions?query=${encodeURIComponent(query)}`, {
                 method: "DELETE"
             });
             if (res.ok) {
@@ -187,11 +259,11 @@ export default function HistoryPanel({
     const fetchReasons = async () => {
         if (!project?.id) return;
         try {
-            const res = await fetch(`${API_BASE}/projects/${project.id}/reasons`);
+            const res = await fetch(`${API_BASE}/projects/${project.id}/interventions`);
             if (res.ok) {
                 const data = await res.json();
                 const map: Record<string, any> = {};
-                data.reasons.forEach((r: any) => map[r.query] = r);
+                data.items.forEach((r: any) => map[r.query] = r); // Note: Update assuming paginated API returns {items: []}
                 setReasons(map);
             }
         } catch (e) { console.error("Failed to fetch reasons", e); }
@@ -203,7 +275,7 @@ export default function HistoryPanel({
 
     const saveReason = async (query: string, reason: string, target: string) => {
         try {
-            const res = await fetch(`${API_BASE}/projects/${project.id}/reasons`, {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/interventions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ query, reason, target })
@@ -441,16 +513,10 @@ export default function HistoryPanel({
                     迭代历史
                 </button>
                 <button
-                    onClick={() => setActiveTab("knowledge")}
-                    className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "knowledge" ? "bg-white/5 text-purple-400 border-b-2 border-purple-500" : "text-slate-500 hover:text-slate-300"}`}
+                    onClick={() => setActiveTab("intent")}
+                    className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "intent" ? "bg-white/5 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-500 hover:text-slate-300"}`}
                 >
-                    优化分析
-                </button>
-                <button
-                    onClick={() => setActiveTab("marked")}
-                    className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "marked" ? "bg-white/5 text-amber-400 border-b-2 border-amber-500" : "text-slate-500 hover:text-slate-300"}`}
-                >
-                    已标数据
+                    意图干预
                 </button>
             </div>
 
@@ -465,6 +531,27 @@ export default function HistoryPanel({
                                 </span>
                             </div>
                         )}
+
+                        {/* 搜索框 */}
+                        <div className="mb-3 relative">
+                            <input
+                                type="text"
+                                placeholder="搜索 Query 或 原因..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-black/20 border border-white/5 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-300 focus:border-blue-500/50 outline-none"
+                            />
+                            <Search className="absolute left-3 top-2.5 text-slate-500" size={14} />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery("")}
+                                    className="absolute right-3 top-2.5 text-slate-500 hover:text-white"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+
                         {results.map((r: any, idx: number) => {
                             const reasonItem = reasons[r.query];
                             const currentReason = reasonItem?.reason || r.reason;
@@ -481,16 +568,6 @@ export default function HistoryPanel({
                                             <span className="font-medium text-slate-500">Query {r.index + 1}</span>
                                             {r.is_correct ? <CheckCircle2 size={14} className="text-emerald-500" /> : <AlertCircle size={14} className="text-red-500" />}
                                         </div>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setEditingReason({ query: r.query, value: currentReason || "", target: r.target });
-                                            }}
-                                            className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 transition-opacity"
-                                            title="标注原因"
-                                        >
-                                            <Edit3 size={12} />
-                                        </button>
                                     </div>
                                     <p className="text-slate-300 mb-1 font-mono break-all" title={r.query}>{r.query}</p>
                                     <div className="flex items-center gap-2 text-slate-500 mb-2">
@@ -978,6 +1055,167 @@ export default function HistoryPanel({
                                 <FileText size={32} className="mx-auto text-slate-600 mb-2" />
                                 <p className="text-slate-600 text-sm">暂无标注数据</p>
                                 <p className="text-slate-700 text-xs mt-1">在运行日志中点击编辑图标进行标注</p>
+                            </div>
+                        )}
+                    </div>
+                ) : activeTab === "intent" ? (
+                    // 意图干预 Tab
+                    <div className="space-y-3">
+                        {/* Toolbar */}
+                        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5 mb-4 space-y-3">
+                            <div className="flex justify-between items-center gap-4">
+                                {/* Search */}
+                                <div className="flex-1 flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-lg border border-white/5">
+                                    <Search size={14} className="text-slate-500" />
+                                    <input
+                                        type="text"
+                                        value={intentSearch}
+                                        onChange={(e) => setIntentSearch(e.target.value)}
+                                        className="bg-transparent border-none text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-0 w-full"
+                                        placeholder="搜索 Query, 预期结果 或 原因..."
+                                    />
+                                    {intentSearch && (
+                                        <button onClick={() => setIntentSearch("")} className="text-slate-600 hover:text-slate-400">
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleAddIntentRow}
+                                        className="px-3 py-1.5 text-xs bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors flex items-center gap-1"
+                                    >
+                                        <Edit3 size={12} /> 新增数据
+                                    </button>
+                                    <button
+                                        onClick={handleExportIntent}
+                                        className="px-3 py-1.5 text-xs bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors flex items-center gap-1"
+                                    >
+                                        <Download size={12} /> 导出全部
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* List */}
+                        {intentLoading ? (
+                            <p className="text-center text-slate-600 mt-20">加载中...</p>
+                        ) : intentItems.length > 0 ? (
+                            <div className="space-y-3">
+                                {intentItems.map((item: any, idx: number) => {
+                                    const isEditing = editingReason?.query === item.query;
+                                    return (
+                                        <div key={item.id || idx} className="p-4 rounded-xl border border-white/5 bg-white/5 gap-3 flex flex-col group">
+                                            {/* Header: Query & Actions */}
+                                            <div className="flex justify-between items-start border-b border-white/5 pb-2 mb-2">
+                                                <div className="flex gap-2 items-center flex-1">
+                                                    <span className="text-xs font-mono text-slate-300 break-all">{item.query}</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm("确定删除此条数据吗?")) {
+                                                            deleteReason(item.query).then(() => fetchIntentData(intentPage, intentSearch));
+                                                        }
+                                                    }}
+                                                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
+                                                    title="删除"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
+
+                                            {/* Body: Target & Reason (Editable) */}
+                                            {isEditing ? (
+                                                <div className="space-y-2">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] text-slate-500">预期结果 (Target)</label>
+                                                        <textarea
+                                                            className="w-full bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
+                                                            rows={2}
+                                                            value={editingReason?.target || ""}
+                                                            onChange={(e) => setEditingReason(prev => prev ? { ...prev, target: e.target.value } : null)}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] text-slate-500">原因 (Reason)</label>
+                                                        <textarea
+                                                            className="w-full bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-amber-500/50 outline-none resize-none"
+                                                            rows={2}
+                                                            value={editingReason?.value || ""}
+                                                            onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-end gap-2 pt-2">
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (editingReason) {
+                                                                    await saveReason(item.query, editingReason.value, editingReason.target);
+                                                                    fetchIntentData(intentPage, intentSearch);
+                                                                }
+                                                            }}
+                                                            className="px-2 py-1 text-xs bg-emerald-500/10 text-emerald-400 rounded hover:bg-emerald-500/20"
+                                                        >
+                                                            保存
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setEditingReason(null)}
+                                                            className="px-2 py-1 text-xs bg-slate-500/10 text-slate-400 rounded hover:bg-slate-500/20"
+                                                        >
+                                                            取消
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div
+                                                    className="space-y-3 cursor-pointer hover:bg-white/5 rounded transition-colors -m-2 p-2"
+                                                    onClick={() => setEditingReason({ query: item.query, target: item.target, value: item.reason })}
+                                                >
+                                                    <div className="grid grid-cols-1 gap-2">
+                                                        <div>
+                                                            <span className="text-[10px] text-slate-500 block mb-0.5">预期结果:</span>
+                                                            <div className="text-xs text-slate-400">{item.target || <span className="text-slate-600 italic">未设置</span>}</div>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-[10px] text-amber-500/70 block mb-0.5">标注原因:</span>
+                                                            <div className="text-xs text-amber-500/90">{item.reason || <span className="text-slate-600 italic">未设置</span>}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-600 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        点击编辑
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Pagination */}
+                                <div className="flex justify-between items-center text-xs text-slate-500 pt-2">
+                                    <span>共 {intentTotal} 条</span>
+                                    <div className="flex gap-2">
+                                        <button
+                                            disabled={intentPage === 1}
+                                            onClick={() => setIntentPage(p => p - 1)}
+                                            className="hover:text-white disabled:opacity-30"
+                                        >
+                                            上一页
+                                        </button>
+                                        <span>Page {intentPage}</span>
+                                        <button
+                                            disabled={intentItems.length < 20}
+                                            onClick={() => setIntentPage(p => p + 1)}
+                                            className="hover:text-white disabled:opacity-30"
+                                        >
+                                            下一页
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center mt-20">
+                                <Database size={32} className="mx-auto text-slate-600 mb-2" />
+                                <p className="text-slate-600 text-sm">暂无干预数据</p>
+                                <p className="text-slate-700 text-xs mt-1">上传文件开始任务后自动导入，或点击新增</p>
                             </div>
                         )}
                     </div>

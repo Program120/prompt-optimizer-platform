@@ -63,6 +63,25 @@ class TaskManager:
         else:
             df = pd.read_excel(file_path)
             
+        # [新增] 意图干预数据自动导入逻辑
+        # 如果该项目的 IntentIntervention 为空，则认为这是一个新项目（或未初始化的项目），自动将文件中的数据导入到数据库
+        # 这样后续的验证流程将统一使用 IntentIntervention 作为数据源
+        try:
+            from app.services import intervention_service
+            existing_reasons = intervention_service.get_interventions_by_project(project_id)
+            if not existing_reasons:
+                logger.info(f"IntentIntervention is empty for {project_id}. Auto-importing from file...")
+                intervention_service.import_dataset_to_interventions(
+                    project_id=project_id,
+                    df=df,
+                    query_col=query_col,
+                    target_col=target_col,
+                    reason_col=reason_col
+                )
+        except Exception as e:
+            logger.warning(f"Auto-import to IntentIntervention failed: {e}")
+
+            
         task_info = {
             "id": task_id,
             "project_id": project_id,
@@ -125,12 +144,53 @@ class TaskManager:
         task = self.tasks[task_id]
         info = info_override or task["info"]
         
-        # 加载数据
-        file_path = info["file_path"]
-        if file_path.endswith(".csv"):
-            df = pd.read_csv(file_path)
+        project_id = info["project_id"]
+        
+        # [修改] 数据加载逻辑: 优先从意图干预数据库加载
+        from app.services import intervention_service
+        reasons = intervention_service.get_interventions_by_project(project_id)
+        
+        df = None
+        used_source = "file"
+        
+        if reasons:
+            logger.info(f"[Task {task_id}] Using {len(reasons)} rows from Intent Intervention (DB)")
+            # 转换为 DataFrame
+            reasons_data = [r.to_dict() for r in reasons]
+            df = pd.DataFrame(reasons_data)
+            
+            # 映射列名以匹配 Task 配置 (IntentIntervention 只有 query, target, reason 固定列)
+            # 我们需要构造一个符合 info["query_col"] 等配置的 DF
+            
+            # 1. 映射 Query 列
+            q_col = info["query_col"]
+            if "query" in df.columns and q_col != "query":
+                df[q_col] = df["query"]
+                
+            # 2. 映射 Target 列
+            t_col = info["target_col"]
+            if "target" in df.columns and t_col != "target":
+                 df[t_col] = df["target"]
+                 
+            # 3. 映射 Reason 列
+            # 如果任务配置了 reason_col，则映射；如果没有，则更新 info 添加 reason_col
+            r_col = info.get("reason_col")
+            if not r_col:
+                r_col = "reason"
+                info["reason_col"] = r_col # 动态更新任务配置以使用 reason
+            
+            if "reason" in df.columns and r_col != "reason":
+                df[r_col] = df["reason"]
+                
+            used_source = "db"
         else:
-            df = pd.read_excel(file_path)
+            # Fallback to file
+            logger.info(f"[Task {task_id}] Using file source: {info['file_path']}")
+            file_path = info["file_path"]
+            if file_path.endswith(".csv"):
+                df = pd.read_csv(file_path)
+            else:
+                df = pd.read_excel(file_path)
         
         query_col = info["query_col"]
         target_col = info["target_col"]
@@ -383,7 +443,8 @@ class TaskManager:
         task_id: str, 
         page: int = 1, 
         page_size: int = 50,
-        result_type: Optional[str] = None
+        result_type: Optional[str] = None,
+        search: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         获取分页的任务结果
@@ -392,6 +453,7 @@ class TaskManager:
         :param page: 页码
         :param page_size: 每页数量
         :param result_type: 结果类型 'success' | 'error' | None
+        :param search: 搜索关键字
         :return: 分页结果
         """
         # 1. 如果任务在内存中，从内存分页
@@ -400,12 +462,20 @@ class TaskManager:
             all_results = info.get("results", [])
             
             # 过滤
+            filtered = all_results
             if result_type == 'success':
-                filtered = [r for r in all_results if r.get('is_correct')]
+                filtered = [r for r in filtered if r.get('is_correct')]
             elif result_type == 'error':
-                filtered = [r for r in all_results if not r.get('is_correct')]
-            else:
-                filtered = all_results
+                filtered = [r for r in filtered if not r.get('is_correct')]
+                
+            # 搜索过滤
+            if search:
+                search_lower = search.lower()
+                filtered = [
+                    r for r in filtered 
+                    if (r.get('query') and search_lower in str(r.get('query')).lower()) or
+                       (r.get('reason') and search_lower in str(r.get('reason')).lower())
+                ]
                 
             total = len(filtered)
             start = (page - 1) * page_size
@@ -420,4 +490,4 @@ class TaskManager:
             }
             
         # 2. 如果任务不在内存中，从数据库查询
-        return storage.get_task_results_paginated(task_id, page, page_size, result_type)
+        return storage.get_task_results_paginated(task_id, page, page_size, result_type, search)

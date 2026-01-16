@@ -560,7 +560,8 @@ def get_task_results_paginated(
     task_id: str, 
     page: int = 1, 
     page_size: int = 50,
-    result_type: Optional[str] = None
+    result_type: Optional[str] = None,
+    search: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     获取分页的任务结果
@@ -569,9 +570,10 @@ def get_task_results_paginated(
     :param page: 页码 (1-based)
     :param page_size: 每页数量
     :param result_type: 结果类型过滤 'success' | 'error' | None
+    :param search: 搜索关键字（模糊匹配 query）
     :return: 包含 results 列表和 total 总数的字典
     """
-    from sqlalchemy import func
+    from sqlalchemy import func, or_
     
     with get_db_session() as session:
         # 规范化任务 ID
@@ -585,6 +587,17 @@ def get_task_results_paginated(
             statement = statement.where(TaskResult.is_correct == True)
         elif result_type == 'error':
             statement = statement.where(TaskResult.is_correct == False)
+
+        # 应用搜索过滤
+        if search:
+            search_term = f"%{search}%"
+            # 支持搜索 query 和 reason
+            statement = statement.where(
+                or_(
+                    TaskResult.query.like(search_term),
+                    TaskResult.reason.like(search_term)
+                )
+            )
             
         # 获取总数
         count_stmt = select(func.count()).select_from(statement.subquery())

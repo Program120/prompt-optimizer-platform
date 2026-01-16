@@ -526,12 +526,12 @@ class AutoIterateStatus(SQLModel, table=True):
         return result
 
 
-class ProjectReason(SQLModel, table=True):
+class IntentIntervention(SQLModel, table=True):
     """
-    项目原因库
+    意图干预库
     存储 Query 的标注原因，用于后续优化
     """
-    __tablename__ = "project_reasons"
+    __tablename__ = "intent_interventions"
 
     # 主键 ID
     id: Optional[int] = Field(default=None, primary_key=True)

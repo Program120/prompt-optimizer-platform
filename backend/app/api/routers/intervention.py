@@ -1,0 +1,202 @@
+"""
+意图干预 API 路由
+
+定义对意图干预库 (IntentIntervention) 的增删改查接口。
+包括："""
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
+from typing import List, Dict, Any, Optional
+import io
+import pandas as pd
+from pydantic import BaseModel
+from loguru import logger
+from app.services import intervention_service
+from app.models import IntentIntervention
+
+router = APIRouter()
+
+class InterventionUpsertRequest(BaseModel):
+    """意图干预更新请求模型"""
+    query: str
+    reason: str
+    target: str = ""
+
+class InterventionResponse(BaseModel):
+    """意图干预响应模型"""
+    id: int
+    project_id: str
+    query: str
+    reason: str
+    target: str
+    updated_at: str
+
+@router.get("/projects/{project_id}/interventions", response_model=Dict[str, Any])
+async def list_interventions(
+    project_id: str, 
+    page: int = 1, 
+    page_size: int = 50,
+    search: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    获取项目下所有意图干预数据 (分页)
+    """
+    # logger.info(f"Fetching interventions for project: {project_id}, page: {page}")
+    try:
+        # 使用分页获取
+        result = intervention_service.get_interventions_paginated(project_id, page, page_size, search)
+        # Convert items to dict
+        result["items"] = [r.to_dict() for r in result["items"]]
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching interventions for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/projects/{project_id}/interventions", response_model=InterventionResponse)
+async def upsert_intervention(project_id: str, request: InterventionUpsertRequest) -> Dict[str, Any]:
+    """
+    添加或更新干预项
+    """
+    logger.info(f"Upserting intervention for project {project_id}, query: {request.query[:20]}...")
+    if not request.query or not request.reason:
+        logger.warning("Upsert failed: Query and Reason are required")
+        raise HTTPException(status_code=400, detail="Query and Reason are required")
+    
+    try:
+        result: Optional[IntentIntervention] = intervention_service.upsert_intervention(
+            project_id=project_id,
+            query=request.query,
+            reason=request.reason,
+            target=request.target
+        )
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to save intervention")
+            
+        return result.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error upserting intervention: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/projects/{project_id}/interventions")
+async def delete_intervention(project_id: str, query: str) -> Dict[str, str]:
+    """
+    删除干预项
+    """
+    logger.info(f"Deleting intervention for project {project_id}, query: {query[:20]}...")
+    try:
+        success: bool = intervention_service.delete_intervention(project_id, query)
+        if not success:
+            logger.warning(f"Delete failed: Intervention not found for query {query[:20]}...")
+            raise HTTPException(status_code=404, detail="Intervention not found")
+        return {"message": "Deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting intervention: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class InterventionImportRequest(BaseModel):
+    """干预导入请求模型"""
+    file_id: str
+    query_col: str
+    reason_col: str
+    target_col: str
+
+@router.post("/projects/{project_id}/interventions/import")
+async def import_interventions(project_id: str, request: InterventionImportRequest) -> Dict[str, Any]:
+    """
+    从文件导入干预数据
+    """
+    from app.db import storage
+    import os
+    import pandas as pd
+    
+    logger.info(f"Importing interventions for project {project_id} from file {request.file_id}")
+    
+    # 查找文件路径
+    file_path = None
+    for f in os.listdir(storage.DATA_DIR):
+        if f.startswith(request.file_id):
+            file_path = os.path.join(storage.DATA_DIR, f)
+            break
+            
+    if not file_path:
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    try:
+        if file_path.endswith(".csv"):
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+            
+        if request.reason_col not in df.columns:
+             raise HTTPException(status_code=400, detail=f"Reason column '{request.reason_col}' not found in file")
+             
+        imported_count = 0
+        for _, row in df.iterrows():
+            q = row.get(request.query_col)
+            r = row.get(request.reason_col)
+            t = row.get(request.target_col)
+
+            if pd.notna(q) and pd.notna(r) and str(r).strip():
+                intervention_service.upsert_intervention(
+                    project_id=project_id,
+                    query=str(q),
+                    reason=str(r),
+                    target=str(t) if pd.notna(t) else ""
+                )
+                imported_count += 1
+                
+        logger.success(f"Imported {imported_count} interventions for project {project_id}")
+        return {"imported_count": imported_count, "message": "Import successful"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to import interventions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/projects/{project_id}/interventions/batch")
+async def batch_delete_interventions(project_id: str, request: List[str]) -> Dict[str, Any]:
+    """
+    批量删除干预项
+    """
+    logger.info(f"Batch deleting {len(request)} interventions for project {project_id}")
+    try:
+        deleted_count = 0
+        for query in request:
+            if intervention_service.delete_intervention(project_id, query):
+                deleted_count += 1
+        return {"message": "Batch delete successful", "deleted_count": deleted_count}
+    except Exception as e:
+        logger.error(f"Error batch deleting interventions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/projects/{project_id}/interventions/export")
+async def export_interventions_endpoint(project_id: str) -> Any:
+    """
+    导出项目下所有意图干预数据
+    """
+    logger.info(f"Exporting interventions for project {project_id}")
+    try:
+        interventions = intervention_service.get_interventions_by_project(project_id)
+        if not interventions:
+             # Return empty csv
+             df = pd.DataFrame(columns=["query", "target", "reason"])
+        else:
+             df = pd.DataFrame([r.to_dict() for r in interventions])
+             
+        cols_to_export = ["query", "target", "reason"]
+        existing_cols = [c for c in cols_to_export if c in df.columns]
+        export_df = df[existing_cols] if not df.empty else df
+        
+        stream = io.StringIO()
+        export_df.to_csv(stream, index=False)
+        response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
+        response.headers["Content-Disposition"] = f"attachment; filename=intent_intervention_{project_id}.csv"
+        return response
+        
+    except Exception as e:
+        logger.error(f"Export failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -6,7 +6,7 @@ import sys
 from loguru import logger as loguru_logger
 import logging
 from app.db import storage
-from app.api.routers import config, upload, projects, tasks, auto_iterate, global_models, knowledge_base, playground, reason
+from app.api.routers import config, upload, projects, tasks, auto_iterate, global_models, knowledge_base, playground, intervention
 
 
 # 创建 logs 目录
@@ -124,7 +124,7 @@ app.include_router(auto_iterate.router)
 app.include_router(global_models.router)
 app.include_router(knowledge_base.router)
 app.include_router(playground.router)
-app.include_router(reason.router)
+app.include_router(intervention.router)
 
 # 挂载静态文件
 app.mount("/data", StaticFiles(directory=storage.DATA_DIR), name="data")

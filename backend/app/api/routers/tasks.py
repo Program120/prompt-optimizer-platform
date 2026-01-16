@@ -112,7 +112,8 @@ async def get_task_results(
     task_id: str,
     page: int = 1,
     page_size: int = 50,
-    type: Optional[str] = None
+    type: Optional[str] = None,
+    search: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     获取分页的任务结果
@@ -121,6 +122,7 @@ async def get_task_results(
     :param page: 页码
     :param page_size: 每页数量
     :param type: 结果类型过滤 'success' | 'error' | None
+    :param search: 搜索关键字
     :return: 分页结果
     """
     # 验证任务是否存在
@@ -128,7 +130,7 @@ async def get_task_results(
     if not status:
         raise HTTPException(status_code=404, detail="任务未找到")
 
-    return tm.get_task_results(task_id, page, page_size, type)
+    return tm.get_task_results(task_id, page, page_size, type, search)
 
 @router.post("/{task_id}/pause")
 async def pause_task(task_id: str) -> Dict[str, str]:
@@ -217,7 +219,30 @@ async def export_task_results(task_id: str) -> FileResponse:
     
     try:
         # 获取所有结果
-        results = status.get("results", [])
+        original_results = status.get("results", [])
+        
+        # --- 增强原因数据 (优先使用 Reason 库) ---
+        project_id = status.get("project_id")
+        results = []
+        if project_id:
+            try:
+                # 获取原因映射
+                from app.services import intervention_service
+                reason_map = intervention_service.get_intervention_map(project_id)
+                
+                # 复制并增强结果
+                for r in original_results:
+                    new_r = r.copy()
+                    # 如果库中有原因，优先使用库中的
+                    if new_r.get("query") in reason_map:
+                        new_r["reason"] = reason_map[new_r["query"]]
+                    results.append(new_r)
+            except Exception as e:
+                logger.error(f"Failed to enrich results with reasons: {e}")
+                results = original_results
+        else:
+            results = original_results
+        # --------------------------------------
         
         # 分离成功和失败的数据
         success_data = [r for r in results if r.get("is_correct")]
@@ -232,16 +257,17 @@ async def export_task_results(task_id: str) -> FileResponse:
         with pd.ExcelWriter(export_path, engine='openpyxl') as writer:
             if success_data:
                 df_success = pd.DataFrame(success_data)
+                # 确保 reason 列在最后或者合适的位置，这里不强制排序，但确保包含 reason
                 df_success.to_excel(writer, sheet_name='Success', index=False)
             else:
                 # 如果没有成功数据，创建一个空的 DataFrame 并带有列头
-                pd.DataFrame(columns=["index", "query", "target", "output", "is_correct"]).to_excel(writer, sheet_name='Success', index=False)
+                pd.DataFrame(columns=["index", "query", "target", "output", "is_correct", "reason"]).to_excel(writer, sheet_name='Success', index=False)
                 
             if failed_data:
                 df_failed = pd.DataFrame(failed_data)
                 df_failed.to_excel(writer, sheet_name='Failed', index=False)
             else:
-                pd.DataFrame(columns=["index", "query", "target", "output", "is_correct"]).to_excel(writer, sheet_name='Failed', index=False)
+                pd.DataFrame(columns=["index", "query", "target", "output", "is_correct", "reason"]).to_excel(writer, sheet_name='Failed', index=False)
         
         logger.info(f"结果已导出至: {export_path}")
         

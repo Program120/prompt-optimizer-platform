@@ -5,7 +5,7 @@
 """
 from typing import List, Dict, Any, Optional
 from loguru import logger
-from app.services import reason_service
+from app.services import intervention_service
 
 def enrich_with_reasons(
     project_id: str, 
@@ -23,7 +23,7 @@ def enrich_with_reasons(
         return
 
     try:
-        reason_map = reason_service.get_reason_map(project_id)
+        reason_map = intervention_service.get_intervention_map(project_id)
         if not reason_map:
             return
 
