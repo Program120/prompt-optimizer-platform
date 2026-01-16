@@ -100,7 +100,7 @@ export default function ExecutionPanel({
                     )}
 
                     {/* 启动按钮 - 任务未运行或服务重启中断后显示 */}
-                    {((!taskStatus || taskStatus.status === "completed" || taskStatus.status === "stopped") && autoIterateStatus?.status !== "running") && (
+                    {((!taskStatus || taskStatus.status === "completed" || taskStatus.status === "stopped") && autoIterateStatus?.status !== "running" && autoIterateStatus?.status !== "error") && (
                         <button
                             onClick={onStartTask}
                             disabled={!fileInfo}
@@ -330,10 +330,10 @@ export default function ExecutionPanel({
 
                             {autoIterateStatus && autoIterateStatus.status !== "running" && autoIterateStatus.status !== "idle" && (
                                 <div className={`mt-3 text-xs p-2 rounded ${autoIterateStatus.status === "completed"
-                                        ? "bg-emerald-500/20 text-emerald-300"
-                                        : autoIterateStatus.status === "error"
-                                            ? "bg-amber-500/20 text-amber-300"
-                                            : "bg-red-500/20 text-red-300"
+                                    ? "bg-emerald-500/20 text-emerald-300"
+                                    : autoIterateStatus.status === "error"
+                                        ? "bg-amber-500/20 text-amber-300"
+                                        : "bg-red-500/20 text-red-300"
                                     }`}>
                                     {autoIterateStatus.message}
                                     {autoIterateStatus.status === "error" && (
