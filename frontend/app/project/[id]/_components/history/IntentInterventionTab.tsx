@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Database, Edit3, FileText, CheckCircle2, AlertCircle, RotateCcw, Search, Filter, MessageSquare, Sparkles, X, Save, LogOut, Trash2, FlaskConical, XCircle } from "lucide-react";
+import { Database, Edit3, FileText, CheckCircle2, AlertCircle, RotateCcw, Search, Filter, MessageSquare, Sparkles, X, Save, LogOut, Trash2, FlaskConical, XCircle, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const API_BASE = "/api";
@@ -360,6 +360,31 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
     };
 
     /**
+     * 导出干预数据
+     */
+    const handleExport = async () => {
+        if (!project?.id) return;
+        try {
+            const url = `${API_BASE}/projects/${project.id}/interventions/export?file_id=${fileId || ''}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error("导出失败");
+
+            const blob = await res.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = downloadUrl;
+            a.download = `intent_interventions_${project.id}${fileId ? `_${fileId}` : ''}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(downloadUrl);
+            document.body.removeChild(a);
+        } catch (e) {
+            console.error(e);
+            alert("导出数据失败");
+        }
+    };
+
+    /**
      * 选择/取消选择
      */
     const toggleSelection = (query: string) => {
@@ -428,7 +453,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
             className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-3"
         >
             {/* 搜索与筛选工具栏 */}
-            <div className="flex flex-col sm:flex-row gap-2 justify-between">
+            <div className="flex flex-col gap-2">
                 <div className="flex gap-2 flex-1">
                     {/* 搜索框 */}
                     <div className="relative flex-1">
@@ -465,7 +490,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                 </div>
 
                 {/* 操作按钮 */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 justify-end">
                     {selectedItems.size > 0 ? (
                         <div className="flex gap-2">
                             <motion.button
@@ -495,6 +520,12 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                 className="px-3 py-1.5 rounded-lg bg-slate-800/50 text-slate-400 text-xs border border-slate-700/50 hover:text-red-400 hover:border-red-500/30 transition-colors"
                             >
                                 清空
+                            </button>
+                            <button
+                                onClick={handleExport}
+                                className="px-3 py-1.5 rounded-lg bg-slate-800/50 text-slate-400 text-xs border border-slate-700/50 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors flex items-center gap-1"
+                            >
+                                <Download size={12} /> 导出
                             </button>
                             <button
                                 onClick={() => setShowCreateModal(true)}
