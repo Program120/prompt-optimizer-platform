@@ -67,71 +67,42 @@ class IntentAnalyzer:
         """
         从模型输出的 JSON 响应中提取意图名称
         
-        解析逻辑：
-        0. 如果提供了 custom_code，优先尝试执行自定义代码提取
-        1. 如果 output 包含 "intent" 字段，提取该字段值
-        2. 如果 intent_type 是 "clarification"，返回 "clarification"
-        3. 如果 intent_type 是 "multiple"，提取第一个 intent
-        4. 解析失败返回 None
+        完全通用化设计：
+        - 如果提供 custom_code，执行该代码提取
+        - 否则执行 DEFAULT_INTENT_RULE 提取
         
         :param output_str: 模型输出的 JSON 字符串
         :param custom_code: 自定义提取代码 (可选)
         :return: 提取的意图名称，解析失败返回 None
         """
         import json
-        from ...helpers.extractor import ResultExtractor
+        from ..helpers.extractor import ResultExtractor
         
         if not output_str or not output_str.strip():
             return None
             
-        # --- 0. 自定义代码提取 (使用 ResultExtractor) ---
+        # 构造提取规则
+        # 如果有自定义代码，使用 `py: code` 格式
+        # 否则使用默认规则
         if custom_code:
-            # ResultExtractor 会自动处理 JSON 解析和代码执行
-            extracted = ResultExtractor.extract(output_str, f"py: {custom_code}")
-            if extracted:
-                return str(extracted)
+            rule = f"py: {custom_code}"
+            
+        # 执行提取
+        extracted = ResultExtractor.extract(output_str, rule)
         
-        # --- 默认提取逻辑 ---
-        # 再次利用 ResultExtractor 获取解析后的数据 (传 None rule 获取 raw structure)
-        data = ResultExtractor.extract(output_str, None)
-        
-        # 如果不是 dict，说明不是 JSON 或解析失败，直接返回原字符串
-        if not isinstance(data, dict):
-             # 简单的字符串是不是 JSON 格式判断
-             if output_str.strip().startswith("{"):
-                 return None # 解析失败
-             return output_str.strip()
-        
-        try:
-            # 获取意图类型
-            intent_type: str = data.get("intent_type", "")
+        if extracted is not None:
+            return str(extracted)
             
-            # 澄清类型
-            if intent_type == "clarification":
-                return "clarification"
+        # 如果规则提取返回 None (说明没匹配到或执行失败)
+        # 且没有自定义代码 (即使用默认兜底时)，尝试最后的字符串回退
+        # 如果不是 JSON，直接返回 raw string (假设它就是意图)
+        if not custom_code:
+            # check if it looks like json
+            if output_str.strip().startswith("{"):
+                return None
+            return output_str.strip()
             
-            # 多意图类型，提取第一个意图
-            if intent_type == "multiple":
-                intents_list: List[Dict[str, Any]] = data.get("intents", [])
-                if intents_list and len(intents_list) > 0:
-                    return intents_list[0].get("intent", "multiple")
-                return "multiple"
-            
-            # 单意图类型，提取 intent 字段
-            intent: Optional[str] = data.get("intent")
-            if intent:
-                return intent
-            
-            # 兜底：返回 intent_type
-            return intent_type if intent_type else None
-            
-        except json.JSONDecodeError:
-            # JSON 解析失败，记录日志并返回 None
-            logger.warning(f"无法解析 output JSON: {output_str[:100]}...")
-            return None
-        except Exception as e:
-            logger.error(f"提取意图时发生异常: {e}")
-            return None
+        return None
 
     def __init__(
         self, 
