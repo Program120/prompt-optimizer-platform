@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+
 import { Database, Edit3, FileText, CheckCircle2, AlertCircle, RotateCcw, Search, Filter, MessageSquare, Sparkles, X, Save, LogOut, Trash2, FlaskConical, XCircle, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -943,22 +944,24 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                         onChange={e => setCreateForm({ ...createForm, reason: e.target.value })}
                                     />
                                 </div>
+
+                                {/* 操作按钮 (Moved here) */}
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <button
+                                        onClick={tryCloseCreateModal}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={handleCreate}
+                                        disabled={!createForm.query.trim()}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-600 text-white hover:bg-cyan-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
+                                    >
+                                        <Save size={14} /> 保存
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                        <div className="px-4 py-3 bg-slate-900/50 border-t border-slate-800 flex justify-end gap-2">
-                            <button
-                                onClick={tryCloseCreateModal}
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={handleCreate}
-                                disabled={!createForm.query.trim()}
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-600 text-white hover:bg-cyan-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
-                            >
-                                <Save size={14} /> 保存
-                            </button>
                         </div>
 
                         {/* 退出确认弹窗 (Nested) */}
@@ -984,7 +987,8 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                             </div>
                         )}
                     </div>
-                )}
+                )
+            }
             {/* 测试结果 Modal */}
             {
                 testResult && (
