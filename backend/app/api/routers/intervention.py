@@ -131,7 +131,7 @@ class InterventionImportRequest(BaseModel):
     """干预导入请求模型"""
     file_id: str
     query_col: str
-    reason_col: str
+    reason_col: Optional[str] = None
     target_col: str
 
 @router.post("/projects/{project_id}/interventions/sync")
@@ -169,25 +169,17 @@ async def import_interventions(project_id: str, request: InterventionImportReque
         else:
             df = pd.read_excel(file_path)
             
-        if request.reason_col not in df.columns:
+        if request.reason_col and request.reason_col not in df.columns:
              raise HTTPException(status_code=400, detail=f"Reason column '{request.reason_col}' not found in file")
-             
-        imported_count = 0
-        for _, row in df.iterrows():
-            q = row.get(request.query_col)
-            r = row.get(request.reason_col)
-            t = row.get(request.target_col)
 
-            if pd.notna(q) and pd.notna(r) and str(r).strip():
-                intervention_service.upsert_intervention(
-                    project_id=project_id,
-                    query=str(q),
-                    reason=str(r),
-                    target=str(t) if pd.notna(t) else "",
-                    file_id=request.file_id,
-                    is_import=True
-                )
-                imported_count += 1
+        imported_count = intervention_service.import_dataset_to_interventions(
+            project_id=project_id,
+            df=df,
+            query_col=request.query_col,
+            target_col=request.target_col,
+            reason_col=request.reason_col,
+            file_id=request.file_id
+        )
                 
         logger.success(f"Imported {imported_count} interventions for project {project_id}")
         return {"imported_count": imported_count, "message": "Import successful"}

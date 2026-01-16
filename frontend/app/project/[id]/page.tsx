@@ -355,7 +355,9 @@ export default function ProjectDetail() {
             setReasonsUpdateCount(c => c + 1);
         } catch (e: any) {
             console.error("Import reasons failed", e);
-            showToast(`导入失败: ${e.response?.data?.detail || e.message}`, "error");
+            const errorDetail = e.response?.data?.detail
+            const errorMsg = typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : (errorDetail || e.message);
+            showToast(`导入失败: ${errorMsg}`, "error");
         }
     };
 
