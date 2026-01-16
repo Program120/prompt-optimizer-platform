@@ -292,6 +292,10 @@ def background_optimize_task(
             "start_time": datetime.now().isoformat()
         }
         
+        # 初始化验证状态变量
+        validation_failed = False
+        failure_reason = ""
+        
         # 计算总样本数
         total_count = len(task_status.get("results", []))
         errors = task_status.get("errors", [])
@@ -381,7 +385,7 @@ def background_optimize_task(
             # 添加备注说明未应用提示词及原因
             iteration_record["note"] = f"未应用提示词, 原因: {failure_reason}"
 
-        from loguru import logger
+        # from loguru import logger
         logger.info(f"Preparing to save iteration for project {project_id}, Task ID: {task_id}")
 
         # 重新获取项目以避免并发覆盖 (虽然这里还是有风险，但比直接用旧对象好)
