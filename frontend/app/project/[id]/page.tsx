@@ -70,12 +70,35 @@ export default function ProjectDetail() {
     // 重置项目弹窗状态
     const [showResetModal, setShowResetModal] = useState<boolean>(false);
 
+    // Reason update counter
+    const [reasonsUpdateCount, setReasonsUpdateCount] = useState(0);
+
     // 轮询状态 Ref，用于防止自动保存覆盖后端数据（竞争条件防护）
     const isPollingRef = useRef(false);
 
     const showToast = (message: string, type: "success" | "error" = "success") => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3000);
+    };
+
+    const handleSaveReason = async (query: string, reason: string, target: string) => {
+        try {
+            const res = await fetch(`${API_BASE}/projects/${id}/reasons`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query, reason, target })
+            });
+
+            if (res.ok) {
+                setReasonsUpdateCount(c => c + 1);
+                showToast("原因保存成功", "success");
+            } else {
+                showToast("保存原因失败", "error");
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("保存原因出错", "error");
+        }
     };
 
     useEffect(() => {
@@ -308,6 +331,31 @@ export default function ProjectDetail() {
             console.error(e);
             const errorMsg = e.response?.data?.detail || "上传失败";
             showToast(`上传失败: ${errorMsg}`, "error");
+        }
+    };
+
+    const handleImportReasons = async () => {
+        if (!fileInfo || !fileInfo.file_id) {
+            showToast("请先上传文件", "error");
+            return;
+        }
+        if (!config.reason_col || !config.query_col) {
+            showToast("请至少选择Query列和原因列", "error");
+            return;
+        }
+
+        try {
+            const res = await axios.post(`${API_BASE}/projects/${id}/reasons/import`, {
+                file_id: fileInfo.file_id,
+                query_col: config.query_col,
+                target_col: config.target_col || "",
+                reason_col: config.reason_col
+            });
+            showToast(`原因导入成功! 导入数量: ${res.data.imported_count}`, "success");
+            setReasonsUpdateCount(c => c + 1);
+        } catch (e: any) {
+            console.error("Import reasons failed", e);
+            showToast(`导入失败: ${e.response?.data?.detail || e.message}`, "error");
         }
     };
 
@@ -753,6 +801,7 @@ export default function ProjectDetail() {
                         validationLimit={validationLimit}
                         setValidationLimit={setValidationLimit}
                         optimizationStatus={optimizationStatus}
+                        onImportReasons={handleImportReasons}
                     />
                 </div>
 
@@ -794,6 +843,7 @@ export default function ProjectDetail() {
                             }
                         }}
                         onRefresh={fetchProject}
+                        reasonsUpdateCount={reasonsUpdateCount}
                     />
                 </div>
             </div>
@@ -803,6 +853,7 @@ export default function ProjectDetail() {
             <LogDetailModal
                 selectedLog={selectedLog}
                 onClose={() => setSelectedLog(null)}
+                onSaveReason={handleSaveReason}
             />
 
             <IterationDetailModal

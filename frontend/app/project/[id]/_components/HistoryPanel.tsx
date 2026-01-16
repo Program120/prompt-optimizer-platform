@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy, Layers, TrendingUp, Trash2, Edit3, Save } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Download, Clock, FileText, Database, X, Copy, Layers, TrendingUp, Trash2, Edit3, Save, Search } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -20,6 +20,7 @@ interface HistoryPanelProps {
 
     // Refresh handler
     onRefresh?: () => void;
+    reasonsUpdateCount?: number;
 }
 
 export default function HistoryPanel({
@@ -33,7 +34,8 @@ export default function HistoryPanel({
     onDeleteTask,
     onDeleteIteration,
     onDeleteKnowledge,
-    onRefresh
+    onRefresh,
+    reasonsUpdateCount = 0
 }: HistoryPanelProps) {
     const [activeTab, setActiveTab] = useState("run"); // run, history, runHistory
     const [showPromptModal, setShowPromptModal] = useState(false);
@@ -51,6 +53,92 @@ export default function HistoryPanel({
     const [reasons, setReasons] = useState<Record<string, any>>({});
     // Reason editing state
     const [editingReason, setEditingReason] = useState<{ query: string, value: string, target: string } | null>(null);
+    const [selectedReasons, setSelectedReasons] = useState<Set<string>>(new Set());
+    const [reasonSearch, setReasonSearch] = useState("");
+    const [confirmDeleteQuery, setConfirmDeleteQuery] = useState<string | null>(null);
+
+    const toggleReasonSelection = (query: string) => {
+        const newSet = new Set(selectedReasons);
+        if (newSet.has(query)) newSet.delete(query);
+        else newSet.add(query);
+        setSelectedReasons(newSet);
+    };
+
+    const getFilteredReasons = () => {
+        if (!reasonSearch) return Object.values(reasons);
+        return Object.values(reasons).filter((r: any) =>
+            r.query.toLowerCase().includes(reasonSearch.toLowerCase())
+        );
+    };
+
+    const toggleSelectAllReasons = () => {
+        const visibleReasons = getFilteredReasons();
+        const visibleQueries = visibleReasons.map((r: any) => r.query);
+        const allSelected = visibleQueries.every(q => selectedReasons.has(q));
+
+        const newSet = new Set(selectedReasons);
+        if (allSelected) {
+            visibleQueries.forEach(q => newSet.delete(q));
+        } else {
+            visibleQueries.forEach(q => newSet.add(q));
+        }
+        setSelectedReasons(newSet);
+    };
+
+    const deleteReason = async (query: string) => {
+        try {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/reasons?query=${encodeURIComponent(query)}`, {
+                method: "DELETE"
+            });
+            if (res.ok) {
+                fetchReasons();
+                const newSet = new Set(selectedReasons);
+                newSet.delete(query);
+                setSelectedReasons(newSet);
+                setConfirmDeleteQuery(null);
+            } else {
+                alert("删除失败");
+            }
+        } catch (e) { console.error(e); alert("删除出错"); }
+    };
+
+
+    const handleBatchDeleteReasons = async () => {
+        if (selectedReasons.size === 0) return;
+        if (!window.confirm(`确定要删除选中的 ${selectedReasons.size} 条记录吗？`)) return;
+        try {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/reasons/batch`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(Array.from(selectedReasons))
+            });
+            if (res.ok) {
+                fetchReasons();
+                setSelectedReasons(new Set());
+            } else {
+                alert("批量删除失败");
+            }
+        } catch (e) { console.error(e); alert("批量删除出错"); }
+    };
+
+    const handleDeleteAllReasons = async () => {
+        const allQueries = Object.keys(reasons);
+        if (allQueries.length === 0) return;
+        if (!window.confirm(`确定要清空所有 ${allQueries.length} 条标注记录吗？此操作不可恢复！`)) return;
+        try {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/reasons/batch`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(allQueries)
+            });
+            if (res.ok) {
+                fetchReasons();
+                setSelectedReasons(new Set());
+            } else {
+                alert("清空失败");
+            }
+        } catch (e) { console.error(e); alert("清空出错"); }
+    };
 
     const fetchReasons = async () => {
         if (!project?.id) return;
@@ -67,7 +155,7 @@ export default function HistoryPanel({
 
     useEffect(() => {
         fetchReasons();
-    }, [project?.id]);
+    }, [project?.id, reasonsUpdateCount]);
 
     const saveReason = async (query: string, reason: string, target: string) => {
         try {
@@ -341,7 +429,8 @@ export default function HistoryPanel({
                             return (
                                 <div
                                     key={idx}
-                                    className={`p-3 rounded-xl border text-xs mb-2 group relative ${r.is_correct ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}
+                                    className={`p-3 rounded-xl border text-xs mb-2 group relative cursor-pointer ${r.is_correct ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}
+                                    onClick={() => onSelectLog({ ...r, reason: currentReason })}
                                 >
                                     <div className="flex justify-between items-center mb-1">
                                         <div className="flex items-center gap-2">
@@ -367,43 +456,48 @@ export default function HistoryPanel({
                                     </div>
 
                                     {/* Reason Display/Edit */}
-                                    {(currentReason || isEditing) && (
-                                        <div className="mt-2 pt-2 border-t border-white/5" onClick={e => e.stopPropagation()}>
-                                            {isEditing ? (
-                                                <div className="flex gap-2 items-start">
-                                                    <textarea
-                                                        className="flex-1 bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
-                                                        rows={2}
-                                                        value={editingReason?.value || ""}
-                                                        onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
-                                                        placeholder="输入错误原因..."
-                                                        autoFocus
-                                                    />
-                                                    <div className="flex flex-col gap-1">
-                                                        <button
-                                                            onClick={() => editingReason && saveReason(r.query, editingReason.value, r.target)}
-                                                            className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
-                                                        >
-                                                            <Save size={12} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setEditingReason(null)}
-                                                            className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
-                                                        >
-                                                            <X size={12} />
-                                                        </button>
-                                                    </div>
+                                    {/* Reason Display/Edit */}
+                                    <div className="mt-2 pt-2 border-t border-white/5" onClick={e => e.stopPropagation()}>
+                                        {isEditing ? (
+                                            <div className="flex gap-2 items-start">
+                                                <textarea
+                                                    className="flex-1 bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
+                                                    rows={2}
+                                                    value={editingReason?.value || ""}
+                                                    onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
+                                                    placeholder="输入错误原因..."
+                                                    autoFocus
+                                                />
+                                                <div className="flex flex-col gap-1">
+                                                    <button
+                                                        onClick={() => editingReason && saveReason(r.query, editingReason.value, r.target)}
+                                                        className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
+                                                    >
+                                                        <Save size={12} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setEditingReason(null)}
+                                                        className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
                                                 </div>
-                                            ) : (
-                                                <div className="flex justify-between items-start">
-                                                    <div className="text-xs text-amber-500/80">
-                                                        <span className="font-medium mr-1">原因:</span>
-                                                        {currentReason}
-                                                    </div>
+                                            </div>
+                                        ) : (
+                                            <div
+                                                className={`flex justify-between items-start cursor-pointer hover:bg-white/5 rounded p-1 -mx-1 transition-colors ${!currentReason ? "text-slate-600" : ""}`}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setEditingReason({ query: r.query, value: currentReason || "", target: r.target });
+                                                }}
+                                            >
+                                                <div className="text-xs text-amber-500/80 w-full">
+                                                    <span className="font-medium mr-1">原因:</span>
+                                                    {currentReason || "点击添加原因..."}
                                                 </div>
-                                            )}
-                                        </div>
-                                    )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             );
                         })}
@@ -649,59 +743,175 @@ export default function HistoryPanel({
                 ) : activeTab === "marked" ? (
                     // 已标数据 Tab
                     <div className="space-y-3">
-                        {Object.values(reasons).length > 0 ? (
-                            Object.values(reasons).map((r: any, idx: number) => {
+                        {/* Toolbar */}
+                        {Object.keys(reasons).length > 0 && (
+                            <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5 mb-4 space-y-3">
+                                {/* Search */}
+                                <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-lg border border-white/5">
+                                    <Search size={14} className="text-slate-500" />
+                                    <input
+                                        type="text"
+                                        value={reasonSearch}
+                                        onChange={(e) => setReasonSearch(e.target.value)}
+                                        className="bg-transparent border-none text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-0 w-full"
+                                        placeholder="搜索 Query..."
+                                    />
+                                    {reasonSearch && (
+                                        <button onClick={() => setReasonSearch("")} className="text-slate-600 hover:text-slate-400">
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={getFilteredReasons().length > 0 && getFilteredReasons().every((r: any) => selectedReasons.has(r.query))}
+                                            onChange={toggleSelectAllReasons}
+                                            className="rounded border-slate-600 bg-slate-700/50 text-blue-500 focus:ring-offset-0 focus:ring-0 cursor-pointer"
+                                        />
+                                        <span className="text-sm text-slate-400">
+                                            {selectedReasons.size > 0 ? `已选 ${selectedReasons.size} 项` : "全选当前"}
+                                        </span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {selectedReasons.size > 0 && (
+                                            <button
+                                                onClick={handleBatchDeleteReasons}
+                                                className="px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1"
+                                            >
+                                                <Trash2 size={12} /> 批量删除
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={handleDeleteAllReasons}
+                                            className="px-3 py-1.5 text-xs text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                        >
+                                            清空列表
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {getFilteredReasons().length > 0 ? (
+                            getFilteredReasons().map((r: any, idx: number) => {
                                 const isEditing = editingReason?.query === r.query;
+                                const isSelected = selectedReasons.has(r.query);
                                 return (
                                     <div
                                         key={idx}
-                                        className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 mb-2 group"
+                                        className={`p-3 rounded-xl border mb-2 group transition-all ${isSelected ? "bg-blue-500/10 border-blue-500/30" : "bg-amber-500/5 border-amber-500/20"}`}
+                                        onClick={() => {
+                                            if (!isEditing) {
+                                                // If not editing, clicking row toggles selection (optional)
+                                                // Or maybe clicking row does nothing (to avoid conflict with checkboxes)
+                                                // Let's make row click trigger edit? No, conflict with checkbox.
+                                                // Let's keep click for edit only on the content area.
+                                            }
+                                        }}
                                     >
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-xs text-slate-500 font-mono break-all">{r.query}</span>
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => setEditingReason({ query: r.query, value: r.reason, target: r.target })}
-                                                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-blue-400 transition-all"
-                                                >
-                                                    <Edit3 size={12} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="text-xs text-slate-400 mb-2">
-                                            <span className="text-slate-500">预期: </span>{r.target}
-                                        </div>
-
-                                        {/* Edit Mode */}
-                                        {isEditing ? (
-                                            <div className="flex gap-2 items-start pt-2 border-t border-white/5">
-                                                <textarea
-                                                    className="flex-1 bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-amber-500/50 outline-none resize-none"
-                                                    rows={2}
-                                                    value={editingReason?.value || ""}
-                                                    onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
+                                        <div className="flex gap-3">
+                                            {/* Checkbox */}
+                                            <div className="pt-1">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleReasonSelection(r.query);
+                                                    }}
+                                                    className="rounded border-slate-600 bg-slate-700/50 text-blue-500 focus:ring-offset-0 focus:ring-0 cursor-pointer"
                                                 />
-                                                <div className="flex flex-col gap-1">
-                                                    <button
-                                                        onClick={() => editingReason && saveReason(r.query, editingReason.value, r.target)}
-                                                        className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
-                                                    >
-                                                        <Save size={12} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setEditingReason(null)}
-                                                        className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
-                                                    >
-                                                        <X size={12} />
-                                                    </button>
+                                            </div>
+
+                                            <div className="flex-1 min-w-0 flex flex-col gap-2 w-full">
+                                                {/* Query & Actions */}
+                                                <div className="flex justify-between items-start">
+                                                    <span className="text-xs text-slate-500 font-mono break-all">{r.query}</span>
+
+                                                    {confirmDeleteQuery === r.query ? (
+                                                        <div className="flex items-center gap-1 shrink-0 animate-in fade-in duration-200 ml-2">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    deleteReason(r.query);
+                                                                }}
+                                                                className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
+                                                                title="确认删除"
+                                                            >
+                                                                <CheckCircle2 size={14} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setConfirmDeleteQuery(null);
+                                                                }}
+                                                                className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
+                                                                title="取消"
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setConfirmDeleteQuery(r.query);
+                                                            }}
+                                                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all shrink-0 ml-2"
+                                                            title="删除"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    )}
                                                 </div>
+
+                                                {/* Target */}
+                                                <div className="text-xs text-slate-400">
+                                                    <span className="text-slate-500">预期: </span>{r.target}
+                                                </div>
+
+                                                {/* Edit Mode / Reason Display */}
+                                                {isEditing ? (
+                                                    <div className="flex gap-2 items-start pt-2 border-t border-white/5" onClick={e => e.stopPropagation()}>
+                                                        <textarea
+                                                            className="flex-1 bg-black/20 border border-white/10 rounded p-1 text-sm text-slate-300 focus:border-amber-500/50 outline-none resize-none"
+                                                            rows={2}
+                                                            value={editingReason?.value || ""}
+                                                            onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
+                                                            autoFocus
+                                                        />
+                                                        <div className="flex flex-col gap-1">
+                                                            <button
+                                                                onClick={() => editingReason && saveReason(r.query, editingReason.value, r.target)}
+                                                                className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
+                                                            >
+                                                                <Save size={12} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setEditingReason(null)}
+                                                                className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
+                                                            >
+                                                                <X size={12} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div
+                                                        className="text-sm text-amber-400 pt-2 border-t border-white/5 flex gap-1 cursor-pointer hover:bg-white/5 -mx-1 px-1 rounded transition-colors"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation(); // Prevent affecting parent (selection)
+                                                            setEditingReason({ query: r.query, value: r.reason, target: r.target });
+                                                        }}
+                                                    >
+                                                        <span className="font-medium shrink-0">原因:</span>
+                                                        <span className="break-words">{r.reason}</span>
+                                                    </div>
+                                                )}
                                             </div>
-                                        ) : (
-                                            <div className="text-xs text-amber-400 pt-2 border-t border-white/5 flex gap-1">
-                                                <span className="font-medium">原因:</span>
-                                                {r.reason}
-                                            </div>
-                                        )}
+                                        </div>
                                     </div>
                                 );
                             })
@@ -717,33 +927,35 @@ export default function HistoryPanel({
             </div>
 
             {/* Prompt Modal */}
-            {showPromptModal && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-slate-900 border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col h-[500px]">
-                        <div className="flex justify-between items-center p-3 border-b border-white/10">
-                            <h3 className="text-sm font-medium text-white">完整提示词</h3>
-                            <button onClick={() => setShowPromptModal(false)} className="text-slate-400 hover:text-white transition-colors">
-                                <X size={16} />
-                            </button>
-                        </div>
-                        <div className="flex-1 p-3 overflow-hidden">
-                            <textarea
-                                readOnly
-                                className="w-full h-full bg-black/20 border border-white/5 rounded-lg p-2 text-xs text-slate-300 font-mono resize-none focus:outline-none focus:border-blue-500/50 custom-scrollbar"
-                                value={currentPrompt}
-                            />
-                        </div>
-                        <div className="p-3 border-t border-white/10 flex justify-end">
-                            <button
-                                onClick={copyPrompt}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg transition-colors"
-                            >
-                                <Copy size={12} /> 复制
-                            </button>
+            {
+                showPromptModal && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                        <div className="bg-slate-900 border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col h-[500px]">
+                            <div className="flex justify-between items-center p-3 border-b border-white/10">
+                                <h3 className="text-sm font-medium text-white">完整提示词</h3>
+                                <button onClick={() => setShowPromptModal(false)} className="text-slate-400 hover:text-white transition-colors">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                            <div className="flex-1 p-3 overflow-hidden">
+                                <textarea
+                                    readOnly
+                                    className="w-full h-full bg-black/20 border border-white/5 rounded-lg p-2 text-xs text-slate-300 font-mono resize-none focus:outline-none focus:border-blue-500/50 custom-scrollbar"
+                                    value={currentPrompt}
+                                />
+                            </div>
+                            <div className="p-3 border-t border-white/10 flex justify-end">
+                                <button
+                                    onClick={copyPrompt}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg transition-colors"
+                                >
+                                    <Copy size={12} /> 复制
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </section>
+                )
+            }
+        </section >
     );
 }

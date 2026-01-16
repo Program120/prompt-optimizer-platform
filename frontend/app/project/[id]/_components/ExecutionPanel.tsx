@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import {
     Play, RotateCcw, Upload, FileText, CheckCircle2, AlertCircle, RefreshCw, Copy, ExternalLink, Rocket, XCircle,
-    Download, Pause, Square, X, ClipboardPaste
+    Download, Pause, Square, X, ClipboardPaste, Database
 } from 'lucide-react';
 
 // 统一使用相对路径
@@ -37,6 +37,7 @@ interface ExecutionPanelProps {
     validationLimit: number | "";
     setValidationLimit: (limit: number | "") => void;
     optimizationStatus: any;
+    onImportReasons: () => void;
 }
 
 export default function ExecutionPanel({
@@ -68,7 +69,8 @@ export default function ExecutionPanel({
     setStrategy,
     validationLimit,
     setValidationLimit,
-    optimizationStatus
+    optimizationStatus,
+    onImportReasons
 }: ExecutionPanelProps) {
     return (
         <section className="glass p-6 rounded-2xl">
@@ -165,6 +167,19 @@ export default function ExecutionPanel({
                                 <option value="">无</option>
                                 {fileInfo?.columns.map((c: string) => <option key={c} value={c}>{c}</option>)}
                             </select>
+                            {config.reason_col && (
+                                <button
+                                    onClick={() => {
+                                        if (window.confirm(`确认从列 [${config.reason_col}] 提取原因吗？\n请确保列名正确！`)) {
+                                            onImportReasons();
+                                        }
+                                    }}
+                                    className="w-full flex items-center justify-center gap-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded border border-blue-500/20 transition-colors text-xs mt-2"
+                                    title="提取并保存该文件中的原因数据到知识库"
+                                >
+                                    <Database size={12} /> 提取原因
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

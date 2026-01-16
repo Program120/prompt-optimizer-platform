@@ -95,3 +95,90 @@ async def delete_reason(project_id: str, query: str) -> Dict[str, str]:
     except Exception as e:
         logger.error(f"Error deleting reason: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+class ReasonImportRequest(BaseModel):
+    """原因导入请求模型"""
+    file_id: str
+    query_col: str
+    reason_col: str
+    target_col: str
+
+@router.post("/projects/{project_id}/reasons/import")
+async def import_reasons(project_id: str, request: ReasonImportRequest) -> Dict[str, Any]:
+    """
+    从文件导入原因
+    
+    :param project_id: 项目 ID
+    :param request: 导入请求 (file_id, columns)
+    :return: 导入结果统计
+    """
+    from app.db import storage
+    import os
+    import pandas as pd
+    
+    logger.info(f"Importing reasons for project {project_id} from file {request.file_id}")
+    
+    # 查找文件路径
+    file_path = None
+    # 假设 storage.DATA_DIR 可访问，如果不一致需调整 import
+    # storage module 应该有 DATA_DIR
+    for f in os.listdir(storage.DATA_DIR):
+        if f.startswith(request.file_id):
+            file_path = os.path.join(storage.DATA_DIR, f)
+            break
+            
+    if not file_path:
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    try:
+        if file_path.endswith(".csv"):
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+            
+        if request.reason_col not in df.columns:
+             raise HTTPException(status_code=400, detail=f"Reason column '{request.reason_col}' not found in file")
+             
+        imported_count = 0
+        for _, row in df.iterrows():
+            q = row.get(request.query_col)
+            r = row.get(request.reason_col)
+            t = row.get(request.target_col)
+
+            if pd.notna(q) and pd.notna(r) and str(r).strip():
+                reason_service.upsert_reason(
+                    project_id=project_id,
+                    query=str(q),
+                    reason=str(r),
+                    target=str(t) if pd.notna(t) else ""
+                )
+                imported_count += 1
+                
+        logger.success(f"Imported {imported_count} reasons for project {project_id}")
+        return {"imported_count": imported_count, "message": "Import successful"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to import reasons: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/projects/{project_id}/reasons/batch")
+async def batch_delete_reasons(project_id: str, request: List[str]) -> Dict[str, Any]:
+    """
+    批量删除原因
+    
+    :param project_id: 项目 ID
+    :param request: 要删除的 Query 列表
+    :return: 删除结果
+    """
+    logger.info(f"Batch deleting {len(request)} reasons for project {project_id}")
+    try:
+        deleted_count = 0
+        for query in request:
+            if reason_service.delete_reason(project_id, query):
+                deleted_count += 1
+        return {"message": "Batch delete successful", "deleted_count": deleted_count}
+    except Exception as e:
+        logger.error(f"Error batch deleting reasons: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
