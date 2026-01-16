@@ -6,19 +6,35 @@ interface LogDetailModalProps {
     selectedLog: any;
     onClose: () => void;
     onSaveReason?: (query: string, reason: string, target: string) => Promise<void>;
+    projectId: string;
 }
 
-export default function LogDetailModal({ selectedLog, onClose, onSaveReason }: LogDetailModalProps) {
+export default function LogDetailModal({ selectedLog, onClose, onSaveReason, projectId }: LogDetailModalProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [reasonValue, setReasonValue] = useState("");
     const [savedReason, setSavedReason] = useState("");
+    const [targetValue, setTargetValue] = useState("");
+    const [savedTarget, setSavedTarget] = useState("");
+    const [availableTargets, setAvailableTargets] = useState<string[]>([]);
     const [showConfirmClose, setShowConfirmClose] = useState(false);
+
+    // Fetch available targets
+    useEffect(() => {
+        if (projectId && isEditing) {
+            fetch(`/api/projects/${projectId}/interventions/targets`)
+                .then(res => res.json())
+                .then(data => setAvailableTargets(data || []))
+                .catch(console.error);
+        }
+    }, [projectId, isEditing]);
 
     useEffect(() => {
         if (selectedLog) {
             const initialReason = selectedLog.reason || "";
             setReasonValue(initialReason);
             setSavedReason(initialReason);
+            setTargetValue(selectedLog.target || "");
+            setSavedTarget(selectedLog.target || "");
             setIsEditing(false);
             setShowConfirmClose(false);
         }
@@ -26,7 +42,7 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason }: L
 
     // Check if there are unsaved changes
     const hasUnsavedChanges = () => {
-        return reasonValue !== savedReason;
+        return reasonValue !== savedReason || targetValue !== savedTarget;
     };
 
     const handleCloseRequest = () => {
@@ -64,8 +80,9 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason }: L
 
     const handleSave = async () => {
         if (onSaveReason) {
-            await onSaveReason(selectedLog.query, reasonValue, selectedLog.target);
+            await onSaveReason(selectedLog.query, reasonValue, targetValue);
             setSavedReason(reasonValue);
+            setSavedTarget(targetValue);
             setIsEditing(false);
             setShowConfirmClose(false);
         }
@@ -104,7 +121,30 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason }: L
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">Expected Target</label>
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-sm">{selectedLog.target}</div>
+                        {isEditing ? (
+                            <div>
+                                <input
+                                    list="target-options"
+                                    className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-slate-300 focus:border-indigo-500/50 outline-none"
+                                    value={targetValue}
+                                    onChange={(e) => setTargetValue(e.target.value)}
+                                    placeholder="选择或输入预期意图..."
+                                />
+                                <datalist id="target-options">
+                                    {availableTargets.map((t, i) => (
+                                        <option key={i} value={t} />
+                                    ))}
+                                </datalist>
+                            </div>
+                        ) : (
+                            <div
+                                className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-sm cursor-pointer hover:bg-emerald-500/20 transition-colors"
+                                onClick={() => onSaveReason && setIsEditing(true)}
+                                title="点击修改预期结果"
+                            >
+                                {savedTarget || <span className="text-slate-500 italic">暂无预期结果 (点击设置)</span>}
+                            </div>
+                        )}
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">Actual Output</label>
@@ -134,6 +174,7 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason }: L
                                         onClick={() => {
                                             // Canceling edit resets value to SAVED reason
                                             setReasonValue(savedReason);
+                                            setTargetValue(savedTarget);
                                             setIsEditing(false);
                                         }}
                                         className="px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5 rounded-lg transition-colors"

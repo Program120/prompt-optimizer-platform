@@ -21,12 +21,14 @@ interface HistoryPanelProps {
     // Refresh handler
     onRefresh?: () => void;
     reasonsUpdateCount?: number;
+    fileId?: string;
 }
 
 export default function HistoryPanel({
     taskStatus,
     project,
     runHistory,
+    fileId,
     onSelectLog,
     onSelectIteration,
     knowledgeRecords,
@@ -78,6 +80,7 @@ export default function HistoryPanel({
             let url = `${API_BASE}/projects/${project.id}/interventions?page=${pageNum}&page_size=20`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
             if (intentFilter !== "all") url += `&filter_type=${intentFilter}`;
+            if (fileId) url += `&file_id=${fileId}`;
 
             const res = await fetch(url);
             if (res.ok) {
@@ -94,7 +97,7 @@ export default function HistoryPanel({
         if (activeTab === "intent") {
             fetchIntentData(intentPage, intentSearch);
         }
-    }, [activeTab, intentPage, intentSearch, intentFilter, project?.id]);
+    }, [activeTab, intentPage, intentSearch, intentFilter, project?.id, fileId, reasonsUpdateCount]);
 
     // Intent CRUD
     const handleAddIntentRow = async () => {
@@ -893,400 +896,225 @@ export default function HistoryPanel({
                             </div>
                         )}
                     </div>
-                ) : activeTab === "marked" ? (
-                    // 已标数据 Tab
-                    <div className="space-y-3">
-                        {/* Toolbar */}
-                        {Object.keys(reasons).length > 0 && (
+                ) : activeTab === "intent" ? (
+                    // 意图干预 Tab
+                    !fileId ? (
+                        <div className="flex flex-col items-center justify-center h-64 text-slate-500">
+                            <Database className="w-12 h-12 mb-4 opacity-20" />
+                            <p>请先上传或选择一个数据文件</p>
+                            <p className="text-sm opacity-60 mt-2">意图干预数据与文件版本绑定</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {/* Toolbar */}
                             <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5 mb-4 space-y-3">
+                                {/* Filter & Actions Row */}
+                                <div className="flex justify-between items-center gap-4">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-slate-400">筛选:</span>
+                                        <select
+                                            value={intentFilter}
+                                            onChange={(e) => {
+                                                setIntentFilter(e.target.value);
+                                                setIntentPage(1);
+                                            }}
+                                            className="bg-black/20 border border-white/10 rounded px-2 py-1.5 text-xs text-slate-300 outline-none focus:border-blue-500/50"
+                                        >
+                                            <option value="all" className="bg-slate-900">全部数据</option>
+                                            <option value="modified" className="bg-slate-900">意图干预 (Target 修改)</option>
+                                            <option value="reason_added" className="bg-slate-900">原因干预 (Reason 标注)</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleAddIntentRow()}
+                                            className="px-3 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded text-xs border border-blue-500/20 flex items-center gap-1"
+                                        >
+                                            <Edit3 size={12} /> 新增
+                                        </button>
+                                        <button
+                                            onClick={handleExportIntent}
+                                            className="px-3 py-1.5 bg-white/5 text-slate-400 hover:text-slate-300 rounded text-xs flex items-center gap-1 border border-white/10"
+                                        >
+                                            <Download size={12} /> 导出
+                                        </button>
+                                    </div>
+                                </div>
+
                                 {/* Search */}
                                 <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-lg border border-white/5">
                                     <Search size={14} className="text-slate-500" />
                                     <input
                                         type="text"
-                                        value={reasonSearch}
-                                        onChange={(e) => setReasonSearch(e.target.value)}
+                                        value={intentSearch}
+                                        onChange={(e) => setIntentSearch(e.target.value)}
                                         className="bg-transparent border-none text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-0 w-full"
-                                        placeholder="搜索 Query..."
+                                        placeholder="搜索 Query, 预期结果 或 原因..."
                                     />
-                                    {reasonSearch && (
-                                        <button onClick={() => setReasonSearch("")} className="text-slate-600 hover:text-slate-400">
+                                    {intentSearch && (
+                                        <button onClick={() => setIntentSearch("")} className="text-slate-600 hover:text-slate-400">
                                             <X size={12} />
                                         </button>
                                     )}
                                 </div>
-
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="checkbox"
-                                            checked={getFilteredReasons().length > 0 && getFilteredReasons().every((r: any) => selectedReasons.has(r.query))}
-                                            onChange={toggleSelectAllReasons}
-                                            className="rounded border-slate-600 bg-slate-700/50 text-blue-500 focus:ring-offset-0 focus:ring-0 cursor-pointer"
-                                        />
-                                        <span className="text-sm text-slate-400">
-                                            {selectedReasons.size > 0 ? `已选 ${selectedReasons.size} 项` : "全选当前"}
-                                        </span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        {selectedReasons.size > 0 && (
-                                            <button
-                                                onClick={handleBatchDeleteReasons}
-                                                className="px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1"
-                                            >
-                                                <Trash2 size={12} /> 批量删除
-                                            </button>
-                                        )}
-                                        <button
-                                            onClick={handleDeleteAllReasons}
-                                            className="px-3 py-1.5 text-xs text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                                        >
-                                            清空列表
-                                        </button>
-                                    </div>
-                                </div>
                             </div>
-                        )}
 
-                        {getFilteredReasons().length > 0 ? (
-                            getFilteredReasons().map((r: any, idx: number) => {
-                                const isEditing = editingReason?.query === r.query;
-                                const isSelected = selectedReasons.has(r.query);
-                                return (
-                                    <div
-                                        key={idx}
-                                        className={`p-3 rounded-xl border mb-2 group transition-all ${isSelected ? "bg-blue-500/10 border-blue-500/30" : "bg-amber-500/5 border-amber-500/20"}`}
-                                        onClick={() => {
-                                            if (!isEditing) {
-                                                // If not editing, clicking row toggles selection (optional)
-                                                // Or maybe clicking row does nothing (to avoid conflict with checkboxes)
-                                                // Let's make row click trigger edit? No, conflict with checkbox.
-                                                // Let's keep click for edit only on the content area.
-                                            }
-                                        }}
-                                    >
-                                        <div className="flex gap-3">
-                                            {/* Checkbox */}
-                                            <div className="pt-1">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    onChange={(e) => {
-                                                        e.stopPropagation();
-                                                        toggleReasonSelection(r.query);
-                                                    }}
-                                                    className="rounded border-slate-600 bg-slate-700/50 text-blue-500 focus:ring-offset-0 focus:ring-0 cursor-pointer"
-                                                />
-                                            </div>
-
-                                            <div className="flex-1 min-w-0 flex flex-col gap-2 w-full">
-                                                {/* Query & Actions */}
-                                                <div className="flex justify-between items-start">
-                                                    <span className="text-xs text-slate-500 font-mono break-all">{r.query}</span>
-
-                                                    {confirmDeleteQuery === r.query ? (
-                                                        <div className="flex items-center gap-1 shrink-0 animate-in fade-in duration-200 ml-2">
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    deleteReason(r.query);
-                                                                }}
-                                                                className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
-                                                                title="确认删除"
-                                                            >
-                                                                <CheckCircle2 size={14} />
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setConfirmDeleteQuery(null);
-                                                                }}
-                                                                className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
-                                                                title="取消"
-                                                            >
-                                                                <X size={14} />
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setConfirmDeleteQuery(r.query);
-                                                            }}
-                                                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all shrink-0 ml-2"
-                                                            title="删除"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    )}
+                            {/* List */}
+                            {intentLoading ? (
+                                <p className="text-center text-slate-600 mt-20">加载中...</p>
+                            ) : intentItems.length > 0 ? (
+                                <div className="space-y-3">
+                                    {intentItems.map((item: any, idx: number) => {
+                                        const isEditing = editingReason?.query === item.query;
+                                        return (
+                                            <div key={item.id || idx} className="p-4 rounded-xl border border-white/5 bg-white/5 gap-3 flex flex-col group relative">
+                                                {/* Header: Query & Badges */}
+                                                <div className="mb-2">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className="text-indigo-400 font-medium text-xs">Query</span>
+                                                        {item.is_target_modified && (
+                                                            <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 text-[10px] rounded border border-indigo-500/30">
+                                                                意图干预
+                                                            </span>
+                                                        )}
+                                                        {item.reason && (
+                                                            <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] rounded border border-amber-500/30">
+                                                                原因干预
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="bg-black/20 p-2 rounded border border-white/5 text-slate-300 min-h-[36px] break-all text-xs font-mono">
+                                                        {item.query}
+                                                    </div>
                                                 </div>
 
-                                                {/* Target */}
-                                                <div className="text-xs text-slate-400">
-                                                    <span className="text-slate-500">预期: </span>{r.target}
-                                                </div>
-
-                                                {/* Edit Mode / Reason Display */}
+                                                {/* Body: Target & Reason (Editable) */}
                                                 {isEditing ? (
-                                                    <div className="flex gap-2 items-start pt-2 border-t border-white/5" onClick={e => e.stopPropagation()}>
-                                                        <textarea
-                                                            className="flex-1 bg-black/20 border border-white/10 rounded p-1 text-sm text-slate-300 focus:border-amber-500/50 outline-none resize-none"
-                                                            rows={2}
-                                                            value={editingReason?.value || ""}
-                                                            onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
-                                                            autoFocus
-                                                        />
-                                                        <div className="flex flex-col gap-1">
+                                                    <div className="space-y-2 bg-black/20 p-3 rounded-lg border border-white/5">
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] text-slate-500">预期结果 (Target)</label>
+                                                            <textarea
+                                                                className="w-full bg-black/40 border border-white/10 rounded p-1.5 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
+                                                                rows={2}
+                                                                value={editingReason?.target || ""}
+                                                                onChange={(e) => setEditingReason(prev => prev ? { ...prev, target: e.target.value } : null)}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] text-slate-500">原因 (Reason)</label>
+                                                            <textarea
+                                                                className="w-full bg-black/40 border border-white/10 rounded p-1.5 text-xs text-slate-300 focus:border-amber-500/50 outline-none resize-none"
+                                                                rows={2}
+                                                                value={editingReason?.value || ""}
+                                                                onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
+                                                            />
+                                                        </div>
+                                                        <div className="flex justify-end gap-2 pt-2">
                                                             <button
-                                                                onClick={() => editingReason && saveReason(r.query, editingReason.value, r.target)}
-                                                                className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
+                                                                onClick={async () => {
+                                                                    if (editingReason) {
+                                                                        await saveReason(item.query, editingReason.value, editingReason.target);
+                                                                        fetchIntentData(intentPage, intentSearch);
+                                                                    }
+                                                                }}
+                                                                className="px-3 py-1 text-xs bg-emerald-500/10 text-emerald-400 rounded hover:bg-emerald-500/20 border border-emerald-500/20"
                                                             >
-                                                                <Save size={12} />
+                                                                保存
                                                             </button>
                                                             <button
                                                                 onClick={() => setEditingReason(null)}
-                                                                className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
+                                                                className="px-3 py-1 text-xs bg-slate-500/10 text-slate-400 rounded hover:bg-slate-500/20 border border-white/10"
                                                             >
-                                                                <X size={12} />
+                                                                取消
                                                             </button>
                                                         </div>
                                                     </div>
                                                 ) : (
                                                     <div
-                                                        className="text-sm text-amber-400 pt-2 border-t border-white/5 flex gap-1 cursor-pointer hover:bg-white/5 -mx-1 px-1 rounded transition-colors"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation(); // Prevent affecting parent (selection)
-                                                            setEditingReason({ query: r.query, value: r.reason, target: r.target });
-                                                        }}
+                                                        className="space-y-3 cursor-pointer hover:bg-white/5 rounded transition-colors -m-2 p-2 relative group/item"
+                                                        onClick={() => setEditingReason({ query: item.query, target: item.target, value: item.reason })}
                                                     >
-                                                        <span className="font-medium shrink-0">原因:</span>
-                                                        <span className="break-words">{r.reason}</span>
+                                                        <div className="grid grid-cols-1 gap-2">
+                                                            <div>
+                                                                <span className="text-[10px] text-slate-500 block mb-0.5">预期结果:</span>
+                                                                <div className="text-xs text-slate-400 break-words">{item.target || <span className="text-slate-600 italic">未设置</span>}</div>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-[10px] text-amber-500/70 block mb-0.5">标注原因:</span>
+                                                                <div className="text-xs text-amber-500/90 break-words">{item.reason || <span className="text-slate-600 italic">未设置</span>}</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="absolute right-2 top-2 text-[10px] text-blue-400/50 opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center gap-1 bg-black/40 px-2 py-0.5 rounded-full">
+                                                            <Edit3 size={10} /> 点击编辑
+                                                        </div>
                                                     </div>
                                                 )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        ) : (
-                            <div className="text-center mt-20">
-                                <FileText size={32} className="mx-auto text-slate-600 mb-2" />
-                                <p className="text-slate-600 text-sm">暂无标注数据</p>
-                                <p className="text-slate-700 text-xs mt-1">在运行日志中点击编辑图标进行标注</p>
-                            </div>
-                        )}
-                    </div>
-                ) : activeTab === "intent" ? (
-                    // 意图干预 Tab
-                    <div className="space-y-3">
-                        {/* Toolbar */}
-                        <div className="bg-slate-800/40 p-3 rounded-xl border border-white/5 mb-4 space-y-3">
-                            {/* Filter & Actions Row */}
-                            <div className="flex justify-between items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs text-slate-400">筛选:</span>
-                                    <select
-                                        value={intentFilter}
-                                        onChange={(e) => {
-                                            setIntentFilter(e.target.value);
-                                            setIntentPage(1);
-                                        }}
-                                        className="bg-black/20 border border-white/10 rounded px-2 py-1.5 text-xs text-slate-300 outline-none focus:border-blue-500/50"
-                                    >
-                                        <option value="all">全部数据</option>
-                                        <option value="modified">意图干预 (Target 修改)</option>
-                                        <option value="reason_added">原因干预 (Reason 标注)</option>
-                                    </select>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => handleAddIntentRow()}
-                                        className="px-3 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded text-xs border border-blue-500/20 flex items-center gap-1"
-                                    >
-                                        <Edit3 size={12} /> 新增
-                                    </button>
-                                    <button
-                                        onClick={handleExportIntent}
-                                        className="px-3 py-1.5 bg-white/5 text-slate-400 hover:text-slate-300 rounded text-xs flex items-center gap-1 border border-white/10"
-                                    >
-                                        <Download size={12} /> 导出
-                                    </button>
-                                </div>
-                            </div>
 
-                            {/* Search */}
-                            <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-lg border border-white/5">
-                                <Search size={14} className="text-slate-500" />
-                                <input
-                                    type="text"
-                                    value={intentSearch}
-                                    onChange={(e) => setIntentSearch(e.target.value)}
-                                    className="bg-transparent border-none text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-0 w-full"
-                                    placeholder="搜索 Query, 预期结果 或 原因..."
-                                />
-                                {intentSearch && (
-                                    <button onClick={() => setIntentSearch("")} className="text-slate-600 hover:text-slate-400">
-                                        <X size={12} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* List */}
-                        {intentLoading ? (
-                            <p className="text-center text-slate-600 mt-20">加载中...</p>
-                        ) : intentItems.length > 0 ? (
-                            <div className="space-y-3">
-                                {intentItems.map((item: any, idx: number) => {
-                                    const isEditing = editingReason?.query === item.query;
-                                    return (
-                                        <div key={item.id || idx} className="p-4 rounded-xl border border-white/5 bg-white/5 gap-3 flex flex-col group relative">
-                                            {/* Header: Query & Badges */}
-                                            <div className="mb-2">
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <span className="text-indigo-400 font-medium text-xs">Query</span>
-                                                    {item.is_target_modified && (
-                                                        <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 text-[10px] rounded border border-indigo-500/30">
-                                                            意图干预
-                                                        </span>
-                                                    )}
-                                                    {item.reason && (
-                                                        <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] rounded border border-amber-500/30">
-                                                            原因干预
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="bg-black/20 p-2 rounded border border-white/5 text-slate-300 min-h-[36px] break-all text-xs font-mono">
-                                                    {item.query}
-                                                </div>
-                                            </div>
-
-                                            {/* Body: Target & Reason (Editable) */}
-                                            {isEditing ? (
-                                                <div className="space-y-2 bg-black/20 p-3 rounded-lg border border-white/5">
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] text-slate-500">预期结果 (Target)</label>
-                                                        <textarea
-                                                            className="w-full bg-black/40 border border-white/10 rounded p-1.5 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
-                                                            rows={2}
-                                                            value={editingReason?.target || ""}
-                                                            onChange={(e) => setEditingReason(prev => prev ? { ...prev, target: e.target.value } : null)}
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] text-slate-500">原因 (Reason)</label>
-                                                        <textarea
-                                                            className="w-full bg-black/40 border border-white/10 rounded p-1.5 text-xs text-slate-300 focus:border-amber-500/50 outline-none resize-none"
-                                                            rows={2}
-                                                            value={editingReason?.value || ""}
-                                                            onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
-                                                        />
-                                                    </div>
-                                                    <div className="flex justify-end gap-2 pt-2">
+                                                {/* Footer: Date & Actions */}
+                                                <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
+                                                    <span className="text-[10px] text-slate-600">
+                                                        更新于: {new Date(item.updated_at).toLocaleString()}
+                                                    </span>
+                                                    <div className="flex gap-1">
+                                                        {/* Reset Button */}
+                                                        {(item.is_target_modified || item.reason) && (
+                                                            <button
+                                                                onClick={() => handleResetIntervention(item.query)}
+                                                                className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                                                                title="重置为原始值 (清除干预)"
+                                                            >
+                                                                <RotateCcw size={14} />
+                                                            </button>
+                                                        )}
+                                                        {/* Delete Button */}
                                                         <button
-                                                            onClick={async () => {
-                                                                if (editingReason) {
-                                                                    await saveReason(item.query, editingReason.value, editingReason.target);
-                                                                    fetchIntentData(intentPage, intentSearch);
+                                                            onClick={() => {
+                                                                if (window.confirm("确定删除此条数据吗?")) {
+                                                                    deleteReason(item.query).then(() => fetchIntentData(intentPage, intentSearch));
                                                                 }
                                                             }}
-                                                            className="px-3 py-1 text-xs bg-emerald-500/10 text-emerald-400 rounded hover:bg-emerald-500/20 border border-emerald-500/20"
+                                                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                                            title="删除"
                                                         >
-                                                            保存
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setEditingReason(null)}
-                                                            className="px-3 py-1 text-xs bg-slate-500/10 text-slate-400 rounded hover:bg-slate-500/20 border border-white/10"
-                                                        >
-                                                            取消
+                                                            <Trash2 size={14} />
                                                         </button>
                                                     </div>
-                                                </div>
-                                            ) : (
-                                                <div
-                                                    className="space-y-3 cursor-pointer hover:bg-white/5 rounded transition-colors -m-2 p-2 relative group/item"
-                                                    onClick={() => setEditingReason({ query: item.query, target: item.target, value: item.reason })}
-                                                >
-                                                    <div className="grid grid-cols-1 gap-2">
-                                                        <div>
-                                                            <span className="text-[10px] text-slate-500 block mb-0.5">预期结果:</span>
-                                                            <div className="text-xs text-slate-400 break-words">{item.target || <span className="text-slate-600 italic">未设置</span>}</div>
-                                                        </div>
-                                                        <div>
-                                                            <span className="text-[10px] text-amber-500/70 block mb-0.5">标注原因:</span>
-                                                            <div className="text-xs text-amber-500/90 break-words">{item.reason || <span className="text-slate-600 italic">未设置</span>}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="absolute right-2 top-2 text-[10px] text-blue-400/50 opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center gap-1 bg-black/40 px-2 py-0.5 rounded-full">
-                                                        <Edit3 size={10} /> 点击编辑
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Footer: Date & Actions */}
-                                            <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
-                                                <span className="text-[10px] text-slate-600">
-                                                    更新于: {new Date(item.updated_at).toLocaleString()}
-                                                </span>
-                                                <div className="flex gap-1">
-                                                    {/* Reset Button */}
-                                                    {(item.is_target_modified || item.reason) && (
-                                                        <button
-                                                            onClick={() => handleResetIntervention(item.query)}
-                                                            className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
-                                                            title="重置为原始值 (清除干预)"
-                                                        >
-                                                            <RotateCcw size={14} />
-                                                        </button>
-                                                    )}
-                                                    {/* Delete Button */}
-                                                    <button
-                                                        onClick={() => {
-                                                            if (window.confirm("确定删除此条数据吗?")) {
-                                                                deleteReason(item.query).then(() => fetchIntentData(intentPage, intentSearch));
-                                                            }
-                                                        }}
-                                                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                                                        title="删除"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
                                                 </div>
                                             </div>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    })}
 
-                                {/* Pagination */}
-                                <div className="flex justify-between items-center text-xs text-slate-500 pt-2">
-                                    <span>共 {intentTotal} 条</span>
-                                    <div className="flex gap-2">
-                                        <button
-                                            disabled={intentPage === 1}
-                                            onClick={() => setIntentPage(p => p - 1)}
-                                            className="hover:text-white disabled:opacity-30"
-                                        >
-                                            上一页
-                                        </button>
-                                        <span>Page {intentPage}</span>
-                                        <button
-                                            disabled={intentItems.length < 20}
-                                            onClick={() => setIntentPage(p => p + 1)}
-                                            className="hover:text-white disabled:opacity-30"
-                                        >
-                                            下一页
-                                        </button>
+                                    {/* Pagination */}
+                                    <div className="flex justify-between items-center text-xs text-slate-500 pt-2">
+                                        <span>共 {intentTotal} 条</span>
+                                        <div className="flex gap-2">
+                                            <button
+                                                disabled={intentPage === 1}
+                                                onClick={() => setIntentPage(p => p - 1)}
+                                                className="hover:text-white disabled:opacity-30"
+                                            >
+                                                上一页
+                                            </button>
+                                            <span>Page {intentPage}</span>
+                                            <button
+                                                disabled={intentItems.length < 20}
+                                                onClick={() => setIntentPage(p => p + 1)}
+                                                className="hover:text-white disabled:opacity-30"
+                                            >
+                                                下一页
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="text-center mt-20">
-                                <Database size={32} className="mx-auto text-slate-600 mb-2" />
-                                <p className="text-slate-600 text-sm">暂无干预数据</p>
-                                <p className="text-slate-700 text-xs mt-1">上传文件开始任务后自动导入，或点击新增</p>
-                            </div>
-                        )}
-                    </div>
+                            ) : (
+                                <div className="text-center mt-20">
+                                    <Database size={32} className="mx-auto text-slate-600 mb-2" />
+                                    <p className="text-slate-600 text-sm">暂无干预数据</p>
+                                    <p className="text-slate-700 text-xs mt-1">上传文件开始任务后自动导入，或点击新增</p>
+                                </div>
+                            )}
+                        </div>
+                    )
                 ) : null}
             </div>
 

@@ -551,6 +551,9 @@ class IntentIntervention(SQLModel, table=True):
     # 新增字段：意图干预增强
     original_target: Optional[str] = Field(default=None, sa_column=Column(Text)) # 原始 Target
     is_target_modified: bool = Field(default=False) # 是否修改过 Target
+    
+    # 新增：文件版本控制
+    file_id: str = Field(default="", index=True) # 关联的文件 ID
 
     # 创建时间
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
@@ -571,6 +574,7 @@ class IntentIntervention(SQLModel, table=True):
             "reason": self.reason,
             "original_target": self.original_target,
             "is_target_modified": self.is_target_modified,
+            "file_id": self.file_id,
             "created_at": self.created_at,
             "updated_at": self.updated_at
         }

@@ -83,7 +83,7 @@ export default function ProjectDetail() {
 
     const handleSaveReason = async (query: string, reason: string, target: string) => {
         try {
-            const res = await fetch(`${API_BASE}/projects/${id}/reasons`, {
+            const res = await fetch(`${API_BASE}/projects/${id}/interventions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ query, reason, target })
@@ -339,19 +339,19 @@ export default function ProjectDetail() {
             showToast("请先上传文件", "error");
             return;
         }
-        if (!config.reason_col || !config.query_col) {
-            showToast("请至少选择Query列和原因列", "error");
+        if (!config.query_col || !config.target_col) {
+            showToast("请至少选择Query列和Target列", "error");
             return;
         }
 
         try {
-            const res = await axios.post(`${API_BASE}/projects/${id}/reasons/import`, {
+            const res = await axios.post(`${API_BASE}/projects/${id}/interventions/import`, {
                 file_id: fileInfo.file_id,
                 query_col: config.query_col,
                 target_col: config.target_col || "",
                 reason_col: config.reason_col
             });
-            showToast(`原因导入成功! 导入数量: ${res.data.imported_count}`, "success");
+            showToast(`意图干预数据导入成功! 导入数量: ${res.data.imported_count}`, "success");
             setReasonsUpdateCount(c => c + 1);
         } catch (e: any) {
             console.error("Import reasons failed", e);
@@ -811,6 +811,7 @@ export default function ProjectDetail() {
                         taskStatus={taskStatus}
                         project={project}
                         runHistory={taskHistory}
+                        fileId={fileInfo?.file_id} // Pass fileId logic
                         onSelectLog={setSelectedLog}
                         onSelectIteration={setSelectedIteration}
                         knowledgeRecords={knowledgeRecords}
@@ -854,6 +855,7 @@ export default function ProjectDetail() {
                 selectedLog={selectedLog}
                 onClose={() => setSelectedLog(null)}
                 onSaveReason={handleSaveReason}
+                projectId={id as string}
             />
 
             <IterationDetailModal

@@ -20,6 +20,7 @@ class InterventionUpsertRequest(BaseModel):
     query: str
     reason: str
     target: str = ""
+    file_id: str = ""
 
 class InterventionResponse(BaseModel):
     """意图干预响应模型"""
@@ -34,6 +35,7 @@ class InterventionResponse(BaseModel):
     target: str
     original_target: Optional[str] = None
     is_target_modified: bool = False
+    file_id: str = ""
     updated_at: str
 
 @router.get("/projects/{project_id}/interventions", response_model=Dict[str, Any])
@@ -42,7 +44,8 @@ async def list_interventions(
     page: int = 1, 
     page_size: int = 50,
     search: Optional[str] = None,
-    filter_type: Optional[str] = None
+    filter_type: Optional[str] = None,
+    file_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     获取项目下所有意图干预数据 (分页)
@@ -50,7 +53,7 @@ async def list_interventions(
     # logger.info(f"Fetching interventions for project: {project_id}, page: {page}")
     try:
         # 使用分页获取
-        result = intervention_service.get_interventions_paginated(project_id, page, page_size, search, filter_type)
+        result = intervention_service.get_interventions_paginated(project_id, page, page_size, search, filter_type, file_id)
         # Convert items to dict
         result["items"] = [r.to_dict() for r in result["items"]]
         return result
@@ -73,7 +76,8 @@ async def upsert_intervention(project_id: str, request: InterventionUpsertReques
             project_id=project_id,
             query=request.query,
             reason=request.reason,
-            target=request.target
+            target=request.target,
+            file_id=request.file_id
         )
         if not result:
             raise HTTPException(status_code=500, detail="Failed to save intervention")
@@ -130,6 +134,14 @@ class InterventionImportRequest(BaseModel):
     reason_col: str
     target_col: str
 
+@router.post("/projects/{project_id}/interventions/sync")
+async def sync_interventions(project_id: str, request: InterventionImportRequest) -> Dict[str, Any]:
+    """
+    同步文件数据到意图干预库 (同 import)
+    """
+    return await import_interventions(project_id, request)
+
+
 @router.post("/projects/{project_id}/interventions/import")
 async def import_interventions(project_id: str, request: InterventionImportRequest) -> Dict[str, Any]:
     """
@@ -171,7 +183,9 @@ async def import_interventions(project_id: str, request: InterventionImportReque
                     project_id=project_id,
                     query=str(q),
                     reason=str(r),
-                    target=str(t) if pd.notna(t) else ""
+                    target=str(t) if pd.notna(t) else "",
+                    file_id=request.file_id,
+                    is_import=True
                 )
                 imported_count += 1
                 

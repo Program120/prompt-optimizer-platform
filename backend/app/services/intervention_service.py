@@ -37,7 +37,8 @@ def get_interventions_paginated(
     page: int = 1, 
     page_size: int = 50,
     search: Optional[str] = None,
-    filter_type: Optional[str] = None # 'all', 'modified', 'reason_added'
+    filter_type: Optional[str] = None, # 'all', 'modified', 'reason_added'
+    file_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     分页获取意图干预数据
@@ -48,6 +49,10 @@ def get_interventions_paginated(
             
             # Base query
             query = select(IntentIntervention).where(IntentIntervention.project_id == project_id)
+            
+            # File ID Filter (Strict)
+            if file_id:
+                query = query.where(IntentIntervention.file_id == file_id)
             
             # Filter Type
             if filter_type == "modified":
@@ -87,7 +92,8 @@ def import_dataset_to_interventions(
     df: Any, 
     query_col: str, 
     target_col: str, 
-    reason_col: Optional[str] = None
+    reason_col: Optional[str] = None,
+    file_id: str = ""
 ) -> int:
     """
     批量导入数据集到意图干预库
@@ -102,8 +108,6 @@ def import_dataset_to_interventions(
                 r = row.get(reason_col)
             
             if pd.notna(q):
-                upsert_intervention(
-                    project_id=project_id,
                 target_val = str(t) if pd.notna(t) else ""
                 
                 # 检查是否存在，存在则跳过 (避免覆盖用户的修改)
@@ -114,8 +118,10 @@ def import_dataset_to_interventions(
                     project_id=project_id,
                     query=str(q),
                     target=target_val,
+                    target=target_val,
                     reason=str(r) if pd.notna(r) else "",
-                    is_import=True # Flag to indicate this is an import
+                    is_import=True, # Flag to indicate this is an import
+                    file_id=file_id
                 )
                 count += 1
         logger.info(f"Imported {count} interventions for project {project_id}")
@@ -136,7 +142,7 @@ def get_intervention_map(project_id: str) -> Dict[str, str]:
     return {r.query: r.reason for r in interventions if r.reason}
 
 
-def upsert_intervention(project_id: str, query: str, reason: str, target: str = "", is_import: bool = False) -> Optional[IntentIntervention]:
+def upsert_intervention(project_id: str, query: str, reason: str, target: str = "", is_import: bool = False, file_id: str = "") -> Optional[IntentIntervention]:
     """
     添加或更新意图干预项
     
@@ -156,6 +162,10 @@ def upsert_intervention(project_id: str, query: str, reason: str, target: str = 
                 IntentIntervention.project_id == project_id,
                 IntentIntervention.query == query
             )
+            
+            if file_id:
+                statement = statement.where(IntentIntervention.file_id == file_id)
+
             existing = session.exec(statement).first()
             
             if existing:
@@ -182,8 +192,10 @@ def upsert_intervention(project_id: str, query: str, reason: str, target: str = 
                     query=query,
                     reason=reason,
                     target=target,
+                    target=target,
                     original_target=target, # 新建时，原始值即为当前值
-                    is_target_modified=False
+                    is_target_modified=False,
+                    file_id=file_id
                 )
                 session.add(new_intervention)
                 session.commit()
@@ -246,3 +258,25 @@ def delete_intervention(project_id: str, query: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to delete intervention for project {project_id}, query {query[:20]}...: {e}")
         return False
+
+
+def get_unique_targets(project_id: str, file_id: Optional[str] = None) -> List[str]:
+    """
+    获取项目下所有唯一的 Target
+    """
+    try:
+        with get_db_session() as session:
+            query = select(IntentIntervention.target).where(
+                IntentIntervention.project_id == project_id,
+                IntentIntervention.target != ""
+            )
+            
+            if file_id:
+                query = query.where(IntentIntervention.file_id == file_id)
+                
+            statement = query.distinct()
+            results = session.exec(statement).all()
+            return [str(r) for r in results if r]
+    except Exception as e:
+        logger.error(f"Failed to get unique targets: {e}")
+        return []

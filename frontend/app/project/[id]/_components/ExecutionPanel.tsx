@@ -167,17 +167,17 @@ export default function ExecutionPanel({
                                 <option value="">无</option>
                                 {fileInfo?.columns.map((c: string) => <option key={c} value={c}>{c}</option>)}
                             </select>
-                            {config.reason_col && (
+                            {config.query_col && config.target_col && (
                                 <button
                                     onClick={() => {
-                                        if (window.confirm(`确认从列 [${config.reason_col}] 提取原因吗？\n请确保列名正确！`)) {
+                                        if (window.confirm(`确认导入意图干预数据吗？\n需确保Query和Target列配置正确。\n(如配置了原因列也将一并导入)`)) {
                                             onImportReasons();
                                         }
                                     }}
                                     className="w-full flex items-center justify-center gap-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded border border-blue-500/20 transition-colors text-xs mt-2"
-                                    title="提取并保存该文件中的原因数据到知识库"
+                                    title="将当前文件中的数据作为待处理意图干预数据导入"
                                 >
-                                    <Database size={12} /> 提取原因
+                                    <Database size={12} /> 导入意图干预
                                 </button>
                             )}
                         </div>
