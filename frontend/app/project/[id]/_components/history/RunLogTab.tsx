@@ -22,6 +22,7 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [totalResults, setTotalResults] = useState(0);
     const [searchQuery, setSearchQuery] = useState("");
+    const [filterStatus, setFilterStatus] = useState<'all' | 'success' | 'failed'>('all');
     const [editingReason, setEditingReason] = useState<{ query: string, value: string, target: string } | null>(null);
 
     // Ref for scroll container (用于 IntersectionObserver 的 root)
@@ -34,7 +35,10 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
     /**
      * 加载更多数据 (用于无限滚动)
      */
-    const loadMoreResults = useCallback(async (pageNum: number, search: string = "") => {
+    /**
+     * 加载更多数据 (用于无限滚动)
+     */
+    const loadMoreResults = useCallback(async (pageNum: number, search: string = "", status: 'all' | 'success' | 'failed' = 'all') => {
         if (!taskId) return;
         setIsLoadingMore(true);
         try {
@@ -42,11 +46,14 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
             if (search) {
                 url += `&search=${encodeURIComponent(search)}`;
             }
+            if (status !== 'all') {
+                url += `&type=${status === 'success' ? 'success' : 'error'}`;
+            }
             const res: Response = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
-                // 倒序排列：最新的结果在最上面
-                const sortedResults: any[] = [...data.results].sort((a: any, b: any) => (b.index || 0) - (a.index || 0));
+                // 正序排列：按 index 从小到大
+                const sortedResults: any[] = [...data.results].sort((a: any, b: any) => (a.index || 0) - (b.index || 0));
                 setResults(prev => [...prev, ...sortedResults]);
                 setTotalResults(data.total);
                 setHasMore(data.page * (data.page_size || data.size || 20) < data.total);
@@ -65,7 +72,13 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
      * @param pageSize 要获取的数据量
      * @param search 搜索关键词
      */
-    const refreshResults = useCallback(async (pageSize: number, search: string = "") => {
+    /**
+     * 刷新数据 (用于初始加载和定时刷新)
+     * @param pageSize 要获取的数据量
+     * @param search 搜索关键词
+     * @param status 过滤状态
+     */
+    const refreshResults = useCallback(async (pageSize: number, search: string = "", status: 'all' | 'success' | 'failed' = 'all') => {
         if (!taskId) return;
         setIsRefreshing(true);
         try {
@@ -73,11 +86,14 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
             if (search) {
                 url += `&search=${encodeURIComponent(search)}`;
             }
+            if (status !== 'all') {
+                url += `&type=${status === 'success' ? 'success' : 'error'}`;
+            }
             const res: Response = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
-                // 倒序排列：最新的结果在最上面
-                const sortedResults: any[] = [...data.results].sort((a: any, b: any) => (b.index || 0) - (a.index || 0));
+                // 正序排列：按 index 从小到大
+                const sortedResults: any[] = [...data.results].sort((a: any, b: any) => (a.index || 0) - (b.index || 0));
                 setResults(prev => {
                     // 如果本地已有更多数据（可能是刷新期间触发了加载更多），则保留尾部数据
                     if (prev.length > sortedResults.length) {
@@ -88,8 +104,8 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
                 setTotalResults(data.total);
                 // 根据实际获取的数据量更新分页状态
                 const pagesLoaded: number = Math.ceil(sortedResults.length / 20);
-                setPage(pagesLoaded);
-                loadedPagesRef.current = pagesLoaded;
+                setPage(pagesLoaded || 1);
+                loadedPagesRef.current = pagesLoaded || 1;
                 setHasMore(sortedResults.length < data.total);
             }
         } catch (e) {
@@ -107,7 +123,8 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
             setHasMore(true);
             setTotalResults(0);
             loadedPagesRef.current = 1;
-            refreshResults(20, searchQuery);
+            setFilterStatus('all'); // Reset filter
+            refreshResults(20, searchQuery, 'all');
         }
     }, [taskId]);
 
@@ -123,11 +140,11 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
             // 使用 ref 获取当前已加载的页数，避免闭包问题
             const currentPages: number = loadedPagesRef.current;
             const dataToFetch: number = currentPages * 20;
-            refreshResults(dataToFetch, searchQuery);
+            refreshResults(dataToFetch, searchQuery, filterStatus);
         }, 2000);
 
         return () => clearInterval(interval);
-    }, [taskId, searchQuery, refreshResults, isLoadingMore]);
+    }, [taskId, searchQuery, filterStatus, refreshResults, isLoadingMore]);
 
     // Search Debounce
     useEffect(() => {
@@ -136,7 +153,7 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
                 setResults([]);
                 setPage(1);
                 loadedPagesRef.current = 1;
-                refreshResults(20, searchQuery);
+                refreshResults(20, searchQuery, filterStatus);
             }, 500);
             return () => clearTimeout(timer);
         }
@@ -153,7 +170,7 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
 
         const observer = new IntersectionObserver(entries => {
             if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
-                loadMoreResults(page + 1, searchQuery);
+                loadMoreResults(page + 1, searchQuery, filterStatus);
             }
         }, {
             threshold: 0.1,
@@ -163,15 +180,58 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
 
         observer.observe(node);
         return () => observer.disconnect();
-    }, [hasMore, isLoadingMore, page, taskId, loadMoreResults, searchQuery]);
+    }, [hasMore, isLoadingMore, page, taskId, loadMoreResults, searchQuery, filterStatus]);
+
+    // Filter Change Effect
+    useEffect(() => {
+        if (taskId) {
+            setResults([]);
+            setPage(1);
+            loadedPagesRef.current = 1;
+            refreshResults(20, searchQuery, filterStatus);
+        }
+    }, [filterStatus]);
 
     return (
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
             {taskId && (
-                <div className="mb-3 flex justify-between items-center">
-                    <span className="text-xs text-slate-500">
-                        已加载 {results.length}/{totalResults || totalCount || '?'} 条
-                    </span>
+                <div className="mb-3 flex flex-col gap-2">
+                    {/* 过滤器 */}
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setFilterStatus('all')}
+                            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'all'
+                                ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                : "bg-white/5 text-slate-400 border border-white/5 hover:bg-white/10"
+                                }`}
+                        >
+                            全部
+                        </button>
+                        <button
+                            onClick={() => setFilterStatus('success')}
+                            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'success'
+                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                : "bg-white/5 text-slate-400 border border-white/5 hover:bg-white/10"
+                                }`}
+                        >
+                            成功
+                        </button>
+                        <button
+                            onClick={() => setFilterStatus('failed')}
+                            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'failed'
+                                ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                                : "bg-white/5 text-slate-400 border border-white/5 hover:bg-white/10"
+                                }`}
+                        >
+                            失败
+                        </button>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500">
+                            已加载 {results.length}/{totalResults || totalCount || '?'} 条
+                        </span>
+                    </div>
                 </div>
             )}
 

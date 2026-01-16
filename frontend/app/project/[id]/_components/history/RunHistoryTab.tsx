@@ -69,7 +69,7 @@ export default function RunHistoryTab({ runHistory, projectId, onDeleteTask, onS
 
     return (
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-3">
-            {runHistory?.map((task: any) => (
+            {runHistory?.map((task: any, idx: number) => (
                 <div
                     key={task.id}
                     className="relative p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors group"
@@ -96,28 +96,21 @@ export default function RunHistoryTab({ runHistory, projectId, onDeleteTask, onS
                         </div>
                     </div>
 
-                    {/* 数据集信息 */}
+                    {/* 数据集信息 & 下载 */}
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 text-xs text-slate-500 overflow-hidden">
                             <Database size={12} />
-                            <span className="truncate max-w-[150px]" title={task.dataset_name}>{task.dataset_name}</span>
-                            <span className="text-slate-600">|</span>
-                            <span>{task.total_count} 条数据</span>
+                            <span className="truncate" title={task.dataset_name}>{task.dataset_name}</span>
                         </div>
-                        {/* 下载意图干预按钮 */}
-                        {task.file_id && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    downloadInterventions(task.file_id);
-                                }}
-                                className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 whitespace-nowrap"
-                                title="下载此版本的意图干预数据"
-                            >
-                                <Download size={10} />
-                                干预数据
-                            </button>
-                        )}
+                        <a
+                            href={`${API_BASE}/tasks/${task.id}/download_dataset`}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 flex-shrink-0"
+                        >
+                            <Download size={10} /> 下载数据集
+                        </a>
                     </div>
 
                     {/* 提示词预览 & 查看 */}
@@ -136,6 +129,28 @@ export default function RunHistoryTab({ runHistory, projectId, onDeleteTask, onS
                                 查看提示词
                             </button>
                         )}
+                    </div>
+
+                    {/* 底部: 进度和准确率 & 结果下载 */}
+                    <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                        <div className="flex items-center gap-4 text-xs">
+                            <span className="text-slate-500">
+                                进度: <span className="text-slate-300">{task.results_count}/{task.total_count}</span>
+                            </span>
+                            <span className="text-slate-500">
+                                准确率: <span className="text-emerald-400 font-medium">{task.accuracy !== undefined ? (task.accuracy * 100).toFixed(1) : 0.0}%</span>
+                            </span>
+                        </div>
+                        <a
+                            href={`${API_BASE}/tasks/${task.id}/export`}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                        >
+                            <Download size={12} />
+                            下载结果
+                        </a>
                     </div>
 
                     {/* 备注区域 */}

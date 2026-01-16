@@ -1,20 +1,20 @@
 import { Layers, Trash2, TrendingUp } from "lucide-react";
 import { NoteSection } from "./NoteSection";
 
-interface KnowledgeTabProps {
+interface OptimizationAnalysisTabProps {
     records?: any[];
-    onSelectKnowledge?: (record: any) => void;
-    onDeleteKnowledge?: (record: any) => void;
+    onSelectRecord?: (record: any) => void;
+    onDeleteRecord?: (record: any) => void;
     onSaveNote: (type: string, id: string, value: string) => Promise<boolean>;
 }
 
-export default function KnowledgeTab({ records, onSelectKnowledge, onDeleteKnowledge, onSaveNote }: KnowledgeTabProps) {
+export default function OptimizationAnalysisTab({ records, onSelectRecord, onDeleteRecord, onSaveNote }: OptimizationAnalysisTabProps) {
     return (
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-3">
             {records?.map((record: any) => (
                 <div
                     key={record.id}
-                    onClick={() => onSelectKnowledge && onSelectKnowledge(record)}
+                    onClick={() => onSelectRecord && onSelectRecord(record)}
                     className="relative p-3 rounded-xl border border-purple-500/20 bg-gradient-to-br from-purple-600/5 to-blue-600/5 hover:from-purple-600/10 hover:to-blue-600/10 cursor-pointer transition-all group"
                 >
                     {/* 头部: 版本号和时间 */}
@@ -29,9 +29,9 @@ export default function KnowledgeTab({ records, onSelectKnowledge, onDeleteKnowl
                             <span className="text-[10px] text-slate-500">
                                 {new Date(record.created_at || record.timestamp).toLocaleString()}
                             </span>
-                            {onDeleteKnowledge && (
+                            {onDeleteRecord && (
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); onDeleteKnowledge(record); }}
+                                    onClick={(e) => { e.stopPropagation(); onDeleteRecord(record); }}
                                     className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
                                     title="删除记录"
                                 >

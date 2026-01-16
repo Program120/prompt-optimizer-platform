@@ -3,7 +3,7 @@ import { Search, RotateCcw } from "lucide-react";
 import RunLogTab from "./history/RunLogTab";
 import RunHistoryTab from "./history/RunHistoryTab";
 import IterationHistoryTab from "./history/IterationHistoryTab";
-import KnowledgeTab from "./history/KnowledgeTab";
+import OptimizationAnalysisTab from "./history/OptimizationAnalysisTab";
 import IntentInterventionTab from "./history/IntentInterventionTab";
 
 const API_BASE = "/api";
@@ -183,7 +183,8 @@ export default function HistoryPanel({
             </div>
 
             <div className="flex-1 overflow-hidden flex flex-col relative">
-                {activeTab === "run" && (
+                {/* 使用 CSS display 控制可见性，避免组件反复挂载卸载 */}
+                <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === "run" ? "" : "hidden"}`}>
                     <RunLogTab
                         taskId={taskStatus?.id}
                         totalCount={taskStatus?.total_count}
@@ -192,9 +193,9 @@ export default function HistoryPanel({
                         saveReason={saveReason}
                         onSelectLog={onSelectLog}
                     />
-                )}
+                </div>
 
-                {activeTab === "runHistory" && (
+                <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === "runHistory" ? "" : "hidden"}`}>
                     <RunHistoryTab
                         runHistory={runHistory}
                         projectId={project?.id || ""}
@@ -202,33 +203,33 @@ export default function HistoryPanel({
                         onSaveNote={handleSaveNote}
                         onViewPrompt={handleViewPrompt}
                     />
-                )}
+                </div>
 
-                {activeTab === "history" && (
+                <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === "history" ? "" : "hidden"}`}>
                     <IterationHistoryTab
                         iterations={project?.iterations}
                         onSelectIteration={onSelectIteration}
                         onDeleteIteration={onDeleteIteration}
                         onSaveNote={handleSaveNote}
                     />
-                )}
+                </div>
 
-                {activeTab === "knowledge" && (
-                    <KnowledgeTab
+                <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === "knowledge" ? "" : "hidden"}`}>
+                    <OptimizationAnalysisTab
                         records={knowledgeRecords}
-                        onSelectKnowledge={onSelectKnowledge}
-                        onDeleteKnowledge={onDeleteKnowledge}
+                        onSelectRecord={onSelectKnowledge}
+                        onDeleteRecord={onDeleteKnowledge}
                         onSaveNote={handleSaveNote}
                     />
-                )}
+                </div>
 
-                {activeTab === "intent" && (
+                <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === "intent" ? "" : "hidden"}`}>
                     <IntentInterventionTab
                         project={project}
                         fileId={fileId}
                         saveReason={saveReason}
                     />
-                )}
+                </div>
             </div>
 
             {/* Prompt Detail Modal */}
