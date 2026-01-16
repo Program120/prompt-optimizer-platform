@@ -2,76 +2,63 @@
 trigger: always_on
 ---
 
-# 项目开发规约文档 (Prompt Optimizer Platform)
+# 项目开发规约
 
-## 1. 项目概述
-本项目是一个提示词优化平台，旨在通过多策略优化引擎提升大语言模型（LLM）提示词的质量和准确率。
+## 1. 核心原则
+- **语言**: 全项目强制使用 **中文** 进行注释、文档和日志记录。
+- **美学**: 前端界面追求 "Rich Aesthetics"，拒绝平庸设计。
+- **异步**: 后端 I/O 密集型操作必须使用 `async/await`。
+- **类型安全**: 所有数据交互优先使用 Pydantic Model 定义结构。
 
-## 2. 技术栈
-- **后端**: Python 3.x, FastAPI, Loguru (日志管理), OpenAI SDK (LLM 交互), Pydantic (数据校验)。
-- **前端**: React, Next.js, TypeScript, Tailwind CSS, Lucide React (图标)。
-- **运行环境**: Windows 操作系统。
+## 2. 编码规范
 
-## 3. 目录结构
-- `backend/`: 后端核心代码。
-    - `optimizer_engine/`: 多策略优化引擎核心逻辑。
-    - `routers/`: API 路由定义。
-    - `logs/`: 自动生成的各个级别日志文件。
-- `frontend/`: 前端代码。
-    - `app/`: Next.js 页面与路由。
-    - `components/`: UI 组件。
-- `data/`: 存储项目、任务等持久化数据。
-- `docs/`: 项目文档（本规约文件存放处）。
+### 🐍 后端 (Python)
+- **类型提示 (Type Hints)**: 
+    - 所有函数入参、出参必须明确标注类型。
+    - 复杂字典结构应定义 Pydantic Model。
+- **文档字符串 (Docstrings)**: 
+    - 遵循 Google Style。
+    - 必须包含：功能描述、参数说明、返回值说明。
+    - 示例：
+      ```python
+      async def optimize_prompt(ctx: OptimizationContext) -> OptimizationResult:
+          """
+          执行提示词优化流水线的主逻辑
+          
+          :param ctx: 包含当前优化任务上下文（提示词、错误样例、配置等）
+          :return: 优化结果对象，包含新提示词及诊断信息
+          """
+          pass
+      ```
+- **日志 (Logging)**: 
+    - 使用 `loguru`。
+    - **禁止**使用 `print`。
+    - 关键业务节点（流水线启动、策略匹配、LLM 调用失败）必须 Log。
+- **异常处理**:
+    - 捕获具体异常而非通用 `Exception`。
+    - 必须对外抛出标准化的 HTTP 异常 (FastAPI HTTPException)。
 
-## 4. 编码规范
+### ⚛️ 前端 (TypeScript/React)
+- **类型安全**: 
+    - 严禁显式 `any`。
+    - API 响应数据必须定义 Interface。
+- **组件设计**: 
+    - 逻辑与视图分离 (Custom Hooks)。
+    - 优先使用 Functional Components。
+- **UI/UX**:
+    - 使用 Tailwind CSS 实现原子化样式。
+    - 组件间交互增加过渡动画 (Framer Motion)。
 
-### 4.1 通用规范
-- **语言**: 所有的代码注释、提示信息、文档必须使用**标准中文**。
-- **注释**: 
-    - 严禁行尾注释；
-    - 关键逻辑、方法、类必须有标准的中文文档字符串（Docstrings）或上方注释；
-    - 代码的关键位置必须打印日志（Loguru）。
+## 3. 提示词工程原则
+- **精简性**: 剔除冗余修饰词，直接陈述意图。
+- **结构化**: 利用 Markdown 符号 (`#`, `-`, `[]`) 分隔语义块。
+- **示例驱动 (Few-Shot)**: 复杂任务必须包含 1-3 个正反示例。
+- **防御性指令**: 明确告知模型"不知道时如何回答"，防止幻觉。
 
-### 4.2 后端 Python 规范
-- **变量与函数**:
-    - 必须指明入参和出参的变量类型（Type Hints）；
-    - 函数名应具有描述性，采用 `snake_case`；
-    - 必须使用异步编程方式（`async`/`await`）处理 API 请求和 LLM 调用。
-- **示例**:
-    ```python
-    async def process_task(task_id: str, data: dict) -> bool:
-        """
-        处理指定任务的逻辑
-        :param task_id: 任务唯一标识
-        :param data: 任务具体数据
-        :return: 是否处理成功
-        """
-        loguru_logger.info(f"开始处理任务: {task_id}")
-        # 执行逻辑...
-        return True
-    ```
-
-### 4.3 前端 TypeScript 规范
-- **组件**: 优先使用函数式组件。
-- **类型**: 严禁滥用 `any`，必须定义明确的接口（Interface）或类型（Type）。
-- **设计**: UI 界面必须追求“Rich Aesthetics”（丰富的美感），使用渐变、阴影、微动画等提升用户体验。
-
-## 5. 日志与可观测性
-- **日志框架**: 使用 `Loguru` 进行日志管理。
-- **日志分级**:
-    - `debug`: 记录详细的执行过程（开发调试用）；
-    - `info`: 记录正常的业务流转；
-    - `warn`: 记录非致命性错误或潜在问题；
-    - `error`: 记录程序崩溃或严重逻辑错误。
-- **存储方案**: 日志按级别存放在 `backend/logs/` 目录下，按天滚动存储。
-
-## 6. 提示词优化原则
-在编写和优化 LLM 提示词时，必须遵循以下原则：
-- **精简**: 去除冗余描述，直击核心意图；
-- **高效**: 减少模型思考负担，提高响应质量；
-- **易理解**: 结构清晰，便于人类阅读和二次调整。
-
-## 7. 环境要求
-- **操作系统**: Windows。
-- **虚拟环境**: 运行后端代码前必须确认是否在虚拟环境中, 虚拟环境在backend/venv下。
-- **依赖管理**: 后端使用 `pip` (requirements.txt)，前端使用 `npm`。
+## 4. 目录结构约定
+| 路径 | 说明 | 核心职责 |
+| :--- | :--- | :--- |
+| `backend/app/engine` | 优化引擎核心 | 存放 Pipeline、策略 (Strategies)、诊断 (Diagnosis)。**纯逻辑，无 HTTP 依赖**。 |
+| `backend/app/services` | 业务服务层 | 串联 Engine 与 DB，处理任务状态流转、数据持久化。 |
+| `backend/app/api` | 接口层 | 参数校验 (Pydantic)、路由分发、权限控制。**禁止包含复杂业务逻辑**。 |
+| `backend/app/models.py` | 数据模型 | 定义通用的 SQLModel 数据库表结构及 Pydantic 交互模型。 |

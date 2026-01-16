@@ -37,6 +37,8 @@ class OutputFormatOptimizationStrategy(BaseStrategy):
         """
         # 检查提示词分析中的格式问题
         prompt_analysis: Dict[str, Any] = diagnosis.get("prompt_analysis", {})
+        format_issues_data: Dict[str, Any] = prompt_analysis.get("format_issues", {})
+        format_issues: List[str] = format_issues_data.get("issues", [])
         if len(format_issues) > 0:
             return True
         
@@ -112,43 +114,25 @@ class OutputFormatOptimizationStrategy(BaseStrategy):
 - 本模块必须位于**Few-Shot 场景示例之后**（第9个模块，也是最后一个模块）。如果不在此位置，请将其移动到正确位置。
 
 ### 2. 明确输出载体
-- 强制使用 **JSON 格式** 作为输出载体
+- 强制使用 **JSON 格式** 作为输出载体（除非原提示词明确使用其他格式）
 - **禁止** 在 JSON 之外输出任何额外的文字说明、解释或前缀
 - 确保输出可以被直接解析为合法的 JSON 对象
 
-### 3. 定义标准输出字段
-如果提示词中没有具体的字段约束，请使用以下标准结构：
-```json
-{{
-    "rewritten_query": "重写后的查询语句",
-    "intent": ["意图1", "意图2"],
-    "confidence": 0.95,
-    "clarify": null
-}}
-```
-**注意**: 如果提示词中已有特定输出格式约束，请**保持原样不变**！只需整理格式, 调整json字段的顺序，不要修改字段名。
+### 3. 遵循原有格式定义
+- **必须**分析原提示词中已有的输出格式定义
+- 如果原提示词已有输出格式约束，**严格保持原样不变**！
+- 只允许整理格式、调整字段顺序，**不允许修改字段名或结构**
+- **严禁使用与原提示词不一致的通用示例格式**
 
-### 4. 各场景输出模板
+### 4. 各场景输出模板要求
+- 如果需要补充场景模板，必须基于**原提示词的输出格式**来构建
+- 场景模板需覆盖：单意图、多意图、需要澄清、无意图等典型场景
+- 每个场景的输出结构必须与原提示词定义的格式完全一致
 
-**单意图场景**:
-```json
-{{"rewritten_query": "重写后的查询语句", "intent": ["查询订单状态"], "confidence": 0.92, "clarify": null}}
-```
-
-**多意图场景**:
-```json
-{{"rewritten_query": "重写后的查询语句", "intent": ["退款申请", "查询物流"], "confidence": 0.88, "clarify": null}}
-```
-
-**需要澄清场景**:
-```json
-{{"rewritten_query": "重写后的查询语句", "intent": [], "confidence": 0.0, "clarify": "请问您是想查询哪个订单的状态？"}}
-```
-
-**无意图场景**:
-```json
-{{"rewritten_query": "重写后的查询语句", "intent": ["无意图"], "confidence": 0.95, "clarify": null}}
-```
+### 5. 格式一致性检查
+- 确保所有示例的字段名、字段类型、字段顺序与原提示词定义一致
+- 如原提示词使用 `intent_type` 而非 `intent`，则必须使用 `intent_type`
+- 如原提示词使用 `is_sop` 字段，则必须保留该字段
 
 """
         
