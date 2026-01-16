@@ -65,6 +65,8 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
     const loadMoreRef = useRef<HTMLDivElement>(null);
     const loadedPagesRef = useRef<number>(1);
     const editPanelRef = useRef<HTMLDivElement | null>(null);
+    const createModalRef = useRef<HTMLDivElement | null>(null);
+    const testResultRef = useRef<HTMLDivElement | null>(null);
 
     /**
      * 检查是否有未保存的更改
@@ -287,6 +289,39 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
         }
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [showCreateModal, showCreateExitConfirm, tryCloseCreateModal]);
+
+    // Global Click Outside Listener for Modals
+    useEffect(() => {
+        const handleGlobalClick = (event: MouseEvent) => {
+            // Handle Create Modal
+            if (showCreateModal && createModalRef.current && !createModalRef.current.contains(event.target as Node)) {
+                // If the exit confirm dialog is open, it handles its own clicks or covers the screen.
+                // However, since it is inside the modal container in DOM, checking if target is inside modalRef might be tricky
+                // if the exit confirm is absolutely positioned over the modal ref?
+                // Actually, ExitConfirm is inside the backdrop `div` but outside the content `div`?
+                // Let's check the DOM structure:
+                // <div (backdrop)> -> <div (content, ref=createModalRef)> ... </div> ... {ShowExitConfirm && <div (absolute)>...</div>}
+                // If showExitConfirm is true, the exit confirm div is sibling to content div.
+                // If user clicks on exit confirm, it is NOT in createModalRef. So it is "outside".
+                // Be careful not to close the main modal if user interacts with the exit confirm.
+                if (!showCreateExitConfirm) {
+                    tryCloseCreateModal();
+                }
+            }
+
+            // Handle Test Result Modal
+            if (testResult && testResultRef.current && !testResultRef.current.contains(event.target as Node)) {
+                setTestResult(null);
+            }
+        };
+
+        if (showCreateModal || testResult) {
+            // Use capture=true to ensure we catch even propagated events or those stopped?
+            // Standard click usually bubbles. Mousedown is safer for "click outside".
+            document.addEventListener('mousedown', handleGlobalClick);
+        }
+        return () => document.removeEventListener('mousedown', handleGlobalClick);
+    }, [showCreateModal, testResult, tryCloseCreateModal, showCreateExitConfirm]);
 
     /**
      * 重置单条意图干预记录
@@ -901,6 +936,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                         onClick={tryCloseCreateModal}
                     >
                         <div
+                            ref={createModalRef}
                             className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 relative"
                             onClick={(e) => e.stopPropagation()}
                         >
@@ -993,7 +1029,10 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
             {
                 testResult && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]">
+                        <div
+                            ref={testResultRef}
+                            className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]"
+                        >
                             <div className="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 shrink-0">
                                 <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                                     <FlaskConical size={14} className="text-indigo-400" /> 测试结果
