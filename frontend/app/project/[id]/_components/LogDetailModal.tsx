@@ -1,30 +1,64 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, AlertCircle, X, Edit3, Save, AlertTriangle } from "lucide-react";
+import { CheckCircle2, AlertCircle, X, Edit3, Save, AlertTriangle, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface LogDetailModalProps {
     selectedLog: any;
     onClose: () => void;
     onSaveReason?: (query: string, reason: string, target: string) => Promise<void>;
+    onReset?: (query: string) => Promise<void>;
     projectId: string;
 }
 
-export default function LogDetailModal({ selectedLog, onClose, onSaveReason, projectId }: LogDetailModalProps) {
+export default function LogDetailModal({ selectedLog, onClose, onSaveReason, onReset, projectId }: LogDetailModalProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [reasonValue, setReasonValue] = useState("");
     const [savedReason, setSavedReason] = useState("");
+
+    // targetValue stores the "Corrected Intent"
     const [targetValue, setTargetValue] = useState("");
     const [savedTarget, setSavedTarget] = useState("");
+
     const [availableTargets, setAvailableTargets] = useState<string[]>([]);
     const [showConfirmClose, setShowConfirmClose] = useState(false);
+    const [isResetting, setIsResetting] = useState(false);
+
+    /**
+     * 重置当前记录的意图修正和原因
+     */
+    const handleReset = async () => {
+        if (!onReset || !selectedLog?.query) return;
+        if (!window.confirm("确定要重置此条记录吗？\n这将恢复原始预期意图并清空原因。")) return;
+
+        setIsResetting(true);
+        try {
+            await onReset(selectedLog.query);
+            // 重置成功后关闭 Modal
+            onClose();
+        } catch (e) {
+            console.error("Reset failed:", e);
+            alert("重置失败");
+        } finally {
+            setIsResetting(false);
+        }
+    };
 
     // Fetch available targets
     useEffect(() => {
         if (projectId && isEditing) {
             fetch(`/api/projects/${projectId}/interventions/targets`)
                 .then(res => res.json())
-                .then(data => setAvailableTargets(data || []))
-                .catch(console.error);
+                .then(data => {
+                    if (Array.isArray(data)) {
+                        setAvailableTargets(data);
+                    } else {
+                        setAvailableTargets([]);
+                    }
+                })
+                .catch(err => {
+                    console.error("Failed to fetch targets:", err);
+                    setAvailableTargets([]);
+                });
         }
     }, [projectId, isEditing]);
 
@@ -33,8 +67,16 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason, pro
             const initialReason = selectedLog.reason || "";
             setReasonValue(initialReason);
             setSavedReason(initialReason);
-            setTargetValue(selectedLog.target || "");
-            setSavedTarget(selectedLog.target || "");
+
+            // Initialize correction value
+            // If we have an explicit intervention record, use its target as the correction
+            // Otherwise, default to the log's target (assuming no correction yet)
+            const intervention = selectedLog.intervention;
+            const initialCorrection = intervention ? intervention.target : (selectedLog.target || "");
+
+            setTargetValue(initialCorrection);
+            setSavedTarget(initialCorrection);
+
             setIsEditing(false);
             setShowConfirmClose(false);
         }
@@ -80,6 +122,7 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason, pro
 
     const handleSave = async () => {
         if (onSaveReason) {
+            // Save the "Intent Correction" (targetValue) as the new target
             await onSaveReason(selectedLog.query, reasonValue, targetValue);
             setSavedReason(reasonValue);
             setSavedTarget(targetValue);
@@ -117,35 +160,57 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason, pro
                 <div className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">Query / Input</label>
-                        <div className="bg-black/20 rounded-xl p-4 text-sm whitespace-pre-wrap">{selectedLog.query}</div>
+                        <div className="bg-black/20 rounded-xl p-4 text-sm whitespace-pre-wrap text-slate-300">{selectedLog.query}</div>
                     </div>
+
+                    {/* Original Target (Read-only) */}
                     <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Expected Target</label>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">预期意图 (Original Target)</label>
+                        <div className="bg-black/20 border border-white/5 rounded-xl p-4 text-sm text-slate-400 italic">
+                            {selectedLog.target || "无预期结果"}
+                        </div>
+                    </div>
+
+                    {/* Intent Correction (Editable) */}
+                    <div>
+                        <label className="block text-sm font-medium text-indigo-400 mb-1">意图修正 (Intent Correction)</label>
                         {isEditing ? (
                             <div>
                                 <input
                                     list="target-options"
-                                    className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-slate-300 focus:border-indigo-500/50 outline-none"
+                                    className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-slate-300 focus:border-indigo-500/50 outline-none transition-colors"
                                     value={targetValue}
                                     onChange={(e) => setTargetValue(e.target.value)}
-                                    placeholder="选择或输入预期意图..."
+                                    placeholder="输入修正后的意图..."
                                 />
                                 <datalist id="target-options">
-                                    {(availableTargets || []).map((t, i) => (
+                                    {Array.isArray(availableTargets) && availableTargets.map((t, i) => (
                                         <option key={i} value={t} />
                                     ))}
                                 </datalist>
+                                <p className="text-xs text-slate-500 mt-1 ml-1">修改此处不会变更原始记录，但会影响后续优化的判断标准。</p>
                             </div>
                         ) : (
                             <div
-                                className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-sm cursor-pointer hover:bg-emerald-500/20 transition-colors"
+                                className={`rounded-xl p-4 text-sm cursor-pointer hover:bg-white/5 transition-colors border ${savedTarget && savedTarget !== selectedLog.target
+                                    ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
+                                    : "bg-white/5 border-white/5 text-slate-500"
+                                    }`}
                                 onClick={() => onSaveReason && setIsEditing(true)}
-                                title="点击修改预期结果"
+                                title="点击修正意图"
                             >
-                                {savedTarget || <span className="text-slate-500 italic">暂无预期结果 (点击设置)</span>}
+                                {savedTarget && savedTarget !== selectedLog.target ? (
+                                    <div className="flex items-center gap-2">
+                                        <Edit3 size={14} />
+                                        <span>{savedTarget} (已修正)</span>
+                                    </div>
+                                ) : (
+                                    <span className="italic">暂无修正 (点击添加) - 当前使用原始意图</span>
+                                )}
                             </div>
                         )}
                     </div>
+
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">Actual Output</label>
                         <pre className="bg-black/20 border border-white/10 rounded-xl p-4 text-sm overflow-x-auto font-mono text-slate-300">
@@ -191,13 +256,27 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason, pro
                             </div>
                         ) : (
                             <div
-                                className={`rounded-xl p-4 text-sm cursor-text hover:bg-white/5 transition-colors ${savedReason ? "bg-amber-500/5 border border-amber-500/10 text-slate-300" : "bg-white/5 border border-white/5 text-slate-500 italic"}`}
+                                className={`rounded-xl p-4 text-sm cursor-pointer hover:bg-white/5 transition-colors ${savedReason ? "bg-amber-500/5 border border-amber-500/10 text-slate-300" : "bg-white/5 border border-white/5 text-slate-500 italic"}`}
                                 onClick={() => onSaveReason && setIsEditing(true)}
                             >
                                 {savedReason || "暂无原因标注 (点击添加)"}
                             </div>
                         )}
                     </div>
+
+                    {/* Reset Button - 显示在底部，仅当有修改时显示 */}
+                    {onReset && (savedTarget !== selectedLog.target || savedReason) && !isEditing && (
+                        <div className="pt-4 border-t border-white/10">
+                            <button
+                                onClick={handleReset}
+                                disabled={isResetting}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded-xl border border-red-500/20 hover:border-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <RotateCcw size={14} className={isResetting ? "animate-spin" : ""} />
+                                重置此条记录（恢复原始意图，清空原因）
+                            </button>
+                        </div>
+                    )}
                 </div>
             </motion.div>
 

@@ -101,6 +101,31 @@ export default function ProjectDetail() {
         }
     };
 
+    /**
+     * 重置意图干预记录
+     * 恢复原始 Target，清空 Reason
+     * @param query 要重置的 Query
+     */
+    const handleResetIntervention = async (query: string) => {
+        try {
+            const res = await fetch(`${API_BASE}/projects/${id}/interventions/reset`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query })
+            });
+
+            if (res.ok) {
+                setReasonsUpdateCount(c => c + 1);
+                showToast("记录已重置", "success");
+            } else {
+                showToast("重置失败", "error");
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("重置出错", "error");
+        }
+    };
+
     useEffect(() => {
         fetchProject();
         pollAutoIterateStatus();
@@ -857,6 +882,7 @@ export default function ProjectDetail() {
                 selectedLog={selectedLog}
                 onClose={() => setSelectedLog(null)}
                 onSaveReason={handleSaveReason}
+                onReset={handleResetIntervention}
                 projectId={id as string}
             />
 

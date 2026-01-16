@@ -15,18 +15,23 @@ from app.models import IntentIntervention
 from app.db.database import get_db_session
 from datetime import datetime
 
-def get_interventions_by_project(project_id: str) -> List[IntentIntervention]:
+def get_interventions_by_project(project_id: str, file_id: Optional[str] = None) -> List[IntentIntervention]:
     """
     获取项目下所有已标注的意图干预数据
     
     :param project_id: 项目唯一标识
+    :param file_id: 可选，文件版本 ID，用于筛选特定版本
     :return: IntentIntervention 对象列表
     """
     try:
         with get_db_session() as session:
             statement = select(IntentIntervention).where(IntentIntervention.project_id == project_id)
+            
+            # 如果指定了 file_id，仅返回该版本的数据
+            if file_id:
+                statement = statement.where(IntentIntervention.file_id == file_id)
+            
             results: List[IntentIntervention] = list(session.exec(statement).all())
-            # logger.debug(f"Fetched {len(results)} interventions for project {project_id}")
             return results
     except Exception as e:
         logger.error(f"Failed to get interventions for project {project_id}: {e}")
@@ -181,14 +186,15 @@ def import_dataset_to_interventions(
         return 0
 
 
-def get_intervention_map(project_id: str) -> Dict[str, str]:
+def get_intervention_map(project_id: str, file_id: Optional[str] = None) -> Dict[str, str]:
     """
     获取项目下 Query -> Reason 的映射字典 (仅返回已有原因的项)
     
     :param project_id: 项目 ID
+    :param file_id: 可选，文件版本 ID，用于筛选特定版本
     :return: 字典 {query: reason}
     """
-    interventions = get_interventions_by_project(project_id)
+    interventions = get_interventions_by_project(project_id, file_id=file_id)
     return {r.query: r.reason for r in interventions if r.reason}
 
 

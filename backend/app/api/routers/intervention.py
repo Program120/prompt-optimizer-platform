@@ -207,13 +207,17 @@ async def batch_delete_interventions(project_id: str, request: List[str]) -> Dic
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/projects/{project_id}/interventions/export")
-async def export_interventions_endpoint(project_id: str) -> Any:
+async def export_interventions_endpoint(project_id: str, file_id: str = None) -> Any:
     """
-    导出项目下所有意图干预数据
+    导出项目下意图干预数据
+    
+    :param project_id: 项目 ID
+    :param file_id: 可选，文件版本 ID，如果指定则仅导出该版本的数据
+    :return: CSV 文件流
     """
-    logger.info(f"Exporting interventions for project {project_id}")
+    logger.info(f"Exporting interventions for project {project_id}, file_id={file_id}")
     try:
-        interventions = intervention_service.get_interventions_by_project(project_id)
+        interventions = intervention_service.get_interventions_by_project(project_id, file_id=file_id)
         if not interventions:
              # Return empty csv
              df = pd.DataFrame(columns=["query", "target", "reason"])
@@ -226,8 +230,11 @@ async def export_interventions_endpoint(project_id: str) -> Any:
         
         stream = io.StringIO()
         export_df.to_csv(stream, index=False)
+        
+        # 生成带有版本信息的文件名
+        filename_suffix = f"_{file_id}" if file_id else ""
         response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
-        response.headers["Content-Disposition"] = f"attachment; filename=intent_intervention_{project_id}.csv"
+        response.headers["Content-Disposition"] = f"attachment; filename=intent_intervention_{project_id}{filename_suffix}.csv"
         return response
         
     except Exception as e:

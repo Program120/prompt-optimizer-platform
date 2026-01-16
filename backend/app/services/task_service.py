@@ -57,27 +57,33 @@ class TaskManager:
         """
         task_id = f"task_{int(time.time())}"
         
+        # 从文件路径提取 file_id
+        # file_path 格式通常是: DATA_DIR/uuid_filename.ext
+        file_basename = os.path.basename(file_path)
+        file_id = file_basename.split("_")[0] if "_" in file_basename else file_basename.rsplit(".", 1)[0]
+        
         # 加载数据以校验
         if file_path.endswith(".csv"):
             df = pd.read_csv(file_path)
         else:
             df = pd.read_excel(file_path)
             
-        # [新增] 意图干预数据自动导入逻辑
-        # 如果该项目的 IntentIntervention 为空，则认为这是一个新项目（或未初始化的项目），自动将文件中的数据导入到数据库
-        # 这样后续的验证流程将统一使用 IntentIntervention 作为数据源
+        # [新增] 意图干预数据自动导入逻辑 (按 file_id 版本检查)
+        # 如果该项目的当前 file_id 对应的 IntentIntervention 为空，则自动将文件中的数据导入到数据库
         try:
             from app.services import intervention_service
-            existing_reasons = intervention_service.get_interventions_by_project(project_id)
+            existing_reasons = intervention_service.get_interventions_by_project(project_id, file_id=file_id)
             if not existing_reasons:
-                logger.info(f"IntentIntervention is empty for {project_id}. Auto-importing from file...")
+                logger.info(f"IntentIntervention is empty for project {project_id}, file_id={file_id}. Auto-importing from file...")
                 intervention_service.import_dataset_to_interventions(
                     project_id=project_id,
                     df=df,
                     query_col=query_col,
                     target_col=target_col,
-                    reason_col=reason_col
+                    reason_col=reason_col,
+                    file_id=file_id
                 )
+                logger.success(f"Auto-imported {len(df)} rows to IntentIntervention for file_id={file_id}")
         except Exception as e:
             logger.warning(f"Auto-import to IntentIntervention failed: {e}")
 
@@ -85,7 +91,8 @@ class TaskManager:
         task_info = {
             "id": task_id,
             "project_id": project_id,
-            "file_path": file_path, # 保存文件路径
+            "file_path": file_path,
+            "file_id": file_id,  # 新增：保存文件版本 ID
             "status": "running",
             "current_index": 0,
             "total_count": len(df),
@@ -93,9 +100,9 @@ class TaskManager:
             "target_col": target_col,
             "reason_col": reason_col,
             "prompt": prompt,
-            "extract_field": extract_field, # 保存需要提取的字段名
-            "model_config": model_config,   # 保存模型配置
-            "original_filename": original_filename if original_filename is not None else "", # 保存原始文件名
+            "extract_field": extract_field,
+            "model_config": model_config,
+            "original_filename": original_filename if original_filename is not None else "",
             "validation_limit": validation_limit,
             "results": [],
             "errors": []
@@ -145,10 +152,11 @@ class TaskManager:
         info = info_override or task["info"]
         
         project_id = info["project_id"]
+        file_id = info.get("file_id", "")  # 获取文件版本 ID
         
-        # [修改] 数据加载逻辑: 优先从意图干预数据库加载
+        # [修改] 数据加载逻辑: 优先从意图干预数据库加载 (按 file_id 筛选)
         from app.services import intervention_service
-        reasons = intervention_service.get_interventions_by_project(project_id)
+        reasons = intervention_service.get_interventions_by_project(project_id, file_id=file_id)
         
         df = None
         used_source = "file"

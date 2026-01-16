@@ -101,13 +101,14 @@ export default function RunLogTab({ taskId, totalCount, reasons, saveReason, onS
             {results.map((r: any, idx: number) => {
                 const reasonItem = reasons[r.query];
                 const currentReason = reasonItem?.reason || r.reason;
+                const currentTarget = reasonItem?.target || r.target;
                 const isEditing = editingReason?.query === r.query;
 
                 return (
                     <div
                         key={idx}
                         className={`p-3 rounded-xl border text-xs mb-2 group relative cursor-pointer ${r.is_correct ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}
-                        onClick={() => onSelectLog({ ...r, reason: currentReason })}
+                        onClick={() => onSelectLog({ ...r, reason: currentReason, intervention: reasonItem })}
                     >
                         <div className="flex justify-between items-center mb-1">
                             <div className="flex items-center gap-2">
@@ -117,7 +118,7 @@ export default function RunLogTab({ taskId, totalCount, reasons, saveReason, onS
                         </div>
                         <p className="text-slate-300 mb-1 font-mono break-all" title={r.query}>{r.query}</p>
                         <div className="flex items-center gap-2 text-slate-500 mb-2">
-                            <span className="truncate flex-1" title={r.target}>预期: {r.target}</span>
+                            <span className="truncate flex-1" title={currentTarget}>预期: {currentTarget}</span>
                             <ArrowRight size={10} />
                             <span className="truncate flex-1 text-slate-400" title={r.output}>输出: {r.output}</span>
                         </div>
@@ -136,7 +137,7 @@ export default function RunLogTab({ taskId, totalCount, reasons, saveReason, onS
                                     />
                                     <div className="flex flex-col gap-1">
                                         <button
-                                            onClick={() => editingReason && saveReason(r.query, editingReason.value, r.target).then(() => setEditingReason(null))}
+                                            onClick={() => editingReason && saveReason(r.query, editingReason.value, currentTarget).then(() => setEditingReason(null))}
                                             className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
                                         >
                                             <Save size={12} />
@@ -154,7 +155,7 @@ export default function RunLogTab({ taskId, totalCount, reasons, saveReason, onS
                                     className={`flex justify-between items-start cursor-pointer hover:bg-white/5 rounded p-1 -mx-1 transition-colors ${!currentReason ? "text-slate-600" : ""}`}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        setEditingReason({ query: r.query, value: currentReason || "", target: r.target });
+                                        setEditingReason({ query: r.query, value: currentReason || "", target: currentTarget });
                                     }}
                                 >
                                     <div className="text-xs text-amber-500/80 w-full">

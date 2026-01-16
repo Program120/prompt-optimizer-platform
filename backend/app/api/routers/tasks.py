@@ -221,14 +221,15 @@ async def export_task_results(task_id: str) -> FileResponse:
         # 获取所有结果
         original_results = status.get("results", [])
         
-        # --- 增强原因数据 (优先使用 Reason 库) ---
+        # --- 增强原因数据 (优先使用 Reason 库, 按 file_id 版本筛选) ---
         project_id = status.get("project_id")
+        file_id = status.get("file_id")  # 获取任务关联的文件版本
         results = []
         if project_id:
             try:
-                # 获取原因映射
+                # 获取原因映射 (按 file_id 版本筛选)
                 from app.services import intervention_service
-                reason_map = intervention_service.get_intervention_map(project_id)
+                reason_map = intervention_service.get_intervention_map(project_id, file_id=file_id)
                 
                 # 复制并增强结果
                 for r in original_results:
@@ -237,6 +238,8 @@ async def export_task_results(task_id: str) -> FileResponse:
                     if new_r.get("query") in reason_map:
                         new_r["reason"] = reason_map[new_r["query"]]
                     results.append(new_r)
+                    
+                logger.debug(f"Enriched results with {len(reason_map)} reasons from file_id={file_id}")
             except Exception as e:
                 logger.error(f"Failed to enrich results with reasons: {e}")
                 results = original_results

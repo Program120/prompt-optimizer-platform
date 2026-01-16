@@ -1,14 +1,44 @@
-import { Clock, Trash2, Database, FileText } from "lucide-react";
+import { Clock, Trash2, Database, FileText, Download } from "lucide-react";
 import { NoteSection } from "./NoteSection";
+
+const API_BASE = "/api";
 
 interface RunHistoryTabProps {
     runHistory: any[];
+    projectId: string;
     onDeleteTask?: (task: any) => void;
     onSaveNote: (type: string, id: string, value: string) => Promise<boolean>;
     onViewPrompt?: (prompt: string) => void;
 }
 
-export default function RunHistoryTab({ runHistory, onDeleteTask, onSaveNote, onViewPrompt }: RunHistoryTabProps) {
+export default function RunHistoryTab({ runHistory, projectId, onDeleteTask, onSaveNote, onViewPrompt }: RunHistoryTabProps) {
+    /**
+     * 下载指定版本的意图干预数据
+     * @param fileId 文件版本 ID
+     */
+    const downloadInterventions = async (fileId: string) => {
+        if (!projectId || !fileId) return;
+
+        try {
+            const url = `${API_BASE}/projects/${projectId}/interventions/export?file_id=${encodeURIComponent(fileId)}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error("下载失败");
+            }
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = downloadUrl;
+            a.download = `intent_intervention_${fileId}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(downloadUrl);
+            document.body.removeChild(a);
+        } catch (e) {
+            console.error("Download interventions failed:", e);
+            alert("下载意图干预数据失败");
+        }
+    };
     const formatTime = (timestamp: string) => {
         if (!timestamp) return "未知";
         try {
@@ -74,6 +104,20 @@ export default function RunHistoryTab({ runHistory, onDeleteTask, onSaveNote, on
                             <span className="text-slate-600">|</span>
                             <span>{task.total_count} 条数据</span>
                         </div>
+                        {/* 下载意图干预按钮 */}
+                        {task.file_id && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    downloadInterventions(task.file_id);
+                                }}
+                                className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 whitespace-nowrap"
+                                title="下载此版本的意图干预数据"
+                            >
+                                <Download size={10} />
+                                干预数据
+                            </button>
+                        )}
                     </div>
 
                     {/* 提示词预览 & 查看 */}

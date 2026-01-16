@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Database, Edit3, FileText, CheckCircle2, AlertCircle } from "lucide-react";
+import { Database, Edit3, FileText, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -17,6 +17,37 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
     const [intentSearch, setIntentSearch] = useState("");
     const [intentFilter, setIntentFilter] = useState("all");
     const [editingReason, setEditingReason] = useState<{ query: string, value: string, target: string } | null>(null);
+    const [resettingQuery, setResettingQuery] = useState<string | null>(null);
+
+    /**
+     * 重置单条意图干预记录
+     * 恢复原始 Target，清空 Reason
+     * @param query 要重置的 Query
+     */
+    const resetIntervention = async (query: string) => {
+        if (!project?.id) return;
+        if (!window.confirm("确定要重置此条记录吗？\n这将恢复原始预期意图并清空原因。")) return;
+
+        setResettingQuery(query);
+        try {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/interventions/reset`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query })
+            });
+            if (res.ok) {
+                // 刷新列表
+                fetchIntentData(1, intentSearch);
+            } else {
+                alert("重置失败");
+            }
+        } catch (e) {
+            console.error("Reset intervention failed:", e);
+            alert("重置出错");
+        } finally {
+            setResettingQuery(null);
+        }
+    };
 
     const fetchIntentData = async (pageNum: number = 1, search: string = "") => {
         if (!project?.id || !fileId) return;
@@ -118,20 +149,36 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
 
                                 {/* Header: Query & Badges */}
                                 <div className="mb-2">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                                            <span className="text-blue-200 font-medium text-xs">Query</span>
+                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                                <span className="text-blue-200 font-medium text-xs">Query</span>
+                                            </div>
+                                            {item.is_target_modified && (
+                                                <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 text-[10px] rounded border border-indigo-500/30 flex items-center gap-1">
+                                                    <Edit3 size={8} /> 意图修正
+                                                </span>
+                                            )}
+                                            {item.reason && (
+                                                <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] rounded border border-amber-500/30 flex items-center gap-1">
+                                                    <FileText size={8} /> 原因标注
+                                                </span>
+                                            )}
                                         </div>
-                                        {item.is_target_modified && (
-                                            <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 text-[10px] rounded border border-indigo-500/30 flex items-center gap-1">
-                                                <Edit3 size={8} /> 意图修正
-                                            </span>
-                                        )}
-                                        {item.reason && (
-                                            <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] rounded border border-amber-500/30 flex items-center gap-1">
-                                                <FileText size={8} /> 原因标注
-                                            </span>
+                                        {/* 重置按钮：仅当有修改时显示 */}
+                                        {(item.is_target_modified || item.reason) && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    resetIntervention(item.query);
+                                                }}
+                                                disabled={resettingQuery === item.query}
+                                                className="p-1.5 rounded-lg bg-slate-700/50 hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-all border border-white/5 hover:border-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title="重置此条记录（恢复原始意图，清空原因）"
+                                            >
+                                                <RotateCcw size={12} className={resettingQuery === item.query ? "animate-spin" : ""} />
+                                            </button>
                                         )}
                                     </div>
                                     <div className="bg-black/30 p-3 rounded-lg border border-white/10 text-slate-200 min-h-[36px] break-all text-sm font-mono leading-relaxed shadow-inner">

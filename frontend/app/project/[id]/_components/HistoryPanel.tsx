@@ -196,6 +196,7 @@ export default function HistoryPanel({
                 {activeTab === "runHistory" && (
                     <RunHistoryTab
                         runHistory={runHistory}
+                        projectId={project?.id || ""}
                         onDeleteTask={onDeleteTask}
                         onSaveNote={handleSaveNote}
                         onViewPrompt={handleViewPrompt}
