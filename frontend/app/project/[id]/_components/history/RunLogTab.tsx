@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { CheckCircle2, AlertCircle, ArrowRight, Save, X, Search } from "lucide-react";
 
 const API_BASE = "/api";
@@ -17,34 +17,87 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
     const [results, setResults] = useState<any[]>([]);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
-    const [isLoadingResults, setIsLoadingResults] = useState(false);
+    // 分离两种加载状态：无限滚动加载 和 定时刷新
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [totalResults, setTotalResults] = useState(0);
     const [searchQuery, setSearchQuery] = useState("");
     const [editingReason, setEditingReason] = useState<{ query: string, value: string, target: string } | null>(null);
 
-    // Fetch Logic
-    const fetchResults = async (pageNum: number, reset: boolean = false, search: string = "") => {
+    // Ref for scroll container (用于 IntersectionObserver 的 root)
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    // Ref for infinite scroll trigger element
+    const loadMoreRef = useRef<HTMLDivElement>(null);
+    // 使用 ref 记录当前已加载的页数，避免闭包问题
+    const loadedPagesRef = useRef<number>(1);
+
+    /**
+     * 加载更多数据 (用于无限滚动)
+     */
+    const loadMoreResults = useCallback(async (pageNum: number, search: string = "") => {
         if (!taskId) return;
-        setIsLoadingResults(true);
+        setIsLoadingMore(true);
         try {
-            let url = `${API_BASE}/tasks/${taskId}/results?page=${pageNum}&page_size=20`;
+            let url: string = `${API_BASE}/tasks/${taskId}/results?page=${pageNum}&page_size=20`;
             if (search) {
                 url += `&search=${encodeURIComponent(search)}`;
             }
-            const res = await fetch(url);
+            const res: Response = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
-                setResults(prev => reset ? data.results : [...prev, ...data.results]);
+                // 倒序排列：最新的结果在最上面
+                const sortedResults: any[] = [...data.results].sort((a: any, b: any) => (b.index || 0) - (a.index || 0));
+                setResults(prev => [...prev, ...sortedResults]);
                 setTotalResults(data.total);
-                setHasMore(data.page * data.size < data.total);
+                setHasMore(data.page * (data.page_size || data.size || 20) < data.total);
                 setPage(pageNum);
+                loadedPagesRef.current = pageNum;
             }
         } catch (e) {
-            console.error("Failed to fetch results", e);
+            console.error("加载更多数据失败", e);
         } finally {
-            setIsLoadingResults(false);
+            setIsLoadingMore(false);
         }
-    };
+    }, [taskId]);
+
+    /**
+     * 刷新数据 (用于初始加载和定时刷新)
+     * @param pageSize 要获取的数据量
+     * @param search 搜索关键词
+     */
+    const refreshResults = useCallback(async (pageSize: number, search: string = "") => {
+        if (!taskId) return;
+        setIsRefreshing(true);
+        try {
+            let url: string = `${API_BASE}/tasks/${taskId}/results?page=1&page_size=${pageSize}`;
+            if (search) {
+                url += `&search=${encodeURIComponent(search)}`;
+            }
+            const res: Response = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                // 倒序排列：最新的结果在最上面
+                const sortedResults: any[] = [...data.results].sort((a: any, b: any) => (b.index || 0) - (a.index || 0));
+                setResults(prev => {
+                    // 如果本地已有更多数据（可能是刷新期间触发了加载更多），则保留尾部数据
+                    if (prev.length > sortedResults.length) {
+                        return [...sortedResults, ...prev.slice(sortedResults.length)];
+                    }
+                    return sortedResults;
+                });
+                setTotalResults(data.total);
+                // 根据实际获取的数据量更新分页状态
+                const pagesLoaded: number = Math.ceil(sortedResults.length / 20);
+                setPage(pagesLoaded);
+                loadedPagesRef.current = pagesLoaded;
+                setHasMore(sortedResults.length < data.total);
+            }
+        } catch (e) {
+            console.error("刷新数据失败", e);
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, [taskId]);
 
     // Reset when task changes
     useEffect(() => {
@@ -53,21 +106,28 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
             setPage(1);
             setHasMore(true);
             setTotalResults(0);
-            fetchResults(1, true, searchQuery);
+            loadedPagesRef.current = 1;
+            refreshResults(20, searchQuery);
         }
     }, [taskId]);
 
-    // 实时更新：每隔3秒刷新一次数据（当任务有新进度时）
+    /**
+     * 实时更新：任务运行时每隔2秒刷新一次数据
+     * 刷新时保持当前已加载的数据量，而不是只刷新第一页
+     */
     useEffect(() => {
-        if (!taskId || !currentIndex) return;
+        if (!taskId) return;
 
-        // 当有新进度时，定期刷新
+        // 启动定时刷新
         const interval = setInterval(() => {
-            fetchResults(1, true, searchQuery);
-        }, 3000);
+            // 使用 ref 获取当前已加载的页数，避免闭包问题
+            const currentPages: number = loadedPagesRef.current;
+            const dataToFetch: number = currentPages * 20;
+            refreshResults(dataToFetch, searchQuery);
+        }, 2000);
 
         return () => clearInterval(interval);
-    }, [taskId, currentIndex && currentIndex > 0 ? Math.floor(currentIndex / 10) : 0]);
+    }, [taskId, searchQuery, refreshResults, isLoadingMore]);
 
     // Search Debounce
     useEffect(() => {
@@ -75,14 +135,38 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
             const timer = setTimeout(() => {
                 setResults([]);
                 setPage(1);
-                fetchResults(1, true, searchQuery);
+                loadedPagesRef.current = 1;
+                refreshResults(20, searchQuery);
             }, 500);
             return () => clearTimeout(timer);
         }
     }, [searchQuery]);
 
+    /**
+     * 无限滚动 Observer
+     * 注意：只在 isLoadingMore 为 false 时设置 observer，isRefreshing 不影响
+     */
+    useEffect(() => {
+        const node = loadMoreRef.current;
+        const root = scrollContainerRef.current;
+        if (!node || isLoadingMore || !hasMore || !taskId) return;
+
+        const observer = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+                loadMoreResults(page + 1, searchQuery);
+            }
+        }, {
+            threshold: 0.1,
+            root: root,
+            rootMargin: "100px"
+        });
+
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [hasMore, isLoadingMore, page, taskId, loadMoreResults, searchQuery]);
+
     return (
-        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
             {taskId && (
                 <div className="mb-3 flex justify-between items-center">
                     <span className="text-xs text-slate-500">
@@ -119,49 +203,54 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
 
                 return (
                     <div
-                        key={idx}
+                        key={`${r.index}-${idx}`}
                         className={`p-3 rounded-xl border text-xs mb-2 group relative cursor-pointer ${r.is_correct ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}
                         onClick={() => onSelectLog({ ...r, reason: currentReason, intervention: reasonItem })}
                     >
                         <div className="flex justify-between items-center mb-1">
                             <div className="flex items-center gap-2">
-                                <span className="font-medium text-slate-500">Query {r.index + 1}</span>
+                                <span className="font-medium text-slate-500">Query {(r.index ?? idx) + 1}</span>
                                 {r.is_correct ? <CheckCircle2 size={14} className="text-emerald-500" /> : <AlertCircle size={14} className="text-red-500" />}
                             </div>
                         </div>
-                        <p className="text-slate-300 mb-1 font-mono break-all" title={r.query}>{r.query}</p>
-                        <div className="flex items-center gap-2 text-slate-500 mb-2">
-                            <span className="truncate flex-1" title={currentTarget}>预期: {currentTarget}</span>
-                            <ArrowRight size={10} />
-                            <span className="truncate flex-1 text-slate-400" title={r.output}>输出: {r.output}</span>
+                        <div className="text-slate-300 mb-2 line-clamp-1">{r.query}</div>
+                        <div className="flex items-center gap-2 text-slate-400">
+                            <span className="text-slate-500">预期:</span>
+                            <span className="text-blue-400 line-clamp-1 max-w-[40%]">{currentTarget}</span>
+                            <ArrowRight size={12} className="text-slate-600" />
+                            <span className="text-slate-500">输出:</span>
+                            <span className={`line-clamp-1 max-w-[40%] ${r.is_correct ? "text-emerald-400" : "text-red-400"}`}>
+                                {r.output?.substring(0, 60)}...
+                            </span>
                         </div>
 
-                        {/* Reason Display/Edit */}
-                        <div className="mt-2 pt-2 border-t border-white/5" onClick={e => e.stopPropagation()}>
-                            {isEditing ? (
-                                <div className="flex gap-2 items-start">
-                                    <textarea
-                                        className="flex-1 bg-black/20 border border-white/10 rounded p-1 text-xs text-slate-300 focus:border-blue-500/50 outline-none resize-none"
-                                        rows={2}
-                                        value={editingReason?.value || ""}
-                                        onChange={(e) => setEditingReason(prev => prev ? { ...prev, value: e.target.value } : null)}
-                                        placeholder="输入错误原因..."
+                        {/* 原因编辑 */}
+                        <div className="mt-2 border-t border-white/5 pt-2">
+                            {isEditing && editingReason ? (
+                                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                        type="text"
+                                        value={editingReason.value}
+                                        onChange={(e) => setEditingReason({ ...editingReason, value: e.target.value })}
+                                        className="flex-1 bg-black/30 border border-white/10 rounded px-2 py-1 text-xs focus:border-blue-500 outline-none"
+                                        placeholder="输入原因..."
                                         autoFocus
                                     />
-                                    <div className="flex flex-col gap-1">
-                                        <button
-                                            onClick={() => editingReason && saveReason(r.query, editingReason.value, currentTarget).then(() => setEditingReason(null))}
-                                            className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
-                                        >
-                                            <Save size={12} />
-                                        </button>
-                                        <button
-                                            onClick={() => setEditingReason(null)}
-                                            className="p-1 text-slate-400 hover:bg-slate-500/10 rounded"
-                                        >
-                                            <X size={12} />
-                                        </button>
-                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            await saveReason(r.query, editingReason.value, editingReason.target);
+                                            setEditingReason(null);
+                                        }}
+                                        className="bg-emerald-600 hover:bg-emerald-500 px-2 py-1 rounded text-xs"
+                                    >
+                                        <Save size={12} />
+                                    </button>
+                                    <button
+                                        onClick={() => setEditingReason(null)}
+                                        className="bg-slate-600 hover:bg-slate-500 px-2 py-1 rounded text-xs"
+                                    >
+                                        <X size={12} />
+                                    </button>
                                 </div>
                             ) : (
                                 <div
@@ -183,18 +272,8 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
             })}
 
             {/* Infinite Scroll Trigger */}
-            <div ref={(node) => {
-                if (node && !isLoadingResults && hasMore && taskId) {
-                    const observer = new IntersectionObserver(entries => {
-                        if (entries[0].isIntersecting) {
-                            fetchResults(page + 1, false, searchQuery);
-                        }
-                    }, { threshold: 1.0 });
-                    observer.observe(node);
-                    return () => observer.disconnect();
-                }
-            }} className="py-4 text-center">
-                {isLoadingResults && (
+            <div ref={loadMoreRef} className="py-4 text-center">
+                {isLoadingMore && (
                     <div className="flex justify-center items-center gap-2 text-slate-500 text-xs">
                         <div className="w-4 h-4 border-2 border-slate-500/30 border-t-slate-500 rounded-full animate-spin"></div>
                         加载更多...
@@ -205,7 +284,7 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
                 )}
             </div>
 
-            {!results.length && !isLoadingResults && <p className="text-center text-slate-600 mt-20">暂无运行日志</p>}
+            {!results.length && !isLoadingMore && !isRefreshing && <p className="text-center text-slate-600 mt-20">暂无运行日志</p>}
         </div>
     );
 }

@@ -465,10 +465,14 @@ class TaskManager:
         :param search: 搜索关键字
         :return: 分页结果
         """
+        # 调试日志
+        logger.debug(f"[get_task_results] task_id='{task_id}', in_memory={task_id in self.tasks}, memory_keys={list(self.tasks.keys())}")
+        
         # 1. 如果任务在内存中，从内存分页
         if task_id in self.tasks:
             info = self.tasks[task_id]["info"]
             all_results = info.get("results", [])
+            logger.debug(f"[get_task_results] Returning {len(all_results)} results from memory")
             
             # 过滤
             filtered = all_results
