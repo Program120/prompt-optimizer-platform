@@ -14,9 +14,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.db.database import init_db, get_db_session, DATA_DIR
-from app.models import (
     Project, ProjectIteration, Task, TaskResult, TaskError,
-    GlobalModel, ModelConfig, AutoIterateStatus
+    GlobalModel, ModelConfig, AutoIterateStatus, ProjectReason
 )
 
 
@@ -411,12 +410,27 @@ def check_and_migrate_schema() -> None:
             "''",
             "UPDATE projects SET initial_prompt = current_prompt WHERE initial_prompt IS NULL OR initial_prompt = ''"
         ),
-        # 新增：错误样本优化历史字段
         (
             "projects",
             "error_optimization_history",
             "TEXT",
             "'{}'",
+            None
+        ),
+        # 新增：TaskResult reason 字段
+        (
+            "task_results",
+            "reason",
+            "TEXT",
+            "''",
+            None
+        ),
+        # 新增：TaskError reason 字段
+        (
+            "task_errors",
+            "reason",
+            "TEXT",
+            "''",
             None
         ),
     ]
