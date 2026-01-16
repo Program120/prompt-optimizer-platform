@@ -79,7 +79,8 @@ async def parallel_analysis(
             None,
             lambda: intent_analyzer.analyze_errors_by_intent(
                 ctx.errors, 
-                ctx.total_count
+                ctx.total_count,
+                custom_extraction_code=ctx.custom_extraction_code
             )
         )
     
@@ -176,7 +177,8 @@ async def deep_intent_analysis(
         ctx.deep_analysis = await intent_analyzer.deep_analyze_top_failures(
             ctx.errors, 
             top_n=3,
-            should_stop=ctx.should_stop
+            should_stop=ctx.should_stop,
+            custom_extraction_code=ctx.custom_extraction_code
         )
     except Exception as e:
         logger.error(f"深度意图分析失败: {e}")

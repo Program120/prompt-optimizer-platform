@@ -1,11 +1,15 @@
 from loguru import logger
 import asyncio
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
-
+from typing import List, Dict, Any, Optional, Union
 
 class BaseStrategy(ABC):
-    """优化策略基类"""
+    """
+    优化策略基类
+    
+    定义了所有优化策略必须实现的接口和通用功能，
+    提供了 LLM 调用、Diff 应用和元优化流程的基础实现。
+    """
     
     name: str = "base"
     priority: int = 0
@@ -13,24 +17,29 @@ class BaseStrategy(ABC):
 
     @property
     def strategy_name(self) -> str:
+        """
+        获取策略名称
+        
+        :return: 策略名称字符串
+        """
         return self.name
         
     def __init__(
         self, 
-        llm_client=None, 
-        model_config: Dict[str, Any] = None,
+        llm_client: Any = None, 
+        model_config: Optional[Dict[str, Any]] = None,
         semaphore: Optional[asyncio.Semaphore] = None
     ):
         """
         初始化策略基类
         
-        :param llm_client: LLM 客户端实例
-        :param model_config: 模型配置
+        :param llm_client: LLM 客户端实例 (支持 AsyncOpenAI 或 OpenAI)
+        :param model_config: 模型配置字典 (temperature, max_tokens 等)
         :param semaphore: 并发控制信号量（用于限制 LLM 调用并发数）
         """
-        self.llm_client = llm_client
-        self.model_config = model_config or {}
-        self.semaphore = semaphore
+        self.llm_client: Any = llm_client
+        self.model_config: Dict[str, Any] = model_config or {}
+        self.semaphore: Optional[asyncio.Semaphore] = semaphore
     
     @abstractmethod
     def apply(
@@ -42,13 +51,10 @@ class BaseStrategy(ABC):
         """
         应用策略优化提示词
         
-        Args:
-            prompt: 当前提示词
-            errors: 错误样例列表
-            diagnosis: 诊断分析结果
-            
-        Returns:
-            优化后的提示词
+        :param prompt: 当前提示词
+        :param errors: 错误样例列表
+        :param diagnosis: 诊断分析结果
+        :return: 优化后的提示词
         """
         pass
     
@@ -56,16 +62,18 @@ class BaseStrategy(ABC):
         """
         判断该策略是否适用于当前诊断结果
         
-        Args:
-            diagnosis: 诊断分析结果
-            
-        Returns:
-            是否适用
+        :param diagnosis: 诊断分析结果
+        :return: 是否适用 (True/False)
         """
         return True
     
     def get_priority(self, diagnosis: Dict[str, Any]) -> int:
-        """根据诊断结果动态计算优先级"""
+        """
+        根据诊断结果动态计算优先级
+        
+        :param diagnosis: 诊断分析结果
+        :return: 优先级整数值 (越大越优先)
+        """
         return self.priority
 
     def _meta_optimize(
@@ -84,11 +92,10 @@ class BaseStrategy(ABC):
         :param error_cases: 错误案例列表
         :param instruction: 优化指令
         :param conservative: 是否使用保守模式（保留原有结构）
-        :param diagnosis: 诊断结果（可选，包含历史优化经验和新增失败案例）
+        :param diagnosis: 诊断结果（可选，包含历史优化经验等）
         :param module_name: 可修改的模块名称（用于模块边界约束）
         :return: 优化后的提示词
         """
-        
         logger.info(f"[元优化] 开始执行，策略: {self.name}, 模块: {module_name or '无限制'}")
         logger.info(f"[元优化] 原始提示词长度: {len(prompt)} 字符")
         logger.info(f"[元优化] 错误案例数量: {len(error_cases)}")
@@ -129,27 +136,9 @@ class BaseStrategy(ABC):
 """
                 logger.info(f"[元优化] 已注入历史优化经验，长度: {len(history_text)} 字符")
         
-        # 构建新增失败案例章节（去空格后原样输出）todo: 临时取消新增失败案例注入
+        # 构建新增失败案例章节（去空格后原样输出）
+        # 备注: 临时取消新增失败案例注入，避免上下文过长
         newly_failed_section: str = ""
-        # if diagnosis:
-        #     newly_failed_cases: Optional[List[Dict[str, Any]]] = diagnosis.get(
-        #         "newly_failed_cases"
-        #     )
-        #     if newly_failed_cases and len(newly_failed_cases) > 0:
-        #         lines: List[str] = [
-        #             "## 新增失败案例",
-        #             "以下案例在上一轮优化后变得失败，需要特别关注，避免类似的优化方向：",
-        #             ""
-        #         ]
-        #         for case in newly_failed_cases:
-        #             # 去除空格后原样输出
-        #             query: str = str(case.get("query", "")).strip()
-        #             target: str = str(case.get("target", "")).strip()
-        #             output: str = str(case.get("output", "")).strip()
-        #             lines.append(f"- Query: {query}")
-        #             lines.append(f"  Expected: {target} | Actual: {output}")
-        #         newly_failed_section = "\n".join(lines) + "\n"
-        #         logger.info(f"[元优化] 已注入新增失败案例，数量: {len(newly_failed_cases)}")
         
         # 构建自检提示（仅当指定了模块名时）
         self_check_section: str = ""
@@ -233,8 +222,6 @@ SEARCH/REPLACE 规则（核心约束）：
             return new_prompt
         except Exception as e:
             logger.error(f"[元优化] Diff 应用失败: {e}。回退到原始提示词。")
-            # 可以在这里做 retry logic，请求全量输出
-            # 暂时返回原 Prompt (或者我们可以考虑抛出异常让上层处理)
             return prompt
 
     def _apply_diff(self, original_text: str, diff_text: str) -> str:
@@ -261,7 +248,7 @@ SEARCH/REPLACE 规则（核心约束）：
             re.DOTALL
         )
         
-        blocks = pattern.findall(diff_text)
+        blocks: List[Any] = pattern.findall(diff_text)
         if not blocks:
             # 尝试宽松匹配 (允许 SEARCH 后没有换行等，以及尖括号数量不一致)
             pattern_loose = re.compile(
@@ -296,6 +283,7 @@ SEARCH/REPLACE 规则（核心约束）：
                 
             # ========== 策略 2: 去除首尾空白匹配 ==========
             if s_stripped and s_stripped in current_text:
+                # 注意：这里简单替换可能不准，但对于 stripped 匹配通常作为 fallback
                 current_text = current_text.replace(s_stripped, r_stripped, 1)
                 applied_count += 1
                 logger.info(f"[Diff应用] 块 {block_num} - 策略2(去空白匹配) 成功")
@@ -310,7 +298,7 @@ SEARCH/REPLACE 规则（核心约束）：
                 logger.debug(f"[Diff应用] 块 {block_num} - 规范化搜索文本: {normalized_search[:50]}...")
                 # 在原文中使用正则查找对应位置
                 # 将搜索文本转换为允许空白符变化的正则模式
-                escaped_parts: list = [re.escape(part) for part in s_stripped.split()]
+                escaped_parts: List[str] = [re.escape(part) for part in s_stripped.split()]
                 search_pattern: str = r'\s*'.join(escaped_parts)
                 
                 match = re.search(search_pattern, current_text, re.DOTALL)
@@ -325,10 +313,10 @@ SEARCH/REPLACE 规则（核心约束）：
             # ========== 策略 4: 正则模糊匹配 ==========
             # 更宽松的正则：允许每个词之间有任意空白
             try:
-                words: list = s_stripped.split()
+                words: List[str] = s_stripped.split()
                 if len(words) >= 2:
                     # 只使用前几个词作为锚点
-                    anchor_words: list = words[:min(5, len(words))]
+                    anchor_words: List[str] = words[:min(5, len(words))]
                     fuzzy_pattern: str = r'\s+'.join([re.escape(w) for w in anchor_words])
                     
                     match = re.search(fuzzy_pattern, current_text, re.DOTALL)
@@ -337,16 +325,16 @@ SEARCH/REPLACE 规则（核心约束）：
                         anchor_text: str = match.group(0)
                         if anchor_text in r_stripped:
                             # REPLACE 块已包含锚点，直接替换锚点位置
-                            before: str = current_text[:match.start()]
+                            before = current_text[:match.start()]
                             # 跳过 after 中的锚点行，因为 REPLACE 已包含
                             after_start: int = match.end()
-                            after: str = current_text[after_start:]
+                            after = current_text[after_start:]
                             current_text = before + r_stripped + after
                             logger.info(f"[Diff应用] 块 {block_num} - 策略4(模糊匹配-替换模式) 成功")
                         else:
                             # REPLACE 块不包含锚点，在锚点前插入新内容
-                            before: str = current_text[:match.start()]
-                            after: str = current_text[match.start():]
+                            before = current_text[:match.start()]
+                            after = current_text[match.start():]
                             current_text = before + r_stripped + "\n\n" + after
                             logger.info(f"[Diff应用] 块 {block_num} - 策略4(模糊匹配-插入模式) 成功")
                         applied_count += 1
@@ -356,7 +344,7 @@ SEARCH/REPLACE 规则（核心约束）：
                     
             # ========== 策略 5: 行锚点匹配 ==========
             # 使用 SEARCH 块的第一行非空行作为锚点
-            search_lines: list = [line.strip() for line in s_stripped.split('\n') if line.strip()]
+            search_lines: List[str] = [line.strip() for line in s_stripped.split('\n') if line.strip()]
             if search_lines:
                 first_line: str = search_lines[0]
                 logger.debug(f"[Diff应用] 块 {block_num} - 尝试行锚点: {first_line[:50]}...")
@@ -367,18 +355,18 @@ SEARCH/REPLACE 规则（核心约束）：
                     # 检测 REPLACE 块是否已包含锚点行（避免重复）
                     if first_line in r_stripped:
                         # REPLACE 块已包含锚点行，需要跳过原文中的锚点行
-                        before: str = current_text[:idx_anchor]
+                        before = current_text[:idx_anchor]
                         # 找到锚点行的结束位置
                         line_end: int = current_text.find('\n', idx_anchor)
                         if line_end == -1:
                             line_end = len(current_text)
-                        after: str = current_text[line_end:]
+                        after = current_text[line_end:]
                         current_text = before + r_stripped + after
                         logger.info(f"[Diff应用] 块 {block_num} - 策略5(行锚点-替换模式) 成功")
                     else:
                         # 在锚点行之前插入新内容
-                        before: str = current_text[:idx_anchor]
-                        after: str = current_text[idx_anchor:]
+                        before = current_text[:idx_anchor]
+                        after = current_text[idx_anchor:]
                         current_text = before + r_stripped + "\n\n" + after
                         logger.info(f"[Diff应用] 块 {block_num} - 策略5(行锚点-插入模式) 成功")
                     applied_count += 1
@@ -393,13 +381,18 @@ SEARCH/REPLACE 规则（核心约束）：
         return current_text
 
     def _build_error_samples(self, errors: List[Dict[str, Any]]) -> str:
-        """构建错误样例文本"""
+        """
+        构建错误样例文本
+        
+        :param errors: 错误样例列表
+        :return: 格式化后的错误样例文本
+        """
         if not errors:
             return "暂无错误案例"
         
-        lines = []
+        lines: List[str] = []
         for e in errors[:5]:
-            query = str(e.get('query', ''))[:200]
+            query: str = str(e.get('query', ''))[:200]
             lines.append(f"- 输入: {query}")
             lines.append(f"  预期: {e.get('target', '')} | 实际: {e.get('output', '')}\n")
         return "\n".join(lines)
@@ -415,7 +408,6 @@ SEARCH/REPLACE 规则（核心约束）：
         """
         import re
         import asyncio
-        import threading
         from openai import AsyncOpenAI, OpenAI
         
         
@@ -440,39 +432,44 @@ SEARCH/REPLACE 规则（核心约束）：
             
             logger.info(f"[LLM请求-策略优化] 使用模型: {model_name}, temperature: {temperature}, max_tokens: {max_tokens}")
             
+            response_content: str = ""
+            
             # 判断客户端类型并选择正确的调用方式
             if isinstance(self.llm_client, AsyncOpenAI):
                 # AsyncOpenAI 客户端需要异步调用
                 # 在同步上下文中运行异步代码
                 
                 # 检查是否有正在运行的事件循环
+                loop: Optional[asyncio.AbstractEventLoop] = None
                 try:
                     loop = asyncio.get_running_loop()
-                    has_running_loop = True
+                    has_running_loop: bool = True
                 except RuntimeError:
                     has_running_loop = False
-                    loop = None
                 
                 # 如果有信号量且有运行中的事件循环，使用 run_coroutine_threadsafe
-                if self.semaphore and has_running_loop:
-                    async def _async_call_with_semaphore():
+                if self.semaphore and has_running_loop and loop:
+                    async def _async_call_with_semaphore() -> Any:
                         """
                         带信号量控制的异步调用 LLM
                         
                         :return: LLM 响应对象
                         """
-                        async with self.semaphore:
-                            logger.debug(f"[LLM请求-策略优化] 策略: {self.name}, 获取到信号量许可")
-                            return await self.llm_client.chat.completions.create(
-                                model=model_name,
-                                messages=[
-                                    {"role": "user", "content": prompt}
-                                ],
-                                temperature=temperature,
-                                max_tokens=max_tokens,
-                                timeout=timeout,
-                                extra_body=self.model_config.get("extra_body")
-                            )
+                        if self.semaphore:
+                            async with self.semaphore:
+                                logger.debug(f"[LLM请求-策略优化] 策略: {self.name}, 获取到信号量许可")
+                                return await self.llm_client.chat.completions.create(
+                                    model=model_name,
+                                    messages=[
+                                        {"role": "user", "content": prompt}
+                                    ],
+                                    temperature=temperature,
+                                    max_tokens=max_tokens,
+                                    timeout=timeout,
+                                    extra_body=self.model_config.get("extra_body")
+                                )
+                        return None # Should not happen
+
                     future = asyncio.run_coroutine_threadsafe(_async_call_with_semaphore(), loop)
                     response = future.result(timeout=timeout + 10)
                 else:
@@ -532,7 +529,5 @@ SEARCH/REPLACE 规则（核心约束）：
             
             return content.strip()
         except Exception as e:
-            # Log error separately if possible, here we just return original prompt or re-raise
             logger.error(f"[LLM请求-策略优化] 策略: {self.name}, 调用失败: {e}")
             raise e
-

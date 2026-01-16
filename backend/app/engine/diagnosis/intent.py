@@ -62,6 +62,77 @@ class IntentAnalyzer:
 - 总结必须控制在 1000 字以内
 - 聚焦核心问题，不要冗余描述"""
 
+    @staticmethod
+    def _extract_intent_from_output(output_str: str, custom_code: Optional[str] = None) -> Optional[str]:
+        """
+        从模型输出的 JSON 响应中提取意图名称
+        
+        解析逻辑：
+        0. 如果提供了 custom_code，优先尝试执行自定义代码提取
+        1. 如果 output 包含 "intent" 字段，提取该字段值
+        2. 如果 intent_type 是 "clarification"，返回 "clarification"
+        3. 如果 intent_type 是 "multiple"，提取第一个 intent
+        4. 解析失败返回 None
+        
+        :param output_str: 模型输出的 JSON 字符串
+        :param custom_code: 自定义提取代码 (可选)
+        :return: 提取的意图名称，解析失败返回 None
+        """
+        import json
+        from ...helpers.extractor import ResultExtractor
+        
+        if not output_str or not output_str.strip():
+            return None
+            
+        # --- 0. 自定义代码提取 (使用 ResultExtractor) ---
+        if custom_code:
+            # ResultExtractor 会自动处理 JSON 解析和代码执行
+            extracted = ResultExtractor.extract(output_str, f"py: {custom_code}")
+            if extracted:
+                return str(extracted)
+        
+        # --- 默认提取逻辑 ---
+        # 再次利用 ResultExtractor 获取解析后的数据 (传 None rule 获取 raw structure)
+        data = ResultExtractor.extract(output_str, None)
+        
+        # 如果不是 dict，说明不是 JSON 或解析失败，直接返回原字符串
+        if not isinstance(data, dict):
+             # 简单的字符串是不是 JSON 格式判断
+             if output_str.strip().startswith("{"):
+                 return None # 解析失败
+             return output_str.strip()
+        
+        try:
+            # 获取意图类型
+            intent_type: str = data.get("intent_type", "")
+            
+            # 澄清类型
+            if intent_type == "clarification":
+                return "clarification"
+            
+            # 多意图类型，提取第一个意图
+            if intent_type == "multiple":
+                intents_list: List[Dict[str, Any]] = data.get("intents", [])
+                if intents_list and len(intents_list) > 0:
+                    return intents_list[0].get("intent", "multiple")
+                return "multiple"
+            
+            # 单意图类型，提取 intent 字段
+            intent: Optional[str] = data.get("intent")
+            if intent:
+                return intent
+            
+            # 兜底：返回 intent_type
+            return intent_type if intent_type else None
+            
+        except json.JSONDecodeError:
+            # JSON 解析失败，记录日志并返回 None
+            logger.warning(f"无法解析 output JSON: {output_str[:100]}...")
+            return None
+        except Exception as e:
+            logger.error(f"提取意图时发生异常: {e}")
+            return None
+
     def __init__(
         self, 
         llm_client: Any = None, 
@@ -83,7 +154,8 @@ class IntentAnalyzer:
     def analyze_errors_by_intent(
         self,
         errors: List[Dict[str, Any]],
-        total_count: Optional[int] = None
+        total_count: Optional[int] = None,
+        custom_extraction_code: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         按意图统计错误
@@ -94,6 +166,7 @@ class IntentAnalyzer:
         
         :param errors: 错误样例列表，每个样例包含 query, target, output
         :param total_count: 总样本数（用于计算错误率）
+        :param custom_extraction_code: 自定义提取代码（可选）
         :return: 按意图分组的错误分析
         """
         if not errors:
@@ -122,8 +195,13 @@ class IntentAnalyzer:
                 intent_errors[target].append(err)
                 
                 # 记录混淆目标
+                # 从 output 中提取真正的意图名称，而不是使用整个 JSON 字符串
                 if output and output != target:
-                    intent_confusion[target][output] += 1
+                    confused_intent: Optional[str] = self._extract_intent_from_output(
+                        output, custom_extraction_code
+                    )
+                    if confused_intent and confused_intent != target:
+                        intent_confusion[target][confused_intent] += 1
                     
         # 计算每个意图的错误率
         # 如果没有提供总数，使用错误数的两倍作为估算
@@ -217,22 +295,16 @@ class IntentAnalyzer:
         self,
         errors: List[Dict[str, Any]],
         top_n: int = 3,
-        should_stop: Any = None
+        should_stop: Any = None,
+        custom_extraction_code: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         对 Top N 失败意图进行 LLM 深度分析 (并发版本)
         
-        功能说明：
-        1. 选取错误数最多的 top_n（默认 3）个意图
-        2. 每个意图最多选取 50 个错误案例
-        3. 以 markdown 表格格式（期望、实际、原因列）拼接到提示词中
-        4. 让模型对每个意图的错误案例做简短总结（不超过 1000 字）
-        
-        使用 asyncio.gather 并发执行所有意图分析，利用信号量控制并发数
-        
         :param errors: 错误样例列表
         :param top_n: 分析的失败意图数量，默认 3
         :param should_stop: 停止回调函数
+        :param custom_extraction_code: 自定义提取代码（可选）
         :return: 深度分析结果
         """
         if not errors:
@@ -243,7 +315,10 @@ class IntentAnalyzer:
             return {"analyses": [], "summary": "未配置 LLM 客户端"}
             
         # 先进行基础分析
-        intent_analysis: Dict[str, Any] = self.analyze_errors_by_intent(errors)
+        intent_analysis: Dict[str, Any] = self.analyze_errors_by_intent(
+            errors, 
+            custom_extraction_code=custom_extraction_code
+        )
         top_failures: List[Dict[str, Any]] = (
             intent_analysis.get("top_failing_intents", [])[:top_n]
         )

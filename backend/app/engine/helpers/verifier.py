@@ -156,51 +156,28 @@ class Verifier:
     @staticmethod
     def check_match(output: str, target: str, extract_field: Optional[str] = None) -> bool:
         """检查结果是否匹配"""
+        from .extractor import ResultExtractor
+        
         output = output.strip().lower()
         target = target.strip().lower()
         
-        # 尝试提取 JSON
-        try:
-            if "{" in output and "}" in output:
-                json_str = output[output.find("{"):output.rfind("}")+1]
-                data = json.loads(json_str)
-                
-                # 如果指定了提取字段
-                if extract_field:
-                    # 支持 Python 表达式 extraction (以 py: 开头)
-                    if extract_field.startswith("py:"):
-                        expression = extract_field[3:].strip()
-                        try:
-                            # 1. 尝试直接 eval
-                            try:
-                                val = eval(expression, {"__builtins__": None}, {"data": data})
-                            except SyntaxError:
-                                # 2. 尝试 exec
-                                local_scope = {"data": data}
-                                exec(expression, {"__builtins__": None}, local_scope)
-                                val = local_scope.get("result")
-                                if val is None:
-                                    logger.warning("Multi-line script must assign to 'result' variable.")
-                                    return False
-
-                            if isinstance(val, bool):
-                                return val
-                            return str(val).lower() == target
-                        except Exception as e:
-                            logger.warning(f"Expression eval/exec failed: {e}")
-                            return False
-
-                    if extract_field in data:
-                        val = str(data[extract_field]).lower()
-                        return val == target
-                
-                # 未指定字段，遍历所有值
-                for val in data.values():
+        # 使用统一提取器
+        extracted_val = ResultExtractor.extract(output, extract_field)
+        
+        # 1. 提取到具体值的情况
+        if extracted_val is not None:
+            # 如果提取结果是字典（说明 extract_field 为空或无效），需要遍历值
+            if isinstance(extracted_val, dict):
+                 for val in extracted_val.values():
                     if str(val).lower() == target:
                         return True
-        except:
-            pass
-
+            else:
+                # 提取到了具体值（布尔或字符串等）
+                if isinstance(extracted_val, bool):
+                    return extracted_val
+                return str(extracted_val).lower() == target
+        
+        # 2. 兜底逻辑：直接匹配字符串
         if target == output:
             return True
             
