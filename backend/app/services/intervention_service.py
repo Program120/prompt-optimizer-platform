@@ -118,7 +118,6 @@ def import_dataset_to_interventions(
                     project_id=project_id,
                     query=str(q),
                     target=target_val,
-                    target=target_val,
                     reason=str(r) if pd.notna(r) else "",
                     is_import=True, # Flag to indicate this is an import
                     file_id=file_id
@@ -191,7 +190,6 @@ def upsert_intervention(project_id: str, query: str, reason: str, target: str = 
                     project_id=project_id,
                     query=query,
                     reason=reason,
-                    target=target,
                     target=target,
                     original_target=target, # 新建时，原始值即为当前值
                     is_target_modified=False,
