@@ -1,6 +1,8 @@
 """
-数据迁移脚本
-将现有 JSON 文件数据迁移到 SQLite 数据库
+数据库健康检查与迁移脚本
+1. 检查数据库完整性
+2. 自动修复缺失的列 (Schema Migration)
+3. 将现有 JSON 文件数据迁移到 SQLite 数据库 (Data Migration)
 """
 import os
 import json
@@ -15,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.db.database import init_db, get_db_session, DATA_DIR
     Project, ProjectIteration, Task, TaskResult, TaskError,
-    GlobalModel, ModelConfig, AutoIterateStatus, ProjectReason
+    GlobalModel, ModelConfig, AutoIterateStatus, IntentIntervention
 )
 
 
@@ -472,13 +474,13 @@ def check_and_migrate_schema() -> None:
     logger.info("数据库模式检查完成")
 
 
-def run_migration() -> None:
+def run_health_check() -> None:
     """
-    执行完整的数据迁移
+    执行数据库健康检查与数据迁移
     包含：1. 模式迁移（添加缺失列） 2. 数据迁移（JSON 转 SQLite）
     """
     logger.info("=" * 50)
-    logger.info("开始数据迁移...")
+    logger.info("开始数据库健康检查...")
     logger.info("=" * 50)
     
     # 初始化数据库
@@ -505,7 +507,7 @@ def run_migration() -> None:
     
     # 输出统计
     logger.info("=" * 50)
-    logger.info("数据迁移完成!")
+    logger.info("数据库检查与迁移完成!")
     logger.info(f"  - 项目: {projects_count} 个")
     logger.info(f"  - 任务: {tasks_count} 个")
     logger.info(f"  - 公共模型配置: {models_count} 个")
@@ -515,4 +517,4 @@ def run_migration() -> None:
 
 
 if __name__ == "__main__":
-    run_migration()
+    run_health_check()
