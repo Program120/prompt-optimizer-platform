@@ -12,6 +12,8 @@ from pydantic import BaseModel
 from loguru import logger
 from app.services import intervention_service
 from app.models import IntentIntervention
+from app.engine.helpers.verifier import Verifier
+from app.db import storage
 
 router = APIRouter()
 
@@ -142,6 +144,54 @@ async def sync_interventions(project_id: str, request: InterventionImportRequest
     return await import_interventions(project_id, request)
 
 
+class InterventionTestRequest(BaseModel):
+    """干预测试请求模型"""
+    query: str
+    target: str
+    reason: Optional[str] = None
+
+@router.post("/projects/{project_id}/interventions/test")
+async def test_intervention(project_id: str, request: InterventionTestRequest) -> Dict[str, Any]:
+    """
+    对单条干预数据进行单元测试
+    """
+    logger.info(f"Testing intervention for project {project_id}, query: {request.query[:20]}...")
+    
+    # 1. 获取项目配置
+    project = storage.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    model_config = project.get("model_config")
+    if not model_config or not model_config.get("api_key"):
+        if model_config.get("validation_mode") != "interface":
+            raise HTTPException(status_code=400, detail="Missing API Key in project model config")
+
+    # 2. 获取其他配置
+    prompt = project.get("current_prompt", "")
+    config = project.get("config", {})
+    extract_field = config.get("extract_field")
+    
+    # 3. 执行验证
+    try:
+        # 使用 Verifier 执行单条验证
+        # index 设为 -1 表示这是测试请求
+        result = Verifier.verify_single(
+            index=-1,
+            query=request.query,
+            target=request.target,
+            prompt=prompt,
+            model_config=model_config,
+            extract_field=extract_field,
+            reason_col_value=request.reason
+        )
+        
+        return result
+    except Exception as e:
+        logger.error(f"Test failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Test failed: {str(e)}")
+
+
 @router.post("/projects/{project_id}/interventions/import")
 async def import_interventions(project_id: str, request: InterventionImportRequest) -> Dict[str, Any]:
     """
@@ -239,4 +289,17 @@ async def export_interventions_endpoint(project_id: str, file_id: str = None) ->
         
     except Exception as e:
         logger.error(f"Export failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/projects/{project_id}/interventions/clear")
+async def clear_interventions_endpoint(project_id: str, file_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    清空项目下所有意图干预数据
+    """
+    logger.info(f"Clearing all interventions for project {project_id}, file_id={file_id}")
+    try:
+        deleted_count = intervention_service.clear_interventions(project_id, file_id)
+        return {"message": "Clear successful", "deleted_count": deleted_count}
+    except Exception as e:
+        logger.error(f"Error clearing interventions: {e}")
         raise HTTPException(status_code=500, detail=str(e))

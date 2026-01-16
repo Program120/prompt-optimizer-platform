@@ -335,3 +335,31 @@ def get_unique_targets(project_id: str, file_id: Optional[str] = None) -> List[s
     except Exception as e:
         logger.error(f"Failed to get unique targets: {e}")
         return []
+
+
+def clear_interventions(project_id: str, file_id: Optional[str] = None) -> int:
+    """
+    清空项目下所有意图干预数据
+    
+    :param project_id: 项目 ID
+    :param file_id: 可选，文件版本 ID
+    :return: 删除的记录数
+    """
+    try:
+        with get_db_session() as session:
+            statement = delete(IntentIntervention).where(IntentIntervention.project_id == project_id)
+            
+            if file_id:
+                statement = statement.where(IntentIntervention.file_id == file_id)
+                
+            result = session.exec(statement)
+            deleted_count = result.rowcount
+            session.commit()
+            
+            logger.info(f"Cleared {deleted_count} interventions for project {project_id}, file_id={file_id}")
+            return deleted_count
+            
+    except Exception as e:
+        logger.error(f"Failed to clear interventions: {e}")
+        return 0
+
