@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Search, RotateCcw } from "lucide-react";
 import RunLogTab from "./history/RunLogTab";
 import RunHistoryTab from "./history/RunHistoryTab";
@@ -51,8 +51,8 @@ export default function HistoryPanel({
     // Reasons state (Shared across tabs)
     const [reasons, setReasons] = useState<Record<string, any>>({});
 
-    // Fetch Reasons
-    const fetchReasons = async () => {
+    // Fetch Reasons - 使用 useCallback 保持引用稳定
+    const fetchReasons = useCallback(async () => {
         if (!project?.id) return;
         try {
             const res = await fetch(`${API_BASE}/projects/${project.id}/interventions`);
@@ -70,14 +70,14 @@ export default function HistoryPanel({
         } catch (e) {
             console.error("Failed to fetch reasons", e);
         }
-    };
+    }, [project?.id]);
 
     useEffect(() => {
         fetchReasons();
     }, [project?.id, reasonsUpdateCount]);
 
-    // Save Reason Handler
-    const saveReason = async (query: string, reason: string, target: string) => {
+    // Save Reason Handler - 使用 useCallback 保持引用稳定，避免子组件不必要的重渲染
+    const saveReason = useCallback(async (query: string, reason: string, target: string) => {
         if (!project?.id) return;
         try {
             const res = await fetch(`${API_BASE}/projects/${project.id}/interventions`, {
@@ -94,7 +94,7 @@ export default function HistoryPanel({
             console.error(e);
             alert("保存原因出错");
         }
-    };
+    }, [project?.id, fetchReasons]);
 
     // Prompt View Logic
     const handleViewPrompt = (prompt: string) => {
