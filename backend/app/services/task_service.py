@@ -167,42 +167,33 @@ class TaskManager:
             reasons_data = [r.to_dict() for r in reasons]
             df = pd.DataFrame(reasons_data)
             
-            # 映射列名以匹配 Task 配置 (IntentIntervention 只有 query, target, reason 固定列)
-            # 我们需要构造一个符合 info["query_col"] 等配置的 DF
+            # 从数据库加载时，使用固定的列名 (IntentIntervention 表结构固定)
+            # 不需要映射，直接使用 "query", "target", "reason"
+            query_col = "query"
+            target_col = "target"
+            reason_col = "reason"
             
-            # 1. 映射 Query 列
-            q_col = info["query_col"]
-            if "query" in df.columns and q_col != "query":
-                df[q_col] = df["query"]
-                
-            # 2. 映射 Target 列
-            t_col = info["target_col"]
-            if "target" in df.columns and t_col != "target":
-                 df[t_col] = df["target"]
-                 
-            # 3. 映射 Reason 列
-            # 如果任务配置了 reason_col，则映射；如果没有，则更新 info 添加 reason_col
-            r_col = info.get("reason_col")
-            if not r_col:
-                r_col = "reason"
-                info["reason_col"] = r_col # 动态更新任务配置以使用 reason
-            
-            if "reason" in df.columns and r_col != "reason":
-                df[r_col] = df["reason"]
+            # 更新 info 以反映实际使用的列名（用于后续日志等）
+            info["_actual_query_col"] = query_col
+            info["_actual_target_col"] = target_col
+            info["_actual_reason_col"] = reason_col
                 
             used_source = "db"
         else:
-            # Fallback to file
+            # Fallback to file - 使用用户配置的列名
             logger.info(f"[Task {task_id}] Using file source: {info['file_path']}")
             file_path = info["file_path"]
             if file_path.endswith(".csv"):
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_excel(file_path)
+            
+            # 从文件加载时，使用用户配置的列名
+            query_col = info["query_col"]
+            target_col = info["target_col"]
+            reason_col = info.get("reason_col")
         
-        query_col = info["query_col"]
-        target_col = info["target_col"]
-        reason_col = info.get("reason_col")
+        # 公共变量（从上面的分支中获取）
         prompt = info["prompt"]
         extract_field = info.get("extract_field")
         model_config = info.get("model_config", {"base_url": "https://api.openai.com/v1", "api_key": ""})
