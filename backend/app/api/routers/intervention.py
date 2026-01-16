@@ -263,13 +263,13 @@ async def export_interventions_endpoint(project_id: str, file_id: str = None) ->
     
     :param project_id: 项目 ID
     :param file_id: 可选，文件版本 ID，如果指定则仅导出该版本的数据
-    :return: CSV 文件流
+    :return: Excel 文件流
     """
     logger.info(f"Exporting interventions for project {project_id}, file_id={file_id}")
     try:
         interventions = intervention_service.get_interventions_by_project(project_id, file_id=file_id)
         if not interventions:
-             # Return empty csv
+             # Return empty df
              df = pd.DataFrame(columns=["query", "target", "reason"])
         else:
              df = pd.DataFrame([r.to_dict() for r in interventions])
@@ -278,13 +278,19 @@ async def export_interventions_endpoint(project_id: str, file_id: str = None) ->
         existing_cols = [c for c in cols_to_export if c in df.columns]
         export_df = df[existing_cols] if not df.empty else df
         
-        stream = io.StringIO()
-        export_df.to_csv(stream, index=False)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            export_df.to_excel(writer, index=False, sheet_name='Interventions')
+        
+        output.seek(0)
         
         # 生成带有版本信息的文件名
         filename_suffix = f"_{file_id}" if file_id else ""
-        response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
-        response.headers["Content-Disposition"] = f"attachment; filename=intent_intervention_{project_id}{filename_suffix}.csv"
+        response = StreamingResponse(
+            output, 
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response.headers["Content-Disposition"] = f"attachment; filename=intent_intervention_{project_id}{filename_suffix}.xlsx"
         return response
         
     except Exception as e:

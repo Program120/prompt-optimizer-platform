@@ -55,7 +55,9 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
 
     // Create Modal State
     const [showCreateModal, setShowCreateModal] = useState(false);
+
     const [createForm, setCreateForm] = useState({ query: "", target: "", reason: "" });
+    const [showCreateExitConfirm, setShowCreateExitConfirm] = useState(false);
 
     // Refs
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -238,6 +240,54 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
     }, [editingReason, tryCloseEditor]);
 
     /**
+     * 新增Modal的退出检查逻辑
+     */
+    const checkCreateFormDirty = useCallback(() => {
+        if (createForm.query.trim() || createForm.target.trim() || createForm.reason.trim()) {
+            return true;
+        }
+        return false;
+    }, [createForm]);
+
+    const tryCloseCreateModal = useCallback(() => {
+        if (checkCreateFormDirty()) {
+            setShowCreateExitConfirm(true);
+        } else {
+            setShowCreateModal(false);
+            setCreateForm({ query: "", target: "", reason: "" });
+        }
+    }, [checkCreateFormDirty]);
+
+    const confirmExitCreate = () => {
+        setShowCreateExitConfirm(false);
+        setShowCreateModal(false);
+        setCreateForm({ query: "", target: "", reason: "" });
+    };
+
+    const cancelExitCreate = () => {
+        setShowCreateExitConfirm(false);
+    };
+
+    // 新增Modal的 ESC 键监听
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && showCreateModal) {
+                // 如果确认弹窗已显示，Esc取消确认（即留在当前界面）
+                if (showCreateExitConfirm) {
+                    cancelExitCreate();
+                } else {
+                    tryCloseCreateModal();
+                }
+            }
+        };
+        // 仅在Modal显示时添加
+        if (showCreateModal) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [showCreateModal, showCreateExitConfirm, tryCloseCreateModal]);
+
+    /**
      * 重置单条意图干预记录
      */
     /**
@@ -373,7 +423,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
             const downloadUrl = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = downloadUrl;
-            a.download = `intent_interventions_${project.id}${fileId ? `_${fileId}` : ''}.csv`;
+            a.download = `intent_interventions_${project.id}${fileId ? `_${fileId}` : ''}.xlsx`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(downloadUrl);
@@ -845,14 +895,20 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
             {/* 新增干预Modal */}
             {
                 showCreateModal && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                    <div
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        onClick={tryCloseCreateModal}
+                    >
+                        <div
+                            className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 relative"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             <div className="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
                                 <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                                     <Edit3 size={14} className="text-cyan-400" /> 新增意图干预
                                 </h3>
                                 <button
-                                    onClick={() => setShowCreateModal(false)}
+                                    onClick={tryCloseCreateModal}
                                     className="text-slate-500 hover:text-white transition-colors"
                                 >
                                     <X size={16} />
@@ -888,25 +944,47 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                     />
                                 </div>
                             </div>
-                            <div className="px-4 py-3 bg-slate-900/50 border-t border-slate-800 flex justify-end gap-2">
-                                <button
-                                    onClick={() => setShowCreateModal(false)}
-                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                                >
-                                    取消
-                                </button>
-                                <button
-                                    onClick={handleCreate}
-                                    disabled={!createForm.query.trim()}
-                                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-600 text-white hover:bg-cyan-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
-                                >
-                                    <Save size={14} /> 保存
-                                </button>
-                            </div>
                         </div>
+                        <div className="px-4 py-3 bg-slate-900/50 border-t border-slate-800 flex justify-end gap-2">
+                            <button
+                                onClick={tryCloseCreateModal}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleCreate}
+                                disabled={!createForm.query.trim()}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-600 text-white hover:bg-cyan-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
+                            >
+                                <Save size={14} /> 保存
+                            </button>
+                        </div>
+
+                        {/* 退出确认弹窗 (Nested) */}
+                        {showCreateExitConfirm && (
+                            <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm flex flex-col items-center justify-center z-20 p-4 text-center">
+                                <AlertCircle size={32} className="text-amber-500 mb-3" />
+                                <p className="text-slate-200 text-sm font-bold mb-1">放弃新增？</p>
+                                <p className="text-slate-400 text-xs mb-4">您已输入了内容，直接退出将丢失所有数据。</p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={cancelExitCreate}
+                                        className="px-4 py-1.5 rounded-lg text-xs bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600"
+                                    >
+                                        继续编辑
+                                    </button>
+                                    <button
+                                        onClick={confirmExitCreate}
+                                        className="px-4 py-1.5 rounded-lg text-xs bg-amber-600 text-white hover:bg-amber-500 shadow-lg shadow-amber-500/20"
+                                    >
+                                        确认放弃
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                )
-            }
+                )}
             {/* 测试结果 Modal */}
             {
                 testResult && (
@@ -988,6 +1066,6 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                     </div>
                 )
             }
-        </div>
+        </div >
     );
 }
