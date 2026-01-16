@@ -82,7 +82,20 @@ async def record_knowledge(
             difficult_cases=difficult_cases,
             persistent_errors=current_persistent_errors_list,
             clarification_intents=ctx.intent_analysis.get("clarification_intents", []),
-            multi_intent_intents=ctx.intent_analysis.get("multi_intent_intents", [])
+            multi_intent_intents=ctx.intent_analysis.get("multi_intent_intents", []),
+            best_strategy=ctx.best_result.get("strategy"),
+            strategy_selection_reason=ctx.strategy_selection_reason,
+            validation_set=ctx.validation_set,
+            # 提取候选中关于策略和分数的关键信息
+            strategy_evaluations=[
+                {
+                    "strategy": c.get("strategy"),
+                    "score": c.get("score"),
+                    "prompt_len": len(c.get("prompt", "")),
+                    "prompt_preview": c.get("prompt", "")[:50] + "..." if c.get("prompt") else ""
+                }
+                for c in ctx.filtered_candidates
+            ]
         )
     except Exception as e:
         logger.error(f"记录知识库时发生异常: {e}")

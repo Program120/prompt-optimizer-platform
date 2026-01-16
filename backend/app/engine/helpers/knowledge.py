@@ -9,6 +9,7 @@
 import os
 import json
 import logging
+from loguru import logger
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import difflib
@@ -104,33 +105,41 @@ class OptimizationKnowledgeBase:
         difficult_cases: Optional[List[Dict[str, Any]]] = None,
         persistent_errors: Optional[List[Dict[str, Any]]] = None,
         clarification_intents: Optional[List[Dict[str, Any]]] = None,
-        multi_intent_intents: Optional[List[Dict[str, Any]]] = None
+        multi_intent_intents: Optional[List[Dict[str, Any]]] = None,
+        best_strategy: Optional[str] = None,
+        strategy_selection_reason: Optional[str] = None,
+        validation_set: Optional[List[Dict[str, Any]]] = None,
+        strategy_evaluations: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
-        记录一次优化
+        Record a single optimization
         
-        :param original_prompt: 优化前的提示词
-        :param optimized_prompt: 优化后的提示词
-        :param analysis_summary: LLM 生成的优化总结
-        :param intent_analysis: 意图分析数据
-        :param applied_strategies: 应用的策略列表
-        :param accuracy_before: 优化前准确率
-        :param accuracy_after: 优化后准确率（可选，可后续更新）
-        :param deep_analysis: 深度分析数据（可选）
-        :param newly_failed_cases: 新增的失败案例（上一轮成功，本轮失败）（可选）
-        :param difficult_cases: 诊断出的困难/顽固样本（可选）
-        :param persistent_errors: 按次数排序的完整错误历史（可选）
-        :param clarification_intents: 被过滤的澄清类意图数据（可选）
-        :param multi_intent_intents: 被过滤的多意图类意图数据（可选）
-        :return: 保存的优化记录
+        :param original_prompt: Original prompt
+        :param optimized_prompt: Optimized prompt
+        :param analysis_summary: LLM generated summary
+        :param intent_analysis: Intent analysis data
+        :param applied_strategies: List of applied strategies
+        :param accuracy_before: Accuracy before optimization
+        :param accuracy_after: Accuracy after optimization (optional)
+        :param deep_analysis: Deep analysis data (optional)
+        :param newly_failed_cases: Newly failed cases (optional)
+        :param difficult_cases: Difficult/persistent cases (optional)
+        :param persistent_errors: Detailed error history (optional)
+        :param clarification_intents: Filtered clarification intents (optional)
+        :param multi_intent_intents: Filtered multi-intent intents (optional)
+        :param best_strategy: Winning strategy name (optional)
+        :param strategy_selection_reason: Reason for strategy selection (optional)
+        :param validation_set: Validation set used for evaluation (optional)
+        :param strategy_evaluations: Evaluation scores for each strategy (optional)
+        :return: Saved record
         """
-        # 加载历史记录
+        # Load history
         history: List[Dict[str, Any]] = self._load_history()
         
-        # 生成版本号（递增）
+        # Generate version
         version: int = len(history) + 1
         
-        # 构建优化记录
+        # Build record
         record: Dict[str, Any] = {
             "version": version,
             "timestamp": datetime.now().isoformat(),
@@ -145,9 +154,15 @@ class OptimizationKnowledgeBase:
             "newly_failed_cases": newly_failed_cases,
             "difficult_cases": difficult_cases,
             "persistent_errors": persistent_errors,
-            # 新增：被过滤的澄清类和多意图类意图
+            # Added: Filtered clarification and multi-intent intents
             "clarification_intents": clarification_intents,
             "multi_intent_intents": multi_intent_intents,
+            # Added: Strategy selection details
+            "best_strategy": best_strategy,
+            "strategy_selection_reason": strategy_selection_reason,
+            # Added: Validation set and strategy evaluations
+            "validation_set": validation_set,
+            "strategy_evaluations": strategy_evaluations,
             "diff": self._compute_diff(original_prompt, optimized_prompt)
         }
         
@@ -284,7 +299,9 @@ class OptimizationKnowledgeBase:
                 "deep_analysis": latest.get("deep_analysis"),
                 "applied_strategies": latest.get("applied_strategies"),
                 "accuracy_before": latest.get("accuracy_before"),
-                "accuracy_after": latest.get("accuracy_after")
+                "accuracy_after": latest.get("accuracy_after"),
+                "best_strategy": latest.get("best_strategy"),
+                "strategy_selection_reason": latest.get("strategy_selection_reason")
             }
             
         return None

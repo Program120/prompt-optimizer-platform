@@ -117,6 +117,8 @@ async def generate_candidates(
             target_error_count=40,
             correct_error_ratio=1.5
         )
+        ctx.validation_set = validation_set
+
         
         if ctx.on_progress:
             ctx.on_progress("正在快速评估候选方案...")
@@ -166,14 +168,19 @@ async def select_best(
     if skip_selection and ctx.filtered_candidates:
         logger.info(f"[选择最佳方案] {skip_reason}，跳过选择步骤，直接使用")
         ctx.best_result = ctx.filtered_candidates[0]
+        ctx.strategy_selection_reason = skip_reason
     else:
         try:
             ctx.best_result = prompt_evaluator.select_best_candidate(
                 ctx.filtered_candidates, ctx.prompt
             )
+            ctx.strategy_selection_reason = (
+                f"在该策略下验证集评估得分最高: {ctx.best_result.get('score', 0):.4f}"
+            )
         except Exception as e:
             logger.error(f"选择最佳方案时发生异常: {e}, 默认选择第一个。")
             ctx.best_result = ctx.filtered_candidates[0]
+            ctx.strategy_selection_reason = f"选择过程异常回退: {str(e)}"
 
 
 async def inject_persistent_knowledge(
@@ -227,6 +234,9 @@ async def inject_persistent_knowledge(
                 ctx.best_result["prompt"] = injected_prompt
                 ctx.best_result["strategy"] = f"{current_strategy_name} + difficult_injection"
                 ctx.best_result["injected_difficult_cases"] = True
+                
+                if ctx.strategy_selection_reason:
+                    ctx.strategy_selection_reason += " (已追加顽固困难样本注入增强)"
             else:
                 logger.info("[顽固样本处理] 二次注入未产生变化")
                  

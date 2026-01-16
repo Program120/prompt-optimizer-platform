@@ -143,6 +143,7 @@ class OptimizationContext(BaseModel):
     project_id: Optional[str] = None
     selected_modules: Optional[List[int]] = None
     custom_extraction_code: Optional[str] = None
+    strategy_selection_reason: Optional[str] = None
     
     # 阶段结果
     diagnosis_raw: Dict[str, Any] = Field(default_factory=dict)
@@ -165,6 +166,7 @@ class OptimizationContext(BaseModel):
     
     # 验证结果
     validation_result: Dict[str, Any] = Field(default_factory=dict)
+    validation_set: List[Dict[str, Any]] = Field(default_factory=list)
     
     # 回调函数（不序列化）
     should_stop: Optional[Callable[[], bool]] = None

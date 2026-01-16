@@ -261,6 +261,9 @@ class MultiStrategyOptimizer:
             ctx, self.llm_client, self.model_config, self.semaphore
         )
         
+        if self._is_stopped(should_stop):
+            return {"optimized_prompt": prompt, "message": "Stopped"}
+            
         # ===== 阶段 7-9: 记录与验证 =====
         await record_knowledge(ctx, self.knowledge_base, generate_optimization_summary)
         await validate_result(ctx, self.llm_helper)

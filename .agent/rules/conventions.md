@@ -62,3 +62,8 @@ trigger: always_on
 | `backend/app/services` | 业务服务层 | 串联 Engine 与 DB，处理任务状态流转、数据持久化。 |
 | `backend/app/api` | 接口层 | 参数校验 (Pydantic)、路由分发、权限控制。**禁止包含复杂业务逻辑**。 |
 | `backend/app/models.py` | 数据模型 | 定义通用的 SQLModel 数据库表结构及 Pydantic 交互模型。 |
+
+
+## 5. 验证约定
+### 后端
+- **python路径**: .\backend\venv\Scripts\python

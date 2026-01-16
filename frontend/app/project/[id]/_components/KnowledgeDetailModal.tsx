@@ -115,13 +115,8 @@ export default function KnowledgeDetailModal({
     // 删除确认状态
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-    // 各模块折叠状态（默认展开）
-    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-        intent_analysis: true,
-        deep_analysis: true,
-        newly_failed_cases: true,
-        diff: true
-    });
+    // 各模块折叠状态（默认全部折叠）
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
     /**
      * 切换模块折叠状态
@@ -248,11 +243,29 @@ export default function KnowledgeDetailModal({
     };
 
     /**
+     * 处理全选快捷键 (Ctrl+A)
+     */
+    const handleSelectAll = (e: React.KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+            e.preventDefault();
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(e.currentTarget);
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+        }
+    };
+
+    /**
      * 渲染 Diff 内容（特殊处理 unified diff 格式）
      */
     const renderDiffContent = (diffText: string): React.ReactNode => {
         return (
-            <div className="bg-black/30 rounded-lg p-3 font-mono text-xs space-y-0.5">
+            <div
+                className="bg-black/30 rounded-lg p-3 font-mono text-xs space-y-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
+                tabIndex={0}
+                onKeyDown={handleSelectAll}
+            >
                 {diffText.split('\n').map((line: string, idx: number) => {
                     const isAdded = line.startsWith('+');
                     const isRemoved = line.startsWith('-');
@@ -283,7 +296,11 @@ export default function KnowledgeDetailModal({
      */
     const renderFailedCases = (cases: FailedCase[]): React.ReactNode => {
         return (
-            <div className="space-y-2">
+            <div
+                className="space-y-2 focus:outline-none focus:ring-1 focus:ring-blue-500/30 p-1 rounded-lg"
+                tabIndex={0}
+                onKeyDown={handleSelectAll}
+            >
                 {cases.map((item: FailedCase, idx: number) => (
                     <div
                         key={idx}
@@ -321,7 +338,11 @@ export default function KnowledgeDetailModal({
         // 字符串类型
         if (typeof value === 'string') {
             return (
-                <pre className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text">
+                <pre
+                    className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text focus:outline-none focus:ring-1 focus:ring-blue-500/30"
+                    tabIndex={0}
+                    onKeyDown={handleSelectAll}
+                >
                     {value}
                 </pre>
             );
@@ -329,7 +350,11 @@ export default function KnowledgeDetailModal({
 
         // 数组或对象类型 - JSON 格式化展示
         return (
-            <pre className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text">
+            <pre
+                className="text-xs text-slate-400 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words pointer-events-auto select-text focus:outline-none focus:ring-1 focus:ring-blue-500/30"
+                tabIndex={0}
+                onKeyDown={handleSelectAll}
+            >
                 {JSON.stringify(value, null, 2)}
             </pre>
         );
@@ -341,7 +366,7 @@ export default function KnowledgeDetailModal({
      */
     const renderDynamicSection = (fieldKey: string, value: unknown): React.ReactNode => {
         const config = getFieldConfig(fieldKey);
-        const isExpanded = expandedSections[fieldKey] !== false;
+        const isExpanded = !!expandedSections[fieldKey];
 
         // 计算显示的数量（如果是数组）
         const countDisplay = Array.isArray(value) ? ` (${value.length})` : '';

@@ -151,8 +151,15 @@ class HardCaseDetector:
         """
         合并同一基础预测案例的分数并去重。
         """
+        # 使用字典存储合并后的结果
         merged: Dict[Tuple[str, str], Dict[str, Any]] = defaultdict(
-            lambda: {"case": None, "reasons": [], "composite_score": 0, "dimensions": []}
+            lambda: {
+                "case": None, 
+                "reasons": [], 
+                "composite_score": 0, 
+                "dimensions": set(),
+                "seen_scenarios": set()  # 用于去重 (dimension, reason_text)
+            }
         )
         
         for item in scored_cases:
@@ -166,10 +173,17 @@ class HardCaseDetector:
             if entry["case"] is None:
                 entry["case"] = p
             
-            entry["composite_score"] += item["composite_score"]
-            entry["reasons"].append(f"{item.get('reason', '')} ({item.get('dimension')})")
-            if item.get('dimension') not in entry["dimensions"]:
-                entry["dimensions"].append(item.get('dimension'))
+            reason_text = item.get('reason', '')
+            dimension = item.get('dimension')
+            scenario_key = (dimension, reason_text)
+
+            # 防止重复计算分数和重复添加相同原因
+            if scenario_key not in entry["seen_scenarios"]:
+                entry["composite_score"] += item["composite_score"]
+                entry["reasons"].append(f"{reason_text} ({dimension})")
+                if dimension:
+                    entry["dimensions"].add(dimension)
+                entry["seen_scenarios"].add(scenario_key)
         
         result: List[Dict[str, Any]] = []
         for v in merged.values():
@@ -177,7 +191,7 @@ class HardCaseDetector:
                 "case": v["case"],
                 "reason": "; ".join(v["reasons"]),
                 "score": v["composite_score"],
-                "dimensions": v["dimensions"],
+                "dimensions": list(v["dimensions"]),
                 # 为了与现有的注入逻辑兼容而展平
                 "query": v["case"].get("query"),
                 "target": v["case"].get("target"),
