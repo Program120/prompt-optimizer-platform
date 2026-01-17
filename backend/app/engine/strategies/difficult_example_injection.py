@@ -79,15 +79,9 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
 4. **无意图示例**: 构造一个与当前业务相关的闲聊/问候场景
 
 ### 5. 示例结构要求
-每个示例必须包含（字段名称需适配原提示词）：
-- Query（用户输入）
-- 上下文（如有）
-- 预处理结果（如有变化）
-- 判断依据（简要说明分类逻辑）
-- 输出结果（**必须符合原提示词定义的格式**）
+每个示例必须包含：Query（用户输入）、判断依据（简要说明分类逻辑）、输出结果（**必须符合原提示词定义的格式**）
 
 ### 6. 示例质量要求
-- 示例必须贴合当前提示词的实际业务场景
 - 优先使用上述困难案例作为示例素材
 - 确保示例能够帮助模型理解正确的分类逻辑
 
@@ -100,38 +94,79 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
             module_name=self.module_name
         )
     
+    def _deduplicate_cases(self, cases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        对案例列表进行去重，基于query字段
+        
+        :param cases: 原始案例列表
+        :return: 去重后的案例列表
+        """
+        seen_queries: set = set()
+        unique_cases: List[Dict[str, Any]] = []
+        
+        for case in cases:
+            # 获取query并标准化（去除首尾空格）
+            query: str = str(case.get('query', '')).strip()
+            if query and query not in seen_queries:
+                seen_queries.add(query)
+                unique_cases.append(case)
+        
+        logger.debug(f"案例去重: 原始 {len(cases)} 个, 去重后 {len(unique_cases)} 个")
+        return unique_cases
+    
     def _build_hard_cases_text(self, hard_cases: List[Dict[str, Any]]) -> str:
-        """构建困难案例文本"""
-        lines = []
-        for i, case in enumerate(hard_cases, 1):
-            lines.append(f"\n### 案例 {i}")
-            lines.append(f"输入: {str(case.get('query', ''))[:150]}")
-            lines.append(f"正确分类: {case.get('target', '')}")
-            lines.append(f"模型错误输出: {case.get('output', '')}")
+        """
+        构建困难案例表格文本
+        
+        :param hard_cases: 困难案例列表
+        :return: Markdown表格格式的案例文本
+        """
+        # 先进行去重
+        unique_cases: List[Dict[str, Any]] = self._deduplicate_cases(hard_cases)
+        
+        if not unique_cases:
+            return "暂无困难案例"
+        
+        # 构建Markdown表格
+        lines: List[str] = [
+            "| Query | 正确意图 | 模型误判 |",
+            "|-------|---------|---------|"  
+        ]
+        
+        for case in unique_cases:
+            # 截断过长的query，保持表格可读性
+            query: str = str(case.get('query', ''))[:100].replace('|', '\\|').replace('\n', ' ')
+            target: str = str(case.get('target', '')).replace('|', '\\|')
+            output: str = str(case.get('output', ''))[:50].replace('|', '\\|')
+            lines.append(f"| {query} | {target} | {output} |")
         
         return "\n".join(lines)
     
     def _build_example_cases_from_errors(self, cases: List[Dict[str, Any]]) -> str:
         """
-        从实际错误案例中构建示例文本，供 LLM 参考生成业务相关的 Few-Shot 示例
+        从实际错误案例中构建示例表格，供 LLM 参考生成业务相关的 Few-Shot 示例
         
         :param cases: 错误案例列表
-        :return: 格式化的示例文本
+        :return: Markdown表格格式的示例文本
         """
-        if not cases:
+        # 先进行去重
+        unique_cases: List[Dict[str, Any]] = self._deduplicate_cases(cases)
+        
+        if not unique_cases:
             return "暂无实际业务案例可供参考"
         
-        lines = []
-        for i, case in enumerate(cases, 1):
-            query = str(case.get('query', ''))[:200]
-            target = case.get('target', '')
-            output = case.get('output', '')
-            
-            lines.append(f"#### 业务案例 {i}")
-            lines.append(f"- **用户输入**: {query}")
-            lines.append(f"- **正确意图**: {target}")
-            lines.append(f"- **模型误判**: {output}")
-            lines.append("")
+        # 构建Markdown表格
+        lines: List[str] = [
+            "| Query | 正确意图 | 误判原因 |",
+            "|-------|---------|---------|"  
+        ]
+        
+        for case in unique_cases:
+            # 截断过长的query，保持表格可读性
+            query: str = str(case.get('query', ''))[:100].replace('|', '\\|').replace('\n', ' ')
+            target: str = str(case.get('target', '')).replace('|', '\\|')
+            output: str = str(case.get('output', ''))[:50].replace('|', '\\|')
+            lines.append(f"| {query} | {target} | 误判为: {output} |")
         
         return "\n".join(lines)
 
