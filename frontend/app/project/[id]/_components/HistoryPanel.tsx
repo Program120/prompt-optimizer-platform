@@ -187,6 +187,7 @@ export default function HistoryPanel({
                 <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === "run" ? "" : "hidden"}`}>
                     <RunLogTab
                         taskId={taskStatus?.id}
+                        projectId={project?.id}
                         totalCount={taskStatus?.total_count}
                         currentIndex={taskStatus?.current_index}
                         reasons={reasons}
@@ -242,10 +243,12 @@ export default function HistoryPanel({
                                 <RotateCcw className="rotate-45" size={16} />
                             </button>
                         </div>
-                        <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-[#0f172a]">
-                            <pre className="whitespace-pre-wrap text-xs text-slate-300 font-mono leading-relaxed p-4 bg-black/30 rounded-lg border border-white/5">
-                                {currentPrompt}
-                            </pre>
+                        <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-[#0f172a] flex flex-col">
+                            <textarea
+                                readOnly
+                                className="w-full h-full bg-black/30 text-xs text-slate-300 font-mono leading-relaxed p-4 rounded-lg border border-white/5 resize-none focus:outline-none focus:border-blue-500/30"
+                                value={currentPrompt}
+                            />
                         </div>
                         <div className="p-3 border-t border-white/10 bg-white/5 flex justify-end">
                             <button

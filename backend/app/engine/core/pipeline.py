@@ -37,7 +37,9 @@ from .phases import (
     validate_result,
     update_history,
     build_final_result,
-    generate_optimization_summary
+    generate_optimization_summary,
+    enrich_with_reasons,
+    load_extraction_rule
 )
 
 
@@ -147,7 +149,8 @@ class MultiStrategyOptimizer:
     ) -> Dict[str, Any]:
         """执行多策略优化 - 流水线模式"""
         # 尝试合并原因库中的标注信息 (在创建 Context 之前)
-        phases.enrich_with_reasons(project_id, errors, dataset)
+        # 尝试合并原因库中的标注信息 (在创建 Context 之前)
+        enrich_with_reasons(project_id, errors, dataset)
 
         # 创建上下文
         ctx = OptimizationContext(
@@ -165,7 +168,8 @@ class MultiStrategyOptimizer:
         )
         
         # 尝试从项目配置中获取提取规则
-        phases.load_extraction_rule(project_id, ctx)
+        # 尝试从项目配置中获取提取规则
+        load_extraction_rule(project_id, ctx)
         
         if not errors:
             return {"optimized_prompt": prompt, "message": "无错误样例，无需优化"}

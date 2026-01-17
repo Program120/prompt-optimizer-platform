@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight, Save, X, Search } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Save, X, Search, FlaskConical, XCircle, Sparkles } from "lucide-react";
 
 const API_BASE = "/api";
 
 interface RunLogTabProps {
     taskId?: string;
+    projectId?: string;
     totalCount?: number; // From taskStatus
     currentIndex?: number; // 当前处理进度，用于实时刷新
     reasons: Record<string, any>;
@@ -12,7 +13,7 @@ interface RunLogTabProps {
     onSelectLog: (log: any) => void;
 }
 
-export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, saveReason, onSelectLog }: RunLogTabProps) {
+export default function RunLogTab({ taskId, projectId, totalCount, currentIndex, reasons, saveReason, onSelectLog }: RunLogTabProps) {
     // Local State for Pagination & Data
     const [results, setResults] = useState<any[]>([]);
     const [page, setPage] = useState(1);
@@ -25,12 +26,64 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
     const [filterStatus, setFilterStatus] = useState<'all' | 'success' | 'failed'>('all');
     const [editingReason, setEditingReason] = useState<{ query: string, value: string, target: string } | null>(null);
 
+    // Test State
+    const [testingQuery, setTestingQuery] = useState<string | null>(null);
+    const [testResult, setTestResult] = useState<{ query: string, is_correct: boolean, output: string, reason: string, target: string } | null>(null);
+    const testResultRef = useRef<HTMLDivElement | null>(null);
+
     // Ref for scroll container (用于 IntersectionObserver 的 root)
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     // Ref for infinite scroll trigger element
     const loadMoreRef = useRef<HTMLDivElement>(null);
     // 使用 ref 记录当前已加载的页数，避免闭包问题
     const loadedPagesRef = useRef<number>(1);
+
+    /**
+     * 执行单条测试
+     */
+    const handleTest = async (query: string, target: string, reason: string) => {
+        if (!projectId) return;
+        setTestingQuery(query);
+        try {
+            const res = await fetch(`${API_BASE}/projects/${projectId}/interventions/test`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query, target, reason })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setTestResult({
+                    query,
+                    is_correct: data.is_correct,
+                    output: data.output,
+                    reason: data.reason,
+                    target: target
+                });
+            } else {
+                const err = await res.json();
+                alert(`测试失败: ${err.detail || "未知错误"}`);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("测试请求出错");
+        } finally {
+            setTestingQuery(null);
+        }
+    };
+
+    // Global Click Outside Listener for Test Result Modal
+    useEffect(() => {
+        const handleGlobalClick = (event: MouseEvent) => {
+            if (testResult && testResultRef.current && !testResultRef.current.contains(event.target as Node)) {
+                setTestResult(null);
+            }
+        };
+
+        if (testResult) {
+            document.addEventListener('mousedown', handleGlobalClick);
+        }
+        return () => document.removeEventListener('mousedown', handleGlobalClick);
+    }, [testResult]);
 
     /**
      * 加载更多数据 (用于无限滚动)
@@ -284,6 +337,28 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
                             </span>
                         </div>
 
+                        {/* 操作栏 */}
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleTest(r.query, currentTarget || "", currentReason || "");
+                                }}
+                                disabled={!!testingQuery}
+                                className={`p-1.5 rounded transition-colors ${testingQuery === r.query
+                                    ? "text-cyan-400 bg-cyan-500/10 animate-pulse"
+                                    : "text-slate-400 hover:text-indigo-400 hover:bg-slate-700/50"
+                                    }`}
+                                title="执行单测"
+                            >
+                                {testingQuery === r.query ? (
+                                    <div className="w-3 h-3 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+                                ) : (
+                                    <FlaskConical size={14} />
+                                )}
+                            </button>
+                        </div>
+
                         {/* 原因编辑 */}
                         <div className="mt-2 border-t border-white/5 pt-2">
                             {isEditing && editingReason ? (
@@ -345,6 +420,91 @@ export default function RunLogTab({ taskId, totalCount, currentIndex, reasons, s
             </div>
 
             {!results.length && !isLoadingMore && !isRefreshing && <p className="text-center text-slate-600 mt-20">暂无运行日志</p>}
+
+            {/* 测试结果 Modal */}
+            {
+                testResult && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div
+                            ref={testResultRef}
+                            className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]"
+                        >
+                            <div className="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 shrink-0">
+                                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                                    <FlaskConical size={14} className="text-indigo-400" /> 测试结果
+                                </h3>
+                                <button
+                                    onClick={() => setTestResult(null)}
+                                    className="text-slate-500 hover:text-white transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+
+                            <div className="p-0 overflow-y-auto custom-scrollbar flex-1">
+                                {/* 状态横幅 */}
+                                <div className={`p-4 flex items-center gap-3 border-b border-slate-800 ${testResult?.is_correct ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${testResult?.is_correct ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                                        {testResult?.is_correct ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+                                    </div>
+                                    <div>
+                                        <h4 className={`text-base font-bold ${testResult?.is_correct ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            {testResult?.is_correct ? '验证通过' : '验证不通过'}
+                                        </h4>
+                                        <p className="text-xs text-slate-400 mt-0.5">
+                                            Query: <span className="font-mono text-slate-300">{testResult?.query}</span>
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 space-y-4">
+                                    {/* 对比区域 */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {/* 预期结果 */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
+                                                <CheckCircle2 size={10} className="text-emerald-500" /> 预期结果 (Target)
+                                            </label>
+                                            <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-100/90 font-mono min-h-[100px] whitespace-pre-wrap">
+                                                {testResult?.target || <span className="text-slate-600 italic">未设置</span>}
+                                            </div>
+                                        </div>
+
+                                        {/* 实际输出 */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
+                                                <Sparkles size={10} className="text-indigo-500" /> 实际输出 (Actual)
+                                            </label>
+                                            <div className={`bg-slate-950/50 border rounded-lg p-3 text-xs font-mono min-h-[100px] whitespace-pre-wrap ${testResult?.is_correct ? 'border-emerald-500/20 text-emerald-100/90' : 'border-rose-500/20 text-rose-100/90'}`}>
+                                                {testResult?.output}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 提取原因/分析 (如果有) */}
+                                    {testResult?.reason && (
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-medium text-slate-500">分析/原因 (Reason)</label>
+                                            <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 text-xs text-slate-300">
+                                                {testResult?.reason}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="p-3 border-t border-slate-800 bg-slate-900/50 flex justify-end">
+                                <button
+                                    onClick={() => setTestResult(null)}
+                                    className="px-4 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs hover:bg-slate-700 transition-colors"
+                                >
+                                    关闭
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
         </div>
     );
 }

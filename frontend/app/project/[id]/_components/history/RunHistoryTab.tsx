@@ -114,21 +114,22 @@ export default function RunHistoryTab({ runHistory, projectId, onDeleteTask, onS
                     </div>
 
                     {/* 提示词预览 & 查看 */}
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-start gap-2 text-xs text-slate-500 overflow-hidden">
+                    <div
+                        className="flex items-start justify-between gap-2 mb-2 group/prompt cursor-pointer bg-black/20 hover:bg-black/40 rounded p-2 transition-colors border border-transparent hover:border-white/10"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onViewPrompt) onViewPrompt(task.prompt);
+                        }}
+                    >
+                        <div className="flex items-start gap-2 text-xs text-slate-500 overflow-hidden flex-1">
                             <FileText size={12} className="mt-0.5 flex-shrink-0" />
                             <p className="line-clamp-2 italic text-slate-400" title={task.prompt}>
                                 "{task.prompt}"
                             </p>
                         </div>
-                        {onViewPrompt && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); onViewPrompt(task.prompt); }}
-                                className="text-[10px] text-blue-400 hover:text-blue-300 whitespace-nowrap flex-shrink-0"
-                            >
-                                查看提示词
-                            </button>
-                        )}
+                        <span className="text-[10px] text-slate-600 group-hover/prompt:text-blue-400 whitespace-nowrap flex-shrink-0 opacity-0 group-hover/prompt:opacity-100 transition-all">
+                            点击查看详情
+                        </span>
                     </div>
 
                     {/* 底部: 进度和准确率 & 结果下载 */}
