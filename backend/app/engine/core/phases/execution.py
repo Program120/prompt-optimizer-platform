@@ -211,6 +211,16 @@ async def inject_persistent_knowledge(
     has_persistent: bool = any(c.get("_persistent") for c in hard_cases)
     current_strategy_name: str = str(ctx.best_result.get("strategy", ""))
     
+    # [DEBUG-START] 添加调试日志 - 检查顽固案例注入流程
+    logger.debug(
+        f"[DEBUG] inject_persistent_knowledge 检查: hard_cases数={len(hard_cases)}, "
+        f"has_persistent={has_persistent}, current_strategy={current_strategy_name}"
+    )
+    persistent_cases: List[Dict[str, Any]] = [c for c in hard_cases if c.get("_persistent")]
+    if persistent_cases:
+        logger.debug(f"[DEBUG] 顽固案例详情: {[c.get('query', '')[:30] for c in persistent_cases[:3]]}")
+    # [DEBUG-END]
+    
     if has_persistent and current_strategy_name != "difficult_example_injection":
         if ctx.on_progress:
             ctx.on_progress("正在执行困难样本注入...")

@@ -13,7 +13,8 @@ from ...diagnosis.service import diagnose_prompt_performance
 from ...helpers.knowledge import OptimizationKnowledgeBase
 from ...helpers.error_history import (
     filter_clarification_samples,
-    identify_persistent_errors
+    identify_persistent_errors,
+    inject_persistent_errors_to_hard_cases
 )
 
 
@@ -256,6 +257,16 @@ async def load_error_history(
         if ctx.error_history:
             ctx.persistent_samples = identify_persistent_errors(ctx.error_history)
             logger.info(f"已加载错误历史，识别出 {len(ctx.persistent_samples)} 个顽固错误样本。")
+            
+            # [DEBUG-START] 添加调试日志 - 检查顽固错误注入流程
+            logger.debug(f"[DEBUG] 顽固样本详情: {ctx.persistent_samples[:3] if ctx.persistent_samples else '无'}")
+            # [DEBUG-END]
+            
+            # 将顽固错误注入到诊断结果的 hard_cases 中
+            # 这样 inject_persistent_knowledge 阶段能够识别带 _persistent 标记的案例
+            if ctx.persistent_samples and ctx.diagnosis_raw:
+                inject_persistent_errors_to_hard_cases(ctx.diagnosis_raw, ctx.persistent_samples)
+                logger.info(f"[顽固错误注入] 已将 {len(ctx.persistent_samples)} 个顽固样本注入到诊断上下文中")
     except ImportError:
         logger.error("无法导入 storage 模块，跳过错误历史加载。")
     except Exception as e:

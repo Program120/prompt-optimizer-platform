@@ -218,3 +218,57 @@ def prepare_persistent_errors_for_knowledge_base(
     except Exception as e:
         logger.warning(f"准备错误历史数据失败: {e}")
         return []
+
+
+def remove_resolved_persistent_errors(
+    history: Dict[str, Any],
+    current_errors: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    移除已解决的顽固错误记录
+    
+    如果某个历史错误在当前轮次中不再出现（即已解决），
+    则将其从历史中移除或重置其 is_persistent 状态
+    
+    :param history: 现有的优化历史记录
+    :param current_errors: 当前轮次的错误样本列表
+    :return: 更新后的历史记录
+    """
+    if not history:
+        return history
+    
+    # 构建当前错误的 hash_key 集合
+    current_error_keys: set = set()
+    for err in current_errors:
+        query: str = str(err.get("query", ""))
+        target: str = str(err.get("target", ""))
+        hash_key: str = hashlib.md5(f"{query}:{target}".encode()).hexdigest()[:16]
+        current_error_keys.add(hash_key)
+    
+    # 记录需要移除或重置的 key 列表
+    keys_to_remove: List[str] = []
+    resolved_count: int = 0
+    
+    for hash_key, record in history.items():
+        # 如果这个错误在当前轮次中不再出现，说明已解决
+        if hash_key not in current_error_keys:
+            # 如果是顽固错误，移除它
+            if record.get("is_persistent", False):
+                keys_to_remove.append(hash_key)
+                resolved_count += 1
+                # [DEBUG-START] 添加调试日志
+                logger.debug(
+                    f"[DEBUG] 移除已解决顽固错误: query={record.get('query', '')[:50]}, "
+                    f"target={record.get('target', '')}"
+                )
+                # [DEBUG-END]
+    
+    # 从历史中移除已解决的顽固错误
+    updated_history: Dict[str, Any] = history.copy()
+    for key in keys_to_remove:
+        del updated_history[key]
+    
+    if resolved_count > 0:
+        logger.info(f"[顽固错误清理] 已移除 {resolved_count} 个已解决的顽固错误记录")
+    
+    return updated_history

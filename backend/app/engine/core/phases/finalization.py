@@ -9,7 +9,10 @@ from loguru import logger
 
 from ..models import OptimizationContext
 from ...helpers.validator import PromptValidator
-from ...helpers.error_history import update_error_optimization_history
+from ...helpers.error_history import (
+    update_error_optimization_history,
+    remove_resolved_persistent_errors
+)
 
 
 async def record_knowledge(
@@ -68,6 +71,19 @@ async def record_knowledge(
             logger.warning(f"准备错误历史数据失败: {e}")
 
     difficult_cases: List[Dict[str, Any]] = ctx.diagnosis_raw.get("error_patterns", {}).get("hard_cases", [])
+    
+    # 区分：所有困难案例 vs 本次实际使用的顽固案例（带 _persistent 标记）
+    used_persistent_cases: List[Dict[str, Any]] = [
+        c for c in difficult_cases if c.get("_persistent")
+    ]
+    
+    # [DEBUG-START] 添加调试日志
+    if used_persistent_cases:
+        logger.debug(
+            f"[DEBUG] 本次使用的顽固案例数: {len(used_persistent_cases)}, "
+            f"详情: {[c.get('query', '')[:30] for c in used_persistent_cases[:3]]}"
+        )
+    # [DEBUG-END]
 
     try:
         knowledge_base.record_optimization(
@@ -79,6 +95,7 @@ async def record_knowledge(
             accuracy_before=accuracy,
             deep_analysis=ctx.deep_analysis,
             newly_failed_cases=ctx.newly_failed_cases,
+            # 记录所有困难案例
             difficult_cases=difficult_cases,
             persistent_errors=current_persistent_errors_list,
             clarification_intents=ctx.intent_analysis.get("clarification_intents", []),
@@ -145,14 +162,29 @@ async def update_history(ctx: OptimizationContext) -> None:
             update_error_optimization_history as save_history_to_db
         )
         
+        # 步骤1：更新错误历史（增加优化次数）
         updated_history: Dict[str, Any] = update_error_optimization_history(
             ctx.errors, 
             ctx.error_history, 
             ctx.optimized_intents
         )
         
-        save_history_to_db(ctx.project_id, updated_history)
-        logger.info(f"[错误追踪] 已更新错误优化历史，记录数: {len(updated_history)}")
+        # 步骤2：移除已解决的顽固错误（当前轮次不再出错的案例）
+        # 这样下次优化时不会再将它们作为顽固错误注入
+        cleaned_history: Dict[str, Any] = remove_resolved_persistent_errors(
+            updated_history,
+            ctx.errors
+        )
+        
+        # [DEBUG-START] 添加调试日志
+        if len(cleaned_history) != len(updated_history):
+            logger.debug(
+                f"[DEBUG] 错误历史清理: 原 {len(updated_history)} 条 -> 清理后 {len(cleaned_history)} 条"
+            )
+        # [DEBUG-END]
+        
+        save_history_to_db(ctx.project_id, cleaned_history)
+        logger.info(f"[错误追踪] 已更新错误优化历史，记录数: {len(cleaned_history)}")
     except ImportError:
         logger.error("无法导入 storage 模块，跳过历史更新。")
     except Exception as e:
