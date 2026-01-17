@@ -329,6 +329,13 @@ class TaskManager:
                         kb = OptimizationKnowledgeBase(project_id)
                         if kb.update_latest_accuracy_after(accuracy):
                             logger.info(f"[Task {task_id}] 已回填知识库的 accuracy_after: {accuracy*100:.1f}%")
+                            
+                            # 同时更新 SQLite 中的项目迭代记录，确保一致性
+                            try:
+                                if storage.update_latest_project_iteration_accuracy(project_id, accuracy):
+                                    logger.info(f"[Task {task_id}] 已同步项目迭代记录的 accuracy_after")
+                            except Exception as db_err:
+                                logger.warning(f"[Task {task_id}] 同步项目迭代记录失败: {db_err}")
             except Exception as kb_err:
                 logger.warning(f"[Task {task_id}] 回填知识库准确率失败: {kb_err}")
         

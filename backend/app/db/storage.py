@@ -1051,3 +1051,29 @@ def _update_project_from_dict(session: Session, project: Project, data: Dict[str
     # 处理迭代记录更新（关键修复：确保 iterations 被正确同步）
     if "iterations" in data:
         _sync_project_iterations_from_legacy(session, project, data["iterations"])
+
+
+def update_latest_project_iteration_accuracy(project_id: str, accuracy_after: float) -> bool:
+    """
+    更新项目最新一次迭代的优化后准确率
+
+    :param project_id: 项目 ID
+    :param accuracy_after: 优化后准确率
+    :return: 是否更新成功
+    """
+    with get_db_session() as session:
+        # 获取最新的迭代记录
+        statement = select(ProjectIteration).where(
+            ProjectIteration.project_id == project_id
+        ).order_by(ProjectIteration.version.desc()).limit(1)
+
+        iteration = session.exec(statement).first()
+
+        if iteration:
+            iteration.accuracy_after = accuracy_after
+            session.add(iteration)
+            session.commit()
+            logger.info(f"已更新项目 {project_id} 最新迭代 (V{iteration.version}) 的准确率: {accuracy_after:.1%}")
+            return True
+
+        return False

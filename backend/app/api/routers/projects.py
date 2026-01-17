@@ -374,6 +374,8 @@ def background_optimize_task(
             "dataset_name": dataset_name,
             "accuracy": (len(task_status["results"]) - len(task_status["errors"])) / len(task_status["results"]) if task_status.get("results") else 0,
             "applied_strategies": [s.get("name") for s in applied_strategies if s.get("success")],
+            # 尝试填充优化后准确率（如果可用）
+            "accuracy_after": task_status.get("result", {}).get("improvement") if strategy == "simple" else (result.get("improvement") if "result" in locals() and result else None),
             "created_at": datetime.now().isoformat()
         }
         
