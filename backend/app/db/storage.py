@@ -1055,16 +1055,17 @@ def _update_project_from_dict(session: Session, project: Project, data: Dict[str
 
 def update_latest_project_iteration_accuracy(project_id: str, accuracy_after: float) -> bool:
     """
-    更新项目最新一次迭代的优化后准确率
+    更新项目最新一次迭代的优化后准确率 (仅更新 accuracy_after 为 None 的记录)
 
     :param project_id: 项目 ID
     :param accuracy_after: 优化后准确率
     :return: 是否更新成功
     """
     with get_db_session() as session:
-        # 获取最新的迭代记录
+        # 获取最新的且 accuracy_after 为空的迭代记录
         statement = select(ProjectIteration).where(
-            ProjectIteration.project_id == project_id
+            ProjectIteration.project_id == project_id,
+            ProjectIteration.accuracy_after == None
         ).order_by(ProjectIteration.version.desc()).limit(1)
 
         iteration = session.exec(statement).first()
@@ -1073,7 +1074,8 @@ def update_latest_project_iteration_accuracy(project_id: str, accuracy_after: fl
             iteration.accuracy_after = accuracy_after
             session.add(iteration)
             session.commit()
-            logger.info(f"已更新项目 {project_id} 最新迭代 (V{iteration.version}) 的准确率: {accuracy_after:.1%}")
+            logger.info(f"已更新项目 {project_id} 迭代 (V{iteration.version}) 的准确率: {accuracy_after:.1%}")
             return True
-
+        
+        logger.debug(f"项目 {project_id} 没有需要回填准确率的迭代记录")
         return False

@@ -20,7 +20,7 @@ router = APIRouter()
 class InterventionUpsertRequest(BaseModel):
     """意图干预更新请求模型"""
     query: str
-    reason: str
+    reason: str = ""
     target: str = ""
     file_id: str = ""
 
@@ -30,10 +30,6 @@ class InterventionResponse(BaseModel):
     project_id: str
     query: str
     reason: str
-    target: str
-    target: str
-    original_target: Optional[str] = None
-    is_target_modified: bool = False
     target: str
     original_target: Optional[str] = None
     is_target_modified: bool = False
@@ -69,9 +65,9 @@ async def upsert_intervention(project_id: str, request: InterventionUpsertReques
     添加或更新干预项
     """
     logger.info(f"Upserting intervention for project {project_id}, query: {request.query[:20]}...")
-    if not request.query or not request.reason:
-        logger.warning("Upsert failed: Query and Reason are required")
-        raise HTTPException(status_code=400, detail="Query and Reason are required")
+    if not request.query:
+        logger.warning("Upsert failed: Query is required")
+        raise HTTPException(status_code=400, detail="Query is required")
     
     try:
         result: Optional[IntentIntervention] = intervention_service.upsert_intervention(
