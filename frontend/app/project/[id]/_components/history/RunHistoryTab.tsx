@@ -102,15 +102,7 @@ export default function RunHistoryTab({ runHistory, projectId, onDeleteTask, onS
                             <Database size={12} />
                             <span className="truncate" title={task.dataset_name}>{task.dataset_name}</span>
                         </div>
-                        <a
-                            href={`${API_BASE}/tasks/${task.id}/download_dataset`}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 flex-shrink-0"
-                        >
-                            <Download size={10} /> 下载数据集
-                        </a>
+
                     </div>
 
                     {/* 提示词预览 & 查看 */}

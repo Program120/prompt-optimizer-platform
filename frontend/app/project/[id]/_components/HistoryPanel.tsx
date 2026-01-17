@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Search, RotateCcw } from "lucide-react";
 import RunLogTab from "./history/RunLogTab";
 import RunHistoryTab from "./history/RunHistoryTab";
@@ -235,35 +235,52 @@ export default function HistoryPanel({
 
             {/* Prompt Detail Modal */}
             {showPromptModal && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowPromptModal(false)}>
-                    <div className="bg-[#0f172a] border border-white/10 rounded-xl w-full max-w-2xl max-h-[80%] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center p-4 border-b border-white/10 bg-white/5">
-                            <h3 className="text-sm font-medium text-slate-200">提示词详情</h3>
-                            <button onClick={() => setShowPromptModal(false)} className="text-slate-500 hover:text-white transition-colors">
-                                <RotateCcw className="rotate-45" size={16} />
-                            </button>
-                        </div>
-                        <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-[#0f172a] flex flex-col">
-                            <textarea
-                                readOnly
-                                className="w-full h-full bg-black/30 text-xs text-slate-300 font-mono leading-relaxed p-4 rounded-lg border border-white/5 resize-none focus:outline-none focus:border-blue-500/30"
-                                value={currentPrompt}
-                            />
-                        </div>
-                        <div className="p-3 border-t border-white/10 bg-white/5 flex justify-end">
-                            <button
-                                onClick={() => {
-                                    navigator.clipboard.writeText(currentPrompt);
-                                    // optional: show toast
-                                }}
-                                className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs rounded-lg transition-colors border border-blue-500/20"
-                            >
-                                复制内容
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <PromptModalContent prompt={currentPrompt} onClose={() => setShowPromptModal(false)} />
             )}
         </section>
+    );
+}
+
+function PromptModalContent({ prompt, onClose }: { prompt: string, onClose: () => void }) {
+    const modalRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
+                onClose();
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [onClose]);
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div ref={modalRef} className="bg-[#0f172a] border border-white/10 rounded-xl w-full max-w-4xl h-[600px] flex flex-col shadow-2xl">
+                <div className="flex justify-between items-center p-4 border-b border-white/10 bg-white/5">
+                    <h3 className="text-sm font-medium text-slate-200">提示词详情</h3>
+                    <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+                        <RotateCcw className="rotate-45" size={16} />
+                    </button>
+                </div>
+                <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-[#0f172a] flex flex-col">
+                    <textarea
+                        readOnly
+                        className="w-full h-full bg-black/30 text-xs text-slate-300 font-mono leading-relaxed p-4 rounded-lg border border-white/5 resize-none focus:outline-none focus:border-blue-500/30"
+                        value={prompt}
+                    />
+                </div>
+                <div className="p-3 border-t border-white/10 bg-white/5 flex justify-end">
+                    <button
+                        onClick={() => {
+                            navigator.clipboard.writeText(prompt);
+                        }}
+                        className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs rounded-lg transition-colors border border-blue-500/20"
+                    >
+                        复制内容
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }
