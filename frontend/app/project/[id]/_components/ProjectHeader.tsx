@@ -62,7 +62,10 @@ export default function ProjectHeader({
                     disabled={isSaving}
                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-4 py-2 rounded-xl transition-colors text-sm font-medium"
                 >
-                    {isSaving ? <Activity className="animate-spin" size={18} /> : <Save size={18} />}
+                    <span className="w-[18px] h-[18px] relative">
+                        <Save size={18} className={`absolute inset-0 transition-opacity ${isSaving ? 'opacity-0' : 'opacity-100'}`} />
+                        <Activity size={18} className={`absolute inset-0 animate-spin transition-opacity ${isSaving ? 'opacity-100' : 'opacity-0'}`} />
+                    </span>
                     保存项目
                 </button>
                 <button

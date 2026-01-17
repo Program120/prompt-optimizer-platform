@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axios from "axios";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import ModelConfig from "@/app/components/ModelConfig";
 
 import ProjectHeader from "./_components/ProjectHeader";
@@ -145,17 +145,18 @@ export default function ProjectDetail() {
     // 1. 自动迭代运行中 (autoIterateStatus?.status === "running")
     // 2. 优化任务运行中 (isOptimizing)
     // 3. 轮询进行中 (isPollingRef.current) - 防止 fetchProject 更新 state 后触发保存覆盖后端数据
+    // 4. 正在保存中 (isSaving) - 防止手动保存和自动保存冲突
     useEffect(() => {
         if (!project) return;
-        // 如果正在自动迭代 或 正在优化 或 正在轮询，跳过自动保存
-        if (autoIterateStatus?.status === "running" || isOptimizing || isPollingRef.current) return;
+        // 如果正在自动迭代 或 正在优化 或 正在轮询 或 正在保存，跳过自动保存
+        if (autoIterateStatus?.status === "running" || isOptimizing || isPollingRef.current || isSaving) return;
 
         const timer = setTimeout(() => {
             saveProject(true);
         }, 1000);
 
         return () => clearTimeout(timer);
-    }, [config, fileInfo, extractField, project?.current_prompt, autoIterateStatus?.status, isOptimizing, validationLimit]);
+    }, [config, fileInfo, extractField, project?.current_prompt, autoIterateStatus?.status, isOptimizing, validationLimit, isSaving]);
 
     const router = useRouter();
 
@@ -763,19 +764,22 @@ export default function ProjectDetail() {
     return (
         <div className="space-y-8">
             {/* Toast 提示 */}
-            {toast && (
-                <motion.div
-                    initial={{ opacity: 0, y: -50, x: "-50%" }}
-                    animate={{ opacity: 1, y: 0, x: "-50%" }}
-                    exit={{ opacity: 0, y: -50 }}
-                    className={`fixed top-6 left-1/2 z-[100] px-6 py-3 rounded-xl shadow-lg ${toast.type === "success"
-                        ? "bg-emerald-600 text-white"
-                        : "bg-red-600 text-white"
-                        }`}
-                >
-                    {toast.message}
-                </motion.div>
-            )}
+            <AnimatePresence>
+                {toast && (
+                    <motion.div
+                        key="toast"
+                        initial={{ opacity: 0, y: -50, x: "-50%" }}
+                        animate={{ opacity: 1, y: 0, x: "-50%" }}
+                        exit={{ opacity: 0, y: -50 }}
+                        className={`fixed top-6 left-1/2 z-[100] px-6 py-3 rounded-xl shadow-lg ${toast.type === "success"
+                            ? "bg-emerald-600 text-white"
+                            : "bg-red-600 text-white"
+                            }`}
+                    >
+                        {toast.message}
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <ProjectHeader
                 projectName={project.name}
