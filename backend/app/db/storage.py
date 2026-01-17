@@ -697,7 +697,7 @@ def delete_task(task_id: str) -> bool:
         
         task = session.get(Task, normalized_id)
         if task:
-            # 删除关联的结果和错误
+            # 先删除关联的结果和错误（子表）
             results_stmt = select(TaskResult).where(TaskResult.task_id == normalized_id)
             for result in session.exec(results_stmt):
                 session.delete(result)
@@ -705,6 +705,10 @@ def delete_task(task_id: str) -> bool:
             errors_stmt = select(TaskError).where(TaskError.task_id == normalized_id)
             for error in session.exec(errors_stmt):
                 session.delete(error)
+            
+            # 先刷新确保子表记录已删除，再删除主表记录
+            # 这样可以避免外键约束失败
+            session.flush()
             
             session.delete(task)
             session.commit()
