@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight, Save, X, Search } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Save, X, Search, FlaskConical } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -354,7 +354,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                                 {testingQuery === r.query ? (
                                     <div className="w-3 h-3 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
                                 ) : (
-                                    <Search size={14} />
+                                    <FlaskConical size={14} />
                                 )}
                             </button>
                         </div>
@@ -431,7 +431,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                         >
                             <div className="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 shrink-0">
                                 <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                                    <Search size={14} className="text-indigo-400" /> 测试结果
+                                    <FlaskConical size={14} className="text-indigo-400" /> 测试结果
                                 </h3>
                                 <button
                                     onClick={() => setTestResult(null)}
