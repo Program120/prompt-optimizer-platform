@@ -220,7 +220,8 @@ async def import_interventions(project_id: str, request: InterventionImportReque
             df = pd.read_excel(file_path)
             
         if request.reason_col and request.reason_col not in df.columns:
-             raise HTTPException(status_code=400, detail=f"Reason column '{request.reason_col}' not found in file")
+             logger.warning(f"Reason column '{request.reason_col}' not found in file, ignoring reason import.")
+             request.reason_col = None
 
         imported_count = intervention_service.import_dataset_to_interventions(
             project_id=project_id,
