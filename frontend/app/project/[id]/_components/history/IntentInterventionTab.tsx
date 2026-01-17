@@ -52,7 +52,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
     const [testResult, setTestResult] = useState<{ query: string, is_correct: boolean, output: string, reason: string, target: string } | null>(null);
 
     // Selection State
-    const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+    const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
 
     // Create Modal State
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -407,11 +407,19 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
      */
     const handleBatchDelete = async () => {
         if (!project?.id || selectedItems.size === 0 || !confirm(`确定要删除选中的 ${selectedItems.size} 条记录吗？`)) return;
+
+        // Map selected IDs back to queries
+        const queriesToDelete = intentItems
+            .filter(item => selectedItems.has(item.id))
+            .map(item => item.query);
+
+        if (queriesToDelete.length === 0) return;
+
         try {
             const res = await fetch(`${API_BASE}/projects/${project.id}/interventions/batch`, {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(Array.from(selectedItems))
+                body: JSON.stringify(queriesToDelete)
             });
             if (res.ok) {
                 setSelectedItems(new Set());
@@ -473,12 +481,12 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
     /**
      * 选择/取消选择
      */
-    const toggleSelection = (query: string) => {
+    const toggleSelection = (id: number) => {
         const newSet = new Set(selectedItems);
-        if (newSet.has(query)) {
-            newSet.delete(query);
+        if (newSet.has(id)) {
+            newSet.delete(id);
         } else {
-            newSet.add(query);
+            newSet.add(id);
         }
         setSelectedItems(newSet);
     };
@@ -514,6 +522,14 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
         } finally {
             setTestingQuery(null);
         }
+    };
+
+    /**
+     * 全选
+     */
+    const handleSelectAll = () => {
+        const allIds = intentItems.map(item => item.id);
+        setSelectedItems(new Set(allIds));
     };
 
     // 无文件提示
@@ -579,6 +595,15 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                 <div className="flex gap-2 justify-end">
                     {selectedItems.size > 0 ? (
                         <div className="flex gap-2">
+                            {selectedItems.size < intentItems.length && (
+                                <button
+                                    onClick={handleSelectAll}
+                                    className="px-3 py-1.5 rounded-lg bg-slate-800/50 text-slate-400 text-xs border border-slate-700/50 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors flex items-center gap-1"
+                                >
+                                    <CheckCircle2 size={12} />
+                                    全选
+                                </button>
+                            )}
                             <motion.button
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
@@ -601,6 +626,15 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                         </div>
                     ) : (
                         <div className="flex gap-2">
+                            {intentItems.length > 0 && (
+                                <button
+                                    onClick={handleSelectAll}
+                                    className="px-3 py-1.5 rounded-lg bg-slate-800/50 text-slate-400 text-xs border border-slate-700/50 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors flex items-center gap-1"
+                                >
+                                    <CheckCircle2 size={12} />
+                                    全选
+                                </button>
+                            )}
                             <button
                                 onClick={handleClearAll}
                                 className="px-3 py-1.5 rounded-lg bg-slate-800/50 text-slate-400 text-xs border border-slate-700/50 hover:text-red-400 hover:border-red-500/30 transition-colors"
@@ -640,7 +674,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                             // 使用唯一 key：优先 id，其次 query，最后使用索引
                             const itemKey = item.id || item.query || `intent-item-${index}`;
 
-                            const isSelected = selectedItems.has(item.query);
+                            const isSelected = selectedItems.has(item.id);
 
                             return (
                                 <div
@@ -657,7 +691,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                             <div
                                                 className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition-colors ${isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 hover:border-cyan-500'
                                                     }`}
-                                                onClick={() => toggleSelection(item.query)}
+                                                onClick={() => toggleSelection(item.id)}
                                             >
                                                 {isSelected && <CheckCircle2 size={12} className="text-white" />}
                                             </div>
