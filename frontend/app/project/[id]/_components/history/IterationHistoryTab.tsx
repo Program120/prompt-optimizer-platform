@@ -105,7 +105,7 @@ export default function IterationHistoryTab({ iterations, onSelectIteration, onD
 
                             <NoteSection
                                 type="iteration"
-                                id={it.id}
+                                id={it.created_at}
                                 initialNote={it.note}
                                 onSave={onSaveNote}
                             />

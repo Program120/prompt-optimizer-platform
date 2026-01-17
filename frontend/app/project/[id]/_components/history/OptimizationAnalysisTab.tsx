@@ -86,7 +86,7 @@ export default function OptimizationAnalysisTab({ records, onSelectRecord, onDel
 
                         <NoteSection
                             type="knowledge"
-                            id={record.id}
+                            id={record.version}
                             initialNote={record.note}
                             onSave={onSaveNote}
                         />

@@ -42,7 +42,7 @@ export const NoteSection: React.FC<NoteSectionProps> = ({ type, id, initialNote 
     };
 
     return (
-        <div className="mt-2 pt-2 border-t border-white/5" onClick={e => e.stopPropagation()}>
+        <div className="mt-2 pt-2 border-t border-white/5 cursor-pointer" onClick={startEditing}>
             {isEditing ? (
                 <div className="flex gap-2 items-start">
                     <textarea
