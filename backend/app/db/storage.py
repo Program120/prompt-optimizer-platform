@@ -126,7 +126,7 @@ def delete_project(project_id: str) -> bool:
 def reset_project(project_id: str) -> Optional[Dict[str, Any]]:
     """
     重置项目
-    将提示词恢复到初始状态，清空所有运行记录、迭代记录和知识库
+    将提示词恢复到初始状态，清空所有运行记录、迭代记录、知识库和意图干预数据
     
     :param project_id: 项目 ID
     :return: 重置后的项目字典，未找到返回 None
@@ -174,6 +174,14 @@ def reset_project(project_id: str) -> Optional[Dict[str, Any]]:
             logger.info(f"删除知识库文件: {kb_file_path}")
         except Exception as e:
             logger.warning(f"删除知识库文件失败: {e}")
+    
+    # 6. 清除意图干预数据
+    try:
+        from app.services import intervention_service
+        deleted_interventions: int = intervention_service.clear_interventions(project_id)
+        logger.info(f"删除意图干预数据 {deleted_interventions} 条: {project_id}")
+    except Exception as e:
+        logger.warning(f"删除意图干预数据失败: {e}")
     
     # 返回重置后的项目
     return get_project(project_id)
