@@ -80,7 +80,7 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
 - 单意图示例、多意图示例、需要澄清示例、无意图示例
 
 ### 6. 示例结构要求
-每个示例只需包含：Query → 对应意图(**简短几个词语的总结**) + 简要原因
+每个示例只需包含：**泛化Query**（基于原始query总结提炼，具有代表性） → 对应意图(**简短几个词语**) + 简要原因
 
 """
         
