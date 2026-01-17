@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { CheckCircle2, AlertCircle, ArrowRight, Save, X, Search, FlaskConical, XCircle, Sparkles } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, Save, X, Search } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -354,7 +354,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                                 {testingQuery === r.query ? (
                                     <div className="w-3 h-3 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
                                 ) : (
-                                    <FlaskConical size={14} />
+                                    <Search size={14} />
                                 )}
                             </button>
                         </div>
@@ -431,7 +431,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                         >
                             <div className="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 shrink-0">
                                 <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                                    <FlaskConical size={14} className="text-indigo-400" /> 测试结果
+                                    <Search size={14} className="text-indigo-400" /> 测试结果
                                 </h3>
                                 <button
                                     onClick={() => setTestResult(null)}
@@ -445,7 +445,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                                 {/* 状态横幅 */}
                                 <div className={`p-4 flex items-center gap-3 border-b border-slate-800 ${testResult?.is_correct ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${testResult?.is_correct ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                                        {testResult?.is_correct ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+                                        {testResult?.is_correct ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
                                     </div>
                                     <div>
                                         <h4 className={`text-base font-bold ${testResult?.is_correct ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -473,7 +473,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                                         {/* 实际输出 */}
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                                                <Sparkles size={10} className="text-indigo-500" /> 实际输出 (Actual)
+                                                <AlertCircle size={10} className="text-indigo-500" /> 实际输出 (Actual)
                                             </label>
                                             <div className={`bg-slate-950/50 border rounded-lg p-3 text-xs font-mono min-h-[100px] whitespace-pre-wrap ${testResult?.is_correct ? 'border-emerald-500/20 text-emerald-100/90' : 'border-rose-500/20 text-rose-100/90'}`}>
                                                 {testResult?.output}
