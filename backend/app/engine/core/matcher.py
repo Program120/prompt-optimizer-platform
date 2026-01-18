@@ -22,6 +22,7 @@ from ..strategies.query_rewrite_optimize import QueryRewriteOptimizationStrategy
 from ..strategies.role_task_definition_optimize import RoleTaskDefinitionStrategy
 from ..strategies.output_format_optimize import OutputFormatOptimizationStrategy
 from ..strategies.negative_fusion_optimize import NegativeFusionOptimizationStrategy
+from ..strategies.agent_routing_boundary_optimize import AgentRoutingBoundaryStrategy
 
 
 # 策略组合预设
@@ -29,6 +30,16 @@ STRATEGY_PRESETS = {
     "initial": [  # 初始优化
         {"type": "instruction_refinement", "priority": 1},
         {"type": "meta_optimization", "priority": 2}
+    ],
+    "simple": [  # 快速优化（对应前端"快速"按钮）
+        {"type": "instruction_refinement", "priority": 1},
+        {"type": "meta_optimization", "priority": 2}
+    ],
+    "multi": [  # 多策略深度优化（对应前端"深度"按钮）
+        {"type": "agent_routing_boundary", "priority": 1},
+        {"type": "boundary_clarification", "priority": 2},
+        {"type": "difficult_example_injection", "priority": 3},
+        {"type": "meta_optimization", "priority": 4}
     ],
     "precision_focus": [  # 精确率优先
         {"type": "boundary_clarification", "priority": 1},
@@ -83,7 +94,9 @@ STRATEGY_CLASSES: Dict[str, Type[BaseStrategy]] = {
     "role_task_definition": RoleTaskDefinitionStrategy,
     "output_format_optimization": OutputFormatOptimizationStrategy,
     # 负向优化融合策略
-    "negative_fusion_optimization": NegativeFusionOptimizationStrategy
+    "negative_fusion_optimization": NegativeFusionOptimizationStrategy,
+    # Agent 路由边界优化策略
+    "agent_routing_boundary": AgentRoutingBoundaryStrategy,
 }
 
 # 模块ID到策略类型的映射
@@ -350,12 +363,15 @@ class StrategyMatcher:
         :param should_stop: 停止回调函数
         :return: 策略实例列表（按推荐优先级排序）
         """
-        logger.info(f"[StrategyMatcher] 开始匹配策略，max_strategies={max_strategies}, selected_modules={selected_modules}")
-        
+        logger.info(f"[StrategyMatcher] ========== 开始匹配策略 ==========")
+        logger.info(f"[StrategyMatcher] 参数: max_strategies={max_strategies}, selected_modules={selected_modules}")
+        logger.info(f"[StrategyMatcher] 所有已注册策略: {list(STRATEGY_CLASSES.keys())}")
+
         candidates: List[tuple[float, BaseStrategy]] = []
-        
+
         # 获取所有模块策略类型的集合（用于快速判断）
         all_module_strategy_types: set = set(MODULE_STRATEGY_MAP.values())
+        logger.info(f"[StrategyMatcher] 模块策略类型: {all_module_strategy_types}")
         
         # 当 selected_modules 有值时，只处理选中的模块策略
         if selected_modules and len(selected_modules) > 0:
@@ -380,20 +396,24 @@ class StrategyMatcher:
             for name, strategy_class in STRATEGY_CLASSES.items():
                 # 跳过所有模块策略
                 if name in all_module_strategy_types:
+                    logger.info(f"[StrategyMatcher] 跳过模块策略: {name}")
                     continue
-                
+
                 strategy = strategy_class(
                     llm_client=self.llm_client,
                     model_config=self.model_config,
                     semaphore=self.semaphore
                 )
-                
-                if strategy.is_applicable(diagnosis):
+
+                is_applicable = strategy.is_applicable(diagnosis)
+                logger.info(f"[StrategyMatcher] 检查策略 [{name}] 是否适用: {is_applicable}")
+
+                if is_applicable:
                     priority: float = strategy.get_priority(diagnosis)
                     candidates.append((priority, strategy))
-                    logger.debug(f"[StrategyMatcher] 添加非模块策略: name={name}, priority={priority}")
+                    logger.info(f"[StrategyMatcher] ✅ 添加策略: {name}, 优先级={priority}")
                 else:
-                    logger.debug(f"[StrategyMatcher] 非模块策略不适用: name={name}")
+                    logger.info(f"[StrategyMatcher] ❌ 策略不适用: {name}")
         
         logger.info(f"[StrategyMatcher] 候选策略收集完成，共 {len(candidates)} 个")
         

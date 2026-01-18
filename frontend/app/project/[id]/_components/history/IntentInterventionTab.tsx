@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-import { Database, Edit3, FileText, CheckCircle2, AlertCircle, RotateCcw, Search, Filter, MessageSquare, Sparkles, X, Save, LogOut, Trash2, FlaskConical, XCircle, Download } from "lucide-react";
+import { Database, Edit3, FileText, CheckCircle2, AlertCircle, RotateCcw, Search, Filter, MessageSquare, Sparkles, X, Save, LogOut, Trash2, FlaskConical, XCircle, Download, Wand2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const API_BASE = "/api";
@@ -59,6 +59,17 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
 
     const [createForm, setCreateForm] = useState({ query: "", target: "", reason: "" });
     const [showCreateExitConfirm, setShowCreateExitConfirm] = useState(false);
+
+    // Expand Modal State (举一反三)
+    const [showExpandModal, setShowExpandModal] = useState(false);
+    const [expandForm, setExpandForm] = useState({ query: "", target: "", count: 5 });
+    const [isExpanding, setIsExpanding] = useState(false);
+    const [expandResult, setExpandResult] = useState<{
+        original_query: string;
+        expanded_queries: string[];
+        imported_count: number;
+    } | null>(null);
+    const expandModalRef = useRef<HTMLDivElement | null>(null);
 
     // Refs
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -532,6 +543,52 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
         setSelectedItems(new Set(allIds));
     };
 
+    /**
+     * 举一反三：生成相似 Query 并导入
+     */
+    const handleExpand = async () => {
+        if (!project?.id || !expandForm.query.trim() || !expandForm.target.trim()) return;
+
+        setIsExpanding(true);
+        setExpandResult(null);
+        try {
+            const res = await fetch(`${API_BASE}/projects/${project.id}/interventions/expand`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    query: expandForm.query,
+                    target: expandForm.target,
+                    count: expandForm.count,
+                    file_id: fileId || ""
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setExpandResult(data);
+                // 刷新列表
+                refreshResults(loadedPagesRef.current * 20, searchQuery, filterStatus);
+            } else {
+                const err = await res.json();
+                alert(`生成失败: ${err.detail || "未知错误"}`);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("请求出错");
+        } finally {
+            setIsExpanding(false);
+        }
+    };
+
+    /**
+     * 关闭举一反三弹窗
+     */
+    const closeExpandModal = () => {
+        setShowExpandModal(false);
+        setExpandForm({ query: "", target: "", count: 5 });
+        setExpandResult(null);
+    };
+
     // 无文件提示
     if (!fileId) {
         return (
@@ -646,6 +703,12 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                 className="px-3 py-1.5 rounded-lg bg-slate-800/50 text-slate-400 text-xs border border-slate-700/50 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors flex items-center gap-1"
                             >
                                 <Download size={12} /> 导出
+                            </button>
+                            <button
+                                onClick={() => setShowExpandModal(true)}
+                                className="px-3 py-1.5 rounded-lg bg-indigo-600/20 text-indigo-400 text-xs border border-indigo-500/30 hover:bg-indigo-600/30 transition-colors flex items-center gap-1"
+                            >
+                                <Wand2 size={12} /> 举一反三
                             </button>
                             <button
                                 onClick={() => setShowCreateModal(true)}
@@ -1056,6 +1119,119 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                 </div>
                             </div>
                         )}
+                    </div>
+                )
+            }
+            {/* 举一反三 Modal */}
+            {
+                showExpandModal && (
+                    <div
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        onClick={closeExpandModal}
+                    >
+                        <div
+                            ref={expandModalRef}
+                            className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+                                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                                    <Wand2 size={14} className="text-indigo-400" /> Query 举一反三
+                                </h3>
+                                <button
+                                    onClick={closeExpandModal}
+                                    className="text-slate-500 hover:text-white transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+
+                            <div className="p-4 space-y-4">
+                                <p className="text-xs text-slate-400">
+                                    输入一个示例 Query，AI 将自动生成多个语义相似但表达方式不同的查询，并批量导入到列表中。
+                                </p>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-400">示例 Query <span className="text-red-500">*</span></label>
+                                    <textarea
+                                        className="w-full bg-black/40 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors resize-none h-20"
+                                        placeholder="输入一个示例查询，AI 将生成多个相似表达..."
+                                        value={expandForm.query}
+                                        onChange={e => setExpandForm({ ...expandForm, query: e.target.value })}
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-400">预期结果 (Target) <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        className="w-full bg-black/40 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors"
+                                        placeholder="输入意图分类，如: cs_agent"
+                                        value={expandForm.target}
+                                        onChange={e => setExpandForm({ ...expandForm, target: e.target.value })}
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-400">生成数量</label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={20}
+                                            className="w-24 bg-black/40 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors"
+                                            value={expandForm.count}
+                                            onChange={e => setExpandForm({ ...expandForm, count: Math.min(20, Math.max(1, parseInt(e.target.value) || 5)) })}
+                                        />
+                                        <span className="text-xs text-slate-500">条 (最多 20 条)</span>
+                                    </div>
+                                </div>
+
+                                {/* 生成结果预览 */}
+                                {expandResult && (
+                                    <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3">
+                                        <p className="text-xs text-indigo-300 mb-2 flex items-center gap-1">
+                                            <CheckCircle2 size={12} /> 已成功导入 {expandResult.imported_count} 条数据
+                                        </p>
+                                        <div className="space-y-1 max-h-32 overflow-y-auto custom-scrollbar">
+                                            <div className="text-xs text-white bg-indigo-900/30 rounded px-2 py-1 flex items-center gap-1">
+                                                <span className="text-indigo-400 text-[10px]">[原始]</span> {expandResult.original_query}
+                                            </div>
+                                            {expandResult.expanded_queries.map((q, i) => (
+                                                <div key={i} className="text-xs text-slate-300 bg-black/20 rounded px-2 py-1">
+                                                    {q}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <button
+                                        onClick={closeExpandModal}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                    >
+                                        {expandResult ? "完成" : "取消"}
+                                    </button>
+                                    <button
+                                        onClick={handleExpand}
+                                        disabled={!expandForm.query.trim() || !expandForm.target.trim() || isExpanding}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-lg shadow-indigo-500/20"
+                                    >
+                                        {isExpanding ? (
+                                            <>
+                                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                生成中...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Wand2 size={12} /> {expandResult ? "再次生成" : "生成并导入"}
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )
             }

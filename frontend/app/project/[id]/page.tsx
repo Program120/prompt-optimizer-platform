@@ -423,6 +423,9 @@ export default function ProjectDetail() {
         formData.append("file_id", fileInfo.file_id);
         formData.append("query_col", config.query_col);
         formData.append("target_col", config.target_col);
+        // DEBUG: 打印实际发送的配置
+        console.log("[DEBUG] startTask - config:", config);
+        console.log("[DEBUG] startTask - target_col:", config.target_col);
         if (config.reason_col) formData.append("reason_col", config.reason_col);
         formData.append("prompt", project.current_prompt);
         if (extractField) formData.append("extract_field", extractField);

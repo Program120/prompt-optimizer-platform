@@ -146,6 +146,73 @@ class InterventionTestRequest(BaseModel):
     target: str
     reason: Optional[str] = None
 
+
+class QueryExpandRequest(BaseModel):
+    """Query 举一反三请求模型"""
+    query: str           # 原始 query
+    target: str          # 预期结果
+    count: int = 5       # 生成数量，默认 5 个
+    file_id: str = ""    # 文件版本 ID
+
+
+@router.post("/projects/{project_id}/interventions/expand")
+async def expand_query(project_id: str, request: QueryExpandRequest) -> Dict[str, Any]:
+    """
+    Query 举一反三：根据一个 Query 生成多个相似 Query，并批量导入
+
+    :param project_id: 项目 ID
+    :param request: 包含原始 query、target、生成数量
+    :return: 生成的 Query 列表和导入结果
+    """
+    logger.info(f"[举一反三] 项目 {project_id}, 原始 Query: {request.query[:30]}...")
+
+    # 1. 获取项目配置
+    project = storage.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    model_config = project.get("model_config")
+    if not model_config or not model_config.get("api_key"):
+        raise HTTPException(status_code=400, detail="项目未配置模型 API Key，请先在项目设置中配置")
+
+    try:
+        # 2. 调用 LLM 生成相似 Query
+        expanded_queries = await intervention_service.generate_similar_queries(
+            original_query=request.query,
+            target=request.target,
+            count=request.count,
+            model_config=model_config
+        )
+
+        # 3. 批量导入生成的 Query（包含原始 Query）
+        all_queries = [request.query] + expanded_queries
+        imported_count = 0
+
+        for q in all_queries:
+            result = intervention_service.upsert_intervention(
+                project_id=project_id,
+                query=q,
+                target=request.target,
+                reason="",
+                file_id=request.file_id
+            )
+            if result:
+                imported_count += 1
+
+        logger.success(f"[举一反三] 成功生成 {len(expanded_queries)} 个相似 Query，共导入 {imported_count} 条")
+
+        return {
+            "original_query": request.query,
+            "expanded_queries": expanded_queries,
+            "imported_count": imported_count,
+            "message": f"成功生成并导入 {imported_count} 条数据"
+        }
+
+    except Exception as e:
+        logger.error(f"[举一反三] 失败: {e}")
+        raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
+
+
 @router.post("/projects/{project_id}/interventions/test")
 async def test_intervention(project_id: str, request: InterventionTestRequest) -> Dict[str, Any]:
     """

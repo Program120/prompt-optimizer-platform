@@ -17,6 +17,7 @@ from .query_rewrite_optimize import QueryRewriteOptimizationStrategy
 from .negative_fusion_optimize import NegativeFusionOptimizationStrategy
 from .output_format_optimize import OutputFormatOptimizationStrategy
 from .role_task_definition_optimize import RoleTaskDefinitionStrategy
+from .agent_routing_boundary_optimize import AgentRoutingBoundaryStrategy
 
 __all__ = [
     "BaseStrategy",
@@ -37,5 +38,6 @@ __all__ = [
     "NegativeFusionOptimizationStrategy",
     "OutputFormatOptimizationStrategy",
     "RoleTaskDefinitionStrategy",
+    "AgentRoutingBoundaryStrategy",
 ]
 
