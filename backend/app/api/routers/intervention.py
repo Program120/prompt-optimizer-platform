@@ -152,17 +152,23 @@ class QueryExpandRequest(BaseModel):
     query: str           # 原始 query
     target: str          # 预期结果
     count: int = 5       # 生成数量，默认 5 个
+
+
+class QueryExpandImportRequest(BaseModel):
+    """Query 举一反三导入请求模型"""
+    queries: list[str]   # 要导入的 query 列表
+    target: str          # 预期结果
     file_id: str = ""    # 文件版本 ID
 
 
 @router.post("/projects/{project_id}/interventions/expand")
 async def expand_query(project_id: str, request: QueryExpandRequest) -> Dict[str, Any]:
     """
-    Query 举一反三：根据一个 Query 生成多个相似 Query，并批量导入
+    Query 举一反三：根据一个 Query 生成多个相似 Query（仅生成，不导入）
 
     :param project_id: 项目 ID
     :param request: 包含原始 query、target、生成数量
-    :return: 生成的 Query 列表和导入结果
+    :return: 生成的 Query 列表
     """
     logger.info(f"[举一反三] 项目 {project_id}, 原始 Query: {request.query[:30]}...")
 
@@ -184,33 +190,57 @@ async def expand_query(project_id: str, request: QueryExpandRequest) -> Dict[str
             model_config=model_config
         )
 
-        # 3. 批量导入生成的 Query（包含原始 Query）
-        all_queries = [request.query] + expanded_queries
-        imported_count = 0
-
-        for q in all_queries:
-            result = intervention_service.upsert_intervention(
-                project_id=project_id,
-                query=q,
-                target=request.target,
-                reason="",
-                file_id=request.file_id
-            )
-            if result:
-                imported_count += 1
-
-        logger.success(f"[举一反三] 成功生成 {len(expanded_queries)} 个相似 Query，共导入 {imported_count} 条")
+        logger.success(f"[举一反三] 成功生成 {len(expanded_queries)} 个相似 Query")
 
         return {
             "original_query": request.query,
             "expanded_queries": expanded_queries,
-            "imported_count": imported_count,
-            "message": f"成功生成并导入 {imported_count} 条数据"
+            "message": f"成功生成 {len(expanded_queries)} 条相似查询"
         }
 
     except Exception as e:
         logger.error(f"[举一反三] 失败: {e}")
         raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
+
+
+@router.post("/projects/{project_id}/interventions/expand/import")
+async def import_expanded_queries(project_id: str, request: QueryExpandImportRequest) -> Dict[str, Any]:
+    """
+    导入举一反三生成的 Query 列表
+
+    :param project_id: 项目 ID
+    :param request: 包含要导入的 query 列表、target、file_id
+    :return: 导入结果
+    """
+    logger.info(f"[举一反三导入] 项目 {project_id}, 导入 {len(request.queries)} 条")
+
+    if not request.queries:
+        raise HTTPException(status_code=400, detail="导入列表不能为空")
+
+    try:
+        imported_count = 0
+        for q in request.queries:
+            if q.strip():
+                result = intervention_service.upsert_intervention(
+                    project_id=project_id,
+                    query=q.strip(),
+                    target=request.target,
+                    reason="",
+                    file_id=request.file_id
+                )
+                if result:
+                    imported_count += 1
+
+        logger.success(f"[举一反三导入] 成功导入 {imported_count} 条")
+
+        return {
+            "imported_count": imported_count,
+            "message": f"成功导入 {imported_count} 条数据"
+        }
+
+    except Exception as e:
+        logger.error(f"[举一反三导入] 失败: {e}")
+        raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
 
 
 @router.post("/projects/{project_id}/interventions/test")
