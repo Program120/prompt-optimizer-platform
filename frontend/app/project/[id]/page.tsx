@@ -145,18 +145,19 @@ export default function ProjectDetail() {
     // 1. 自动迭代运行中 (autoIterateStatus?.status === "running")
     // 2. 优化任务运行中 (isOptimizing)
     // 3. 轮询进行中 (isPollingRef.current) - 防止 fetchProject 更新 state 后触发保存覆盖后端数据
-    // 4. 正在保存中 (isSaving) - 防止手动保存和自动保存冲突
+    // 4. 正在保存中 (isSavingRef.current) - 防止手动保存和自动保存冲突
+    const isSavingRef = useRef(false);
     useEffect(() => {
         if (!project) return;
         // 如果正在自动迭代 或 正在优化 或 正在轮询 或 正在保存，跳过自动保存
-        if (autoIterateStatus?.status === "running" || isOptimizing || isPollingRef.current || isSaving) return;
+        if (autoIterateStatus?.status === "running" || isOptimizing || isPollingRef.current || isSavingRef.current) return;
 
         const timer = setTimeout(() => {
             saveProject(true);
         }, 1000);
 
         return () => clearTimeout(timer);
-    }, [config, fileInfo, extractField, project?.current_prompt, autoIterateStatus?.status, isOptimizing, validationLimit, isSaving]);
+    }, [config, fileInfo, extractField, project?.current_prompt, autoIterateStatus?.status, isOptimizing, validationLimit]);
 
     const router = useRouter();
 
@@ -706,7 +707,10 @@ export default function ProjectDetail() {
     };
 
     const saveProject = async (silent: boolean = false) => {
-        setIsSaving(true);
+        // 使用 ref 追踪保存状态，避免自动保存时 UI 闪烁
+        isSavingRef.current = true;
+        // 只有手动保存时才更新 UI 状态（显示保存中）
+        if (!silent) setIsSaving(true);
         try {
             const formData = new FormData();
             formData.append("current_prompt", project.current_prompt);
@@ -734,7 +738,8 @@ export default function ProjectDetail() {
             showToast("保存失败", "error");
             console.error(e);
         } finally {
-            setIsSaving(false);
+            isSavingRef.current = false;
+            if (!silent) setIsSaving(false);
         }
     };
 
