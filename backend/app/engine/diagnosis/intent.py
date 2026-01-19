@@ -197,9 +197,9 @@ class IntentAnalyzer:
                 intent_confusion[intent].most_common(3)
             )
             
-            # 随机选取最多 10 个错误案例
+            # 随机选取最多 30 个错误案例
             all_errors = intent_errors[intent]
-            sample_errors = random.sample(all_errors, min(len(all_errors), 10))
+            sample_errors = random.sample(all_errors, min(len(all_errors), 30))
 
             # 构建意图详情对象
             intent_detail: Dict[str, Any] = {
