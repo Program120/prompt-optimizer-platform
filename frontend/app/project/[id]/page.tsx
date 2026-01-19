@@ -189,10 +189,15 @@ export default function ProjectDetail() {
                 router.push("/");
                 return;
             }
+
+            // 判断是否是初次加载（project 为 null 时）
+            // 只有初次加载时才恢复配置项，避免轮询期间覆盖用户正在编辑的配置
+            const isInitialLoad = project === null;
+
             setProject(res.data);
 
-            // 恢复项目配置
-            if (res.data.config) {
+            // 只在初次加载时恢复项目配置，避免轮询覆盖用户的 UI 修改
+            if (isInitialLoad && res.data.config) {
                 setConfig({
                     query_col: res.data.config.query_col || "",
                     target_col: res.data.config.target_col || "",
