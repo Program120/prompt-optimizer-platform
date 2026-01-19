@@ -59,6 +59,31 @@ async def list_interventions(
         logger.error(f"Error fetching interventions for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/projects/{project_id}/interventions/targets", response_model=List[str])
+async def get_intervention_targets(project_id: str, file_id: Optional[str] = None) -> List[str]:
+    """
+    获取项目中所有唯一的 target 值列表
+    
+    用于编辑时提供自动补全选项
+    
+    :param project_id: 项目 ID
+    :param file_id: 可选，文件版本 ID，如果指定则仅返回该版本的 target
+    :return: 唯一的 target 值列表
+    """
+    try:
+        interventions = intervention_service.get_interventions_by_project(project_id, file_id=file_id)
+        # 提取唯一的 target 值，过滤空值
+        targets: set = set()
+        for item in interventions:
+            if item.target and item.target.strip():
+                targets.add(item.target.strip())
+        # 返回排序后的列表
+        return sorted(list(targets))
+    except Exception as e:
+        logger.error(f"Error fetching targets for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/projects/{project_id}/interventions", response_model=InterventionResponse)
 async def upsert_intervention(project_id: str, request: InterventionUpsertRequest) -> Dict[str, Any]:
     """

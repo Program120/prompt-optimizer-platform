@@ -101,8 +101,8 @@ export default function ExecutionPanel({
                         </button>
                     )}
 
-                    {/* 启动按钮 - 任务未运行或服务重启中断后显示 */}
-                    {((!taskStatus || taskStatus.status === "completed" || taskStatus.status === "stopped") && autoIterateStatus?.status !== "running" && autoIterateStatus?.status !== "error") && (
+                    {/* 启动按钮 - 任务未运行、未优化中、非服务重启中断时显示 */}
+                    {((!taskStatus || taskStatus.status === "completed" || taskStatus.status === "stopped") && autoIterateStatus?.status !== "running" && autoIterateStatus?.status !== "error" && !isOptimizing) && (
                         <button
                             onClick={onStartTask}
                             disabled={!fileInfo}

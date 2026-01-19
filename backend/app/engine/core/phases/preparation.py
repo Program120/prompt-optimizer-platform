@@ -23,29 +23,55 @@ def enrich_with_reasons(
         return
 
     try:
-        reason_map = intervention_service.get_intervention_map(project_id)
-        if not reason_map:
+        # 改为获取完整的干预对象列表，以便获取 target 和 reason
+        interventions = intervention_service.get_interventions_by_project(project_id)
+        if not interventions:
             return
+
+        # 构建 {query: intervention} 映射
+        intervention_map = {i.query: i for i in interventions}
 
         # 更新 errors
         count_err = 0
+        updated_targets_err = 0
         for err in errors:
             q = err.get("query")
-            if q and q in reason_map:
-                err["reason"] = reason_map[q]
+            if q and q in intervention_map:
+                intervention = intervention_map[q]
+                # 更新原因
+                if intervention.reason:
+                    err["reason"] = intervention.reason
+                
+                # [关键修复] 如果干预数据中修改了 Target，则同步更新
+                if intervention.is_target_modified and intervention.target:
+                    err["target"] = intervention.target
+                    updated_targets_err += 1
+                    
                 count_err += 1
         
         # 更新 dataset (如果存在且不等于 errors)
         count_data = 0
+        updated_targets_data = 0
         if dataset and dataset is not errors:
             for d in dataset:
                 q = d.get("query")
-                if q and q in reason_map:
-                    d["reason"] = reason_map[q]
+                if q and q in intervention_map:
+                    intervention = intervention_map[q]
+                    # 更新原因
+                    if intervention.reason:
+                        d["reason"] = intervention.reason
+                    
+                    # [关键修复] 同步 Target 更新
+                    if intervention.is_target_modified and intervention.target:
+                        d["target"] = intervention.target
+                        updated_targets_data += 1
+                        
                     count_data += 1
                     
-        logger.info(f"已从原因库合并标注: Errors={count_err}, Dataset={count_data}")
-        
+        logger.info(
+            f"已从原因库合并标注: Errors={count_err} (Target更新: {updated_targets_err}), "
+            f"Dataset={count_data} (Target更新: {updated_targets_data})"
+        )
         
     except Exception as e:
         logger.warning(f"合并原因库失败: {e}")

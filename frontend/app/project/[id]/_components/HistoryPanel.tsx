@@ -56,7 +56,12 @@ export default function HistoryPanel({
         if (!project?.id) return;
         try {
             // 使用较大的 page_size 确保获取所有干预数据
-            const res = await fetch(`${API_BASE}/projects/${project.id}/interventions?page_size=10000`);
+            // 添加 file_id 参数确保获取正确版本的数据
+            let url = `${API_BASE}/projects/${project.id}/interventions?page_size=10000`;
+            if (fileId) {
+                url += `&file_id=${encodeURIComponent(fileId)}`;
+            }
+            const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 const map: Record<string, any> = {};
@@ -71,11 +76,11 @@ export default function HistoryPanel({
         } catch (e) {
             console.error("Failed to fetch reasons", e);
         }
-    }, [project?.id]);
+    }, [project?.id, fileId]);
 
     useEffect(() => {
         fetchReasons();
-    }, [project?.id, reasonsUpdateCount]);
+    }, [project?.id, reasonsUpdateCount, fileId]);
 
     // Save Reason Handler - 使用 useCallback 保持引用稳定，避免子组件不必要的重渲染
     const saveReason = useCallback(async (query: string, reason: string, target: string) => {
@@ -84,7 +89,8 @@ export default function HistoryPanel({
             const res = await fetch(`${API_BASE}/projects/${project.id}/interventions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query, reason, target })
+                // [修复] 添加 file_id 确保更新正确的记录
+                body: JSON.stringify({ query, reason, target, file_id: fileId || "" })
             });
             if (res.ok) {
                 await fetchReasons();
@@ -95,7 +101,7 @@ export default function HistoryPanel({
             console.error(e);
             alert("保存原因出错");
         }
-    }, [project?.id, fetchReasons]);
+    }, [project?.id, fetchReasons, fileId]);
 
     // Prompt View Logic
     const handleViewPrompt = (prompt: string) => {

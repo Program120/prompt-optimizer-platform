@@ -308,22 +308,26 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                 )}
             </div>
 
+
             {results.map((r: any, idx: number) => {
                 const reasonItem = reasons[r.query];
                 const currentReason = reasonItem?.reason || r.reason;
                 const currentTarget = reasonItem?.target || r.target;
                 const isEditing = editingReason?.query === r.query;
 
+                // 直接使用后端返回的 is_correct（后端已使用最新的意图修正计算）
+                const isCorrect = r.is_correct;
+
                 return (
                     <div
                         key={`${r.index}-${idx}`}
-                        className={`p-3 rounded-xl border text-xs mb-2 group relative cursor-pointer ${r.is_correct ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}
-                        onClick={() => onSelectLog({ ...r, reason: currentReason, intervention: reasonItem })}
+                        className={`p-3 rounded-xl border text-xs mb-2 group relative cursor-pointer ${isCorrect ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}
+                        onClick={() => onSelectLog({ ...r, reason: currentReason, intervention: reasonItem, is_correct: isCorrect })}
                     >
                         <div className="flex justify-between items-center mb-1">
                             <div className="flex items-center gap-2">
                                 <span className="font-medium text-slate-500">Query {(r.index ?? idx) + 1}</span>
-                                {r.is_correct ? <CheckCircle2 size={14} className="text-emerald-500" /> : <AlertCircle size={14} className="text-red-500" />}
+                                {isCorrect ? <CheckCircle2 size={14} className="text-emerald-500" /> : <AlertCircle size={14} className="text-red-500" />}
                             </div>
                         </div>
                         <div className="text-slate-300 mb-2 line-clamp-1">{r.query}</div>
@@ -332,7 +336,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                             <span className="text-blue-400 line-clamp-1 max-w-[40%]">{currentTarget}</span>
                             <ArrowRight size={12} className="text-slate-600" />
                             <span className="text-slate-500">输出:</span>
-                            <span className={`line-clamp-1 max-w-[40%] ${r.is_correct ? "text-emerald-400" : "text-red-400"}`}>
+                            <span className={`line-clamp-1 max-w-[40%] ${isCorrect ? "text-emerald-400" : "text-red-400"}`}>
                                 {r.output?.substring(0, 60)}...
                             </span>
                         </div>
@@ -461,21 +465,21 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                                     {/* 对比区域 */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {/* 预期结果 */}
-                                        <div className="space-y-1.5">
+                                        <div className="space-y-1.5 overflow-hidden">
                                             <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
                                                 <CheckCircle2 size={10} className="text-emerald-500" /> 预期结果 (Target)
                                             </label>
-                                            <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-100/90 font-mono min-h-[100px] whitespace-pre-wrap">
+                                            <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-100/90 font-mono min-h-[100px] whitespace-pre-wrap break-all overflow-hidden">
                                                 {testResult?.target || <span className="text-slate-600 italic">未设置</span>}
                                             </div>
                                         </div>
 
                                         {/* 实际输出 */}
-                                        <div className="space-y-1.5">
+                                        <div className="space-y-1.5 overflow-hidden">
                                             <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
                                                 <AlertCircle size={10} className="text-indigo-500" /> 实际输出 (Actual)
                                             </label>
-                                            <div className={`bg-slate-950/50 border rounded-lg p-3 text-xs font-mono min-h-[100px] whitespace-pre-wrap ${testResult?.is_correct ? 'border-emerald-500/20 text-emerald-100/90' : 'border-rose-500/20 text-rose-100/90'}`}>
+                                            <div className={`bg-slate-950/50 border rounded-lg p-3 text-xs font-mono min-h-[100px] whitespace-pre-wrap break-all overflow-hidden ${testResult?.is_correct ? 'border-emerald-500/20 text-emerald-100/90' : 'border-rose-500/20 text-rose-100/90'}`}>
                                                 {testResult?.output}
                                             </div>
                                         </div>

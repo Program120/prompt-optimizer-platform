@@ -1247,7 +1247,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
 
                                     <div className="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
                                         {expandedQueries.map((q, i) => (
-                                            <div key={`eq-${i}-${q.slice(0,10)}`} className={`group flex items-center gap-2 text-xs rounded-lg px-3 py-2 ${i === 0 ? 'bg-indigo-900/30 border border-indigo-500/30 text-white' : 'bg-slate-800/50 border border-slate-700/50 text-slate-300 hover:border-slate-600'}`}>
+                                            <div key={`eq-${i}-${q.slice(0, 10)}`} className={`group flex items-center gap-2 text-xs rounded-lg px-3 py-2 ${i === 0 ? 'bg-indigo-900/30 border border-indigo-500/30 text-white' : 'bg-slate-800/50 border border-slate-700/50 text-slate-300 hover:border-slate-600'}`}>
                                                 {i === 0 && <span className="text-indigo-400 text-[10px] shrink-0">[原始]</span>}
                                                 <span className="flex-1 break-all">{q}</span>
                                                 <button
@@ -1364,21 +1364,21 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                     {/* 对比区域 */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {/* 预期结果 */}
-                                        <div className="space-y-1.5">
+                                        <div className="space-y-1.5 overflow-hidden">
                                             <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
                                                 <CheckCircle2 size={10} className="text-emerald-500" /> 预期结果 (Target)
                                             </label>
-                                            <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-100/90 font-mono min-h-[100px] whitespace-pre-wrap">
+                                            <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-100/90 font-mono min-h-[100px] whitespace-pre-wrap break-all overflow-hidden">
                                                 {testResult?.target || <span className="text-slate-600 italic">未设置</span>}
                                             </div>
                                         </div>
 
                                         {/* 实际输出 */}
-                                        <div className="space-y-1.5">
+                                        <div className="space-y-1.5 overflow-hidden">
                                             <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
                                                 <Sparkles size={10} className="text-indigo-500" /> 实际输出 (Actual)
                                             </label>
-                                            <div className={`bg-slate-950/50 border rounded-lg p-3 text-xs font-mono min-h-[100px] whitespace-pre-wrap ${testResult?.is_correct ? 'border-emerald-500/20 text-emerald-100/90' : 'border-rose-500/20 text-rose-100/90'}`}>
+                                            <div className={`bg-slate-950/50 border rounded-lg p-3 text-xs font-mono min-h-[100px] whitespace-pre-wrap break-all overflow-hidden ${testResult?.is_correct ? 'border-emerald-500/20 text-emerald-100/90' : 'border-rose-500/20 text-rose-100/90'}`}>
                                                 {testResult?.output}
                                             </div>
                                         </div>

@@ -574,6 +574,9 @@ def get_task_results_paginated(
     """
     获取分页的任务结果
     
+    动态合并意图干预数据，根据最新的 target 重新计算 is_correct。
+    这确保了用户在意图干预中修改 target 后，运行日志能够反映正确的验证结果。
+    
     :param task_id: 任务 ID
     :param page: 页码 (1-based)
     :param page_size: 每页数量
@@ -582,19 +585,48 @@ def get_task_results_paginated(
     :return: 包含 results 列表和 total 总数的字典
     """
     from sqlalchemy import func, or_
+    from app.engine.helpers.verifier import Verifier
     
     with get_db_session() as session:
         # 规范化任务 ID
         normalized_id: str = task_id if task_id.startswith("task_") else f"task_{task_id}"
         
-        # 构建基础查询
-        statement = select(TaskResult).where(TaskResult.task_id == normalized_id)
+        # 获取任务信息以获取 project_id 和 extract_field
+        task = session.get(Task, normalized_id)
+        if not task:
+            return {"total": 0, "page": page, "page_size": page_size, "results": []}
         
-        # 应用类型过滤
-        if result_type == 'success':
-            statement = statement.where(TaskResult.is_correct == True)
-        elif result_type == 'error':
-            statement = statement.where(TaskResult.is_correct == False)
+        project_id: str = task.project_id
+        
+        # 解析 extra_config 获取 extract_field
+        extract_field: Optional[str] = None
+        try:
+            extra_config: Dict[str, Any] = json.loads(task.extra_config) if task.extra_config else {}
+            extract_field = extra_config.get("extract_field")
+        except json.JSONDecodeError:
+            pass
+        
+        # 获取意图干预数据映射 (query -> intervention)
+        intervention_map: Dict[str, Any] = {}
+        try:
+            intervention_stmt = select(IntentIntervention).where(
+                IntentIntervention.project_id == project_id
+            )
+            interventions = session.exec(intervention_stmt).all()
+            
+            # 创建 query -> intervention 映射，优先使用修正过的记录
+            for intervention in interventions:
+                existing = intervention_map.get(intervention.query)
+                if existing is None:
+                    intervention_map[intervention.query] = intervention
+                elif intervention.is_target_modified and not existing.is_target_modified:
+                    # 新记录被修正过，优先使用
+                    intervention_map[intervention.query] = intervention
+        except Exception as e:
+            logger.warning(f"加载意图干预数据失败: {e}")
+        
+        # 构建基础查询（暂时不应用类型过滤，因为需要重新计算 is_correct）
+        statement = select(TaskResult).where(TaskResult.task_id == normalized_id)
 
         # 应用搜索过滤
         if search:
@@ -606,23 +638,46 @@ def get_task_results_paginated(
                     TaskResult.reason.like(search_term)
                 )
             )
+        
+        # 执行查询获取所有结果（需要重新计算 is_correct）
+        all_results = session.exec(statement).all()
+        
+        # 处理结果：合并意图干预数据并重新计算 is_correct
+        processed_results: List[Dict[str, Any]] = []
+        for r in all_results:
+            result_dict: Dict[str, Any] = r.to_dict()
+            query: str = result_dict.get("query", "")
             
-        # 获取总数
-        count_stmt = select(func.count()).select_from(statement.subquery())
-        total = session.exec(count_stmt).one()
+            # 检查是否有意图干预数据
+            if query in intervention_map:
+                intervention = intervention_map[query]
+                # 使用最新的 target 和 reason
+                result_dict["target"] = intervention.target
+                result_dict["reason"] = intervention.reason or result_dict.get("reason", "")
+                
+                # 重新计算 is_correct
+                output: str = result_dict.get("output", "")
+                new_target: str = intervention.target
+                result_dict["is_correct"] = Verifier.check_match(output, new_target, extract_field)
+            
+            processed_results.append(result_dict)
         
-        # 分页查询
-        offset = (page - 1) * page_size
-        statement = statement.offset(offset).limit(page_size)
+        # 应用类型过滤（基于重新计算后的 is_correct）
+        if result_type == 'success':
+            processed_results = [r for r in processed_results if r.get('is_correct')]
+        elif result_type == 'error':
+            processed_results = [r for r in processed_results if not r.get('is_correct')]
         
-        # 执行查询
-        results = session.exec(statement).all()
+        # 计算总数和分页
+        total: int = len(processed_results)
+        offset: int = (page - 1) * page_size
+        page_results: List[Dict[str, Any]] = processed_results[offset:offset + page_size]
         
         return {
             "total": total,
             "page": page,
             "page_size": page_size,
-            "results": [r.to_dict() for r in results]
+            "results": page_results
         }
 
 

@@ -86,7 +86,8 @@ export default function ProjectDetail() {
             const res = await fetch(`${API_BASE}/projects/${id}/interventions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query, reason, target })
+                // [修复] 添加 file_id 确保更新正确的记录
+                body: JSON.stringify({ query, reason, target, file_id: fileInfo?.file_id || "" })
             });
 
             if (res.ok) {

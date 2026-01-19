@@ -154,9 +154,40 @@ class TaskManager:
         project_id = info["project_id"]
         file_id = info.get("file_id", "")  # 获取文件版本 ID
         
-        # [修改] 数据加载逻辑: 优先从意图干预数据库加载 (按 file_id 筛选)
+        # [关键修复] 数据加载逻辑: 确保使用最新的意图修正
+        # 策略：
+        # 1. 获取项目下所有干预数据（不筛选 file_id）
+        # 2. 创建 query -> 干预记录 的映射
+        # 3. 如果同一 query 有多条记录，优先使用 is_target_modified=True 的记录
+        # 这确保了无论 file_id 如何，都能使用最新的意图修正
         from app.services import intervention_service
-        reasons = intervention_service.get_interventions_by_project(project_id, file_id=file_id)
+        
+        # 获取项目下所有干预数据
+        all_reasons = intervention_service.get_interventions_by_project(project_id, file_id=None)
+        logger.info(f"[Task {task_id}] Loaded {len(all_reasons)} total interventions for project {project_id}")
+        
+        # 创建 query -> 干预记录 的映射，优先使用修正过的记录
+        query_to_intervention: Dict[str, Any] = {}
+        for r in all_reasons:
+            existing = query_to_intervention.get(r.query)
+            if existing is None:
+                # 第一次遇到此 query，直接保存
+                query_to_intervention[r.query] = r
+            elif r.is_target_modified and not existing.is_target_modified:
+                # 新记录被修正过，而旧记录没有，使用新记录
+                query_to_intervention[r.query] = r
+            elif r.file_id == file_id and existing.file_id != file_id:
+                # 新记录的 file_id 匹配当前任务，优先使用
+                # 但如果旧记录被修正过，仍然优先使用旧记录
+                if not existing.is_target_modified:
+                    query_to_intervention[r.query] = r
+        
+        # 转换为列表
+        reasons = list(query_to_intervention.values())
+        
+        # 统计修正记录数量
+        modified_count: int = sum(1 for r in reasons if r.is_target_modified)
+        logger.info(f"[Task {task_id}] After deduplication: {len(reasons)} unique queries, {modified_count} modified")
         
         df = None
         used_source = "file"
@@ -168,12 +199,11 @@ class TaskManager:
             df = pd.DataFrame(reasons_data)
             
             # 从数据库加载时，使用固定的列名 (IntentIntervention 表结构固定)
-            # 不需要映射，直接使用 "query", "target", "reason"
             query_col = "query"
             target_col = "target"
             reason_col = "reason"
             
-            # 更新 info 以反映实际使用的列名（用于后续日志等）
+            # 更新 info 以反映实际使用的列名
             info["_actual_query_col"] = query_col
             info["_actual_target_col"] = target_col
             info["_actual_reason_col"] = reason_col
@@ -465,6 +495,8 @@ class TaskManager:
         """
         获取分页的任务结果
         
+        动态合并意图干预数据，根据最新的 target 重新计算 is_correct。
+        
         :param task_id: 任务 ID
         :param page: 页码
         :param page_size: 每页数量
@@ -472,14 +504,53 @@ class TaskManager:
         :param search: 搜索关键字
         :return: 分页结果
         """
+        from app.engine.helpers.verifier import Verifier
+        from app.services import intervention_service
 
         # 1. 如果任务在内存中，从内存分页
         if task_id in self.tasks:
             info = self.tasks[task_id]["info"]
             all_results = info.get("results", [])
+            project_id = info.get("project_id")
+            extract_field = info.get("extract_field")
+            
+            # 获取意图干预数据映射
+            intervention_map: Dict[str, Any] = {}
+            if project_id:
+                try:
+                    interventions = intervention_service.get_interventions_by_project(project_id, file_id=None)
+                    # 创建 query -> intervention 映射，优先使用修正过的记录
+                    for intervention in interventions:
+                        existing = intervention_map.get(intervention.query)
+                        if existing is None:
+                            intervention_map[intervention.query] = intervention
+                        elif intervention.is_target_modified and not existing.is_target_modified:
+                            intervention_map[intervention.query] = intervention
+                except Exception as e:
+                    logger.warning(f"加载意图干预数据失败: {e}")
+            
+            # 处理结果：合并意图干预数据并重新计算 is_correct
+            processed_results: List[Dict[str, Any]] = []
+            for r in all_results:
+                result_dict: Dict[str, Any] = r.copy() if isinstance(r, dict) else dict(r)
+                query: str = result_dict.get("query", "")
+                
+                # 检查是否有意图干预数据
+                if query in intervention_map:
+                    intervention = intervention_map[query]
+                    # 使用最新的 target 和 reason
+                    result_dict["target"] = intervention.target
+                    result_dict["reason"] = intervention.reason or result_dict.get("reason", "")
+                    
+                    # 重新计算 is_correct
+                    output: str = result_dict.get("output", "")
+                    new_target: str = intervention.target
+                    result_dict["is_correct"] = Verifier.check_match(output, new_target, extract_field)
+                
+                processed_results.append(result_dict)
 
-            # 过滤
-            filtered = all_results
+            # 应用类型过滤
+            filtered = processed_results
             if result_type == 'success':
                 filtered = [r for r in filtered if r.get('is_correct')]
             elif result_type == 'error':
