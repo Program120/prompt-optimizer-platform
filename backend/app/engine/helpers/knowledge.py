@@ -413,6 +413,25 @@ class OptimizationKnowledgeBase:
             lines.append(f"- 应用策略: {', '.join(strategies)}")
             lines.append(f"- 优化总结: {summary}")
             
+            # 添加每个意图的准确率
+            intent_analysis_data: Optional[Dict[str, Any]] = record.get("intent_analysis")
+            if intent_analysis_data:
+                top_failing: List[Dict[str, Any]] = intent_analysis_data.get(
+                    "top_failing_intents", []
+                )
+                if top_failing:
+                    lines.append("- 意图准确率分布:")
+                    for intent_info in top_failing[:10]:
+                        # 提取意图名和错误率
+                        intent_name: str = intent_info.get("intent", "未知")
+                        error_rate: float = intent_info.get("error_rate", 0.0)
+                        # 准确率 = 1 - 错误率
+                        accuracy: float = 1.0 - error_rate
+                        error_count: int = intent_info.get("error_count", 0)
+                        lines.append(
+                            f"  - {intent_name}: {accuracy:.1%} (错误数: {error_count})"
+                        )
+            
             # 添加 Diff 信息
             # diff_content = record.get("diff", "")
             # if diff_content:
@@ -422,18 +441,18 @@ class OptimizationKnowledgeBase:
             #         lines.append(f"  {d_line}")
             
             # 添加新增失败案例（去空格后原样输出）
-            if newly_failed and len(newly_failed) > 0:
-                lines.append("- 新增失败案例（本轮回退）:")
-                for case in newly_failed:
-                    # 去除空格后原样输出 query
-                    query: str = str(case.get("query", "")).strip()
-                    target: str = str(case.get("target", "")).strip()
-                    output: str = str(case.get("output", "")).strip()
-                    reason: str = str(case.get("reason", "")).strip()
-                    
-                    lines.append(f"  - Query: {query}")
-                    reason_text = f" | 原因: {reason}" if reason else ""
-                    lines.append(f"    期望: {target}{reason_text} | 实际: {output}")
+            # if newly_failed and len(newly_failed) > 0:
+            #     lines.append("- 新增失败案例（本轮回退）:")
+            #     for case in newly_failed:
+            #         # 去除空格后原样输出 query
+            #         query: str = str(case.get("query", "")).strip()
+            #         target: str = str(case.get("target", "")).strip()
+            #         output: str = str(case.get("output", "")).strip()
+            #         reason: str = str(case.get("reason", "")).strip()
+            #
+            #         lines.append(f"  - Query: {query}")
+            #         reason_text = f" | 原因: {reason}" if reason else ""
+            #         lines.append(f"    期望: {target}{reason_text} | 实际: {output}")
             
             lines.append("")
         

@@ -237,11 +237,14 @@ class MultiStrategyOptimizer:
             }
         
         # ===== 阶段 5-6: 候选生成与选择 =====
-        await generate_candidates(ctx, self.candidate_generator, self.prompt_evaluator)
-        await select_best(ctx, self.prompt_evaluator)
-        await inject_persistent_knowledge(
-            ctx, self.llm_client, self.model_config, self.semaphore
+        await generate_candidates(
+            ctx, self.candidate_generator, self.prompt_evaluator,
+            llm_client=self.llm_client, model_config=self.model_config
         )
+        await select_best(ctx, self.prompt_evaluator)
+        # await inject_persistent_knowledge(
+        #     ctx, self.llm_client, self.model_config, self.semaphore
+        # )
         
         if self._is_stopped(should_stop):
             return {"optimized_prompt": prompt, "message": "Stopped"}

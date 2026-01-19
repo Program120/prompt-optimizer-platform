@@ -172,7 +172,8 @@ export default function ProjectDetail() {
 
     const fetchKnowledgeBase = async () => {
         try {
-            const res = await axios.get(`${API_BASE}/projects/${id}/knowledge-base`);
+            // 传入较大的 limit 以确保获取所有知识库记录（默认只返回20条）
+            const res = await axios.get(`${API_BASE}/projects/${id}/knowledge-base?limit=1000`);
             setKnowledgeRecords(res.data.records || []);
         } catch (e) {
             console.error("Failed to fetch knowledge base", e);

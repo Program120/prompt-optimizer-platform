@@ -166,8 +166,13 @@ class Project(SQLModel, table=True):
         except json.JSONDecodeError:
             result["error_optimization_history"] = {}
         
-        # 添加迭代记录
-        result["iterations"] = [it.to_dict() for it in self.iterations] if self.iterations else []
+        # 添加迭代记录，按创建时间倒序排序（最新的在前）
+        sorted_iterations = sorted(
+            self.iterations, 
+            key=lambda x: x.created_at, 
+            reverse=True
+        ) if self.iterations else []
+        result["iterations"] = [it.to_dict() for it in sorted_iterations]
         
         return result
 

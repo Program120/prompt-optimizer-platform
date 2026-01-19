@@ -78,7 +78,9 @@ async def match_strategies(
 async def generate_candidates(
     ctx: OptimizationContext,
     candidate_generator: Any,
-    prompt_evaluator: Any
+    prompt_evaluator: Any,
+    llm_client: Any = None,
+    model_config: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     阶段 5：候选生成与快速筛选
@@ -86,6 +88,8 @@ async def generate_candidates(
     :param ctx: 优化上下文
     :param candidate_generator: 候选生成器实例
     :param prompt_evaluator: 提示词评估器实例
+    :param llm_client: LLM 客户端（用于评估策略必要性）
+    :param model_config: 模型配置
     """
     if not ctx.strategies:
         logger.warning("未匹配到任何策略，跳过候选生成。")
@@ -96,48 +100,54 @@ async def generate_candidates(
     logger.info(f"步骤 5: 候选生成... (应用策略数: {len(ctx.strategies)})")
     
     try:
-        ctx.candidates = await candidate_generator.generate_candidates(
+        # 使用串行模式：每个策略依次应用到前一个策略的输出上
+        # 传入 llm_client 和 model_config 用于评估每个策略的必要性
+        ctx.candidates = await candidate_generator.generate_candidates_serial(
             ctx.prompt, 
             ctx.strategies, 
             ctx.errors, 
             ctx.get_diagnosis_dict(), 
             ctx.dataset or ctx.errors, 
-            ctx.should_stop
+            ctx.should_stop,
+            llm_client=llm_client,
+            model_config=model_config
         )
     except Exception as e:
         logger.error(f"候选生成失败: {e}")
         ctx.candidates = []
         return
 
-    # 阶段 5.1：构建混合验证集并快速筛选
-    try:
-        validation_set: List[Dict[str, Any]] = prompt_evaluator.build_validation_set(
-            errors=ctx.errors,
-            dataset=ctx.dataset or ctx.errors,
-            target_error_count=40,
-            correct_error_ratio=1.5
-        )
-        ctx.validation_set = validation_set
-
-        
-        if ctx.on_progress:
-            ctx.on_progress("正在快速评估候选方案...")
-        logger.info(
-            f"步骤 5.1: 快速筛选... "
-            f"(候选方案数: {len(ctx.candidates)}, 验证集大小: {len(validation_set)})"
-        )
-        
-        ctx.filtered_candidates = await prompt_evaluator.rapid_evaluation(
-            ctx.candidates, validation_set, ctx.should_stop, ctx.extraction_rule
-        )
-    except Exception as e:
-        logger.error(f"快速评估筛选候选方案失败: {e}")
-        ctx.filtered_candidates = ctx.candidates # 回退策略
+    # [临时注释] 阶段 5.1：构建混合验证集并快速筛选 - 跳过策略打分验证
+    # try:
+    #     validation_set: List[Dict[str, Any]] = prompt_evaluator.build_validation_set(
+    #         errors=ctx.errors,
+    #         dataset=ctx.dataset or ctx.errors,
+    #         target_error_count=40,
+    #         correct_error_ratio=1.5
+    #     )
+    #     ctx.validation_set = validation_set
+    # 
+    #     if ctx.on_progress:
+    #         ctx.on_progress("正在快速评估候选方案...")
+    #     logger.info(
+    #         f"步骤 5.1: 快速筛选... "
+    #         f"(候选方案数: {len(ctx.candidates)}, 验证集大小: {len(validation_set)})"
+    #     )
+    #     
+    #     ctx.filtered_candidates = await prompt_evaluator.rapid_evaluation(
+    #         ctx.candidates, validation_set, ctx.should_stop, ctx.extraction_rule
+    #     )
+    # except Exception as e:
+    #     logger.error(f"快速评估筛选候选方案失败: {e}")
+    #     ctx.filtered_candidates = ctx.candidates
+    
+    # 临时逻辑：跳过筛选，直接使用所有候选方案
+    ctx.filtered_candidates = ctx.candidates
     
     if ctx.filtered_candidates:
         logger.info(
-            f"筛选后的候选方案及其评分: "
-            f"{[(c.get('strategy', 'unknown'), round(c.get('score', 0), 4)) for c in ctx.filtered_candidates]}"
+            f"候选方案（跳过评分）: "
+            f"{[c.get('strategy', 'unknown') for c in ctx.filtered_candidates]}"
         )
 
 
@@ -146,49 +156,41 @@ async def select_best(
     prompt_evaluator: Any
 ) -> None:
     """
-    阶段 6：选择最佳方案
+    阶段 6：合并所有策略方案（临时修改：应用所有选中策略，不做评分选择）
     
     :param ctx: 优化上下文
     :param prompt_evaluator: 提示词评估器实例
     """
     if ctx.on_progress:
-        ctx.on_progress("正在选择最佳方案...")
-    logger.info("步骤 6: 选择最佳方案...")
+        ctx.on_progress("正在合并所有策略方案...")
+    logger.info("步骤 6: 合并所有策略方案（临时：应用所有选中策略）...")
     
-    skip_selection: bool = False
-    skip_reason: str = ""
-    
-    if len(ctx.filtered_candidates) == 1:
-        skip_selection = True
-        skip_reason = f"仅 1 个候选方案 ({ctx.filtered_candidates[0].get('strategy')})"
-    elif not ctx.filtered_candidates:
-        logger.warning("没有可供选择的候选方案。")
+    if not ctx.filtered_candidates:
+        logger.warning("没有可供合并的候选方案。")
         return
     
-    if skip_selection and ctx.filtered_candidates:
-        logger.info(f"[选择最佳方案] {skip_reason}，跳过选择步骤，直接使用")
+    # 临时逻辑：合并所有候选方案的提示词
+    # 以第一个候选方案为基础，依次合并其他方案的优化内容
+    if len(ctx.filtered_candidates) == 1:
+        # 只有一个候选，直接使用
         ctx.best_result = ctx.filtered_candidates[0]
-        ctx.strategy_selection_reason = skip_reason
+        ctx.strategy_selection_reason = f"仅 1 个策略: {ctx.filtered_candidates[0].get('strategy')}"
     else:
-        try:
-            ctx.best_result = prompt_evaluator.select_best_candidate(
-                ctx.filtered_candidates, ctx.prompt
-            )
-            # 获取选择理由元数据
-            selection_reason = ctx.best_result.get("selection_reason", "")
-            selection_score = ctx.best_result.get("selection_score", 0)
-            
-            reason_parts = []
-            if selection_reason:
-                reason_parts.append(f"策略匹配理由: {selection_reason} (匹配得分: {selection_score})")
-            
-            reason_parts.append(f"验证集评估得分: {ctx.best_result.get('score', 0):.4f}")
-            
-            ctx.strategy_selection_reason = "\n".join(reason_parts)
-        except Exception as e:
-            logger.error(f"选择最佳方案时发生异常: {e}, 默认选择第一个。")
-            ctx.best_result = ctx.filtered_candidates[0]
-            ctx.strategy_selection_reason = f"选择过程异常回退: {str(e)}"
+        # 多个候选，依次应用所有策略
+        # 策略名称列表
+        strategy_names: List[str] = [c.get('strategy', 'unknown') for c in ctx.filtered_candidates]
+        
+        # 使用最后一个候选的提示词作为最终结果（因为策略是串行应用的）
+        # 注意：这里假设 candidate_generator 已经按顺序串行应用了所有策略
+        # 如果实际是并行生成的，需要实现真正的合并逻辑
+        final_candidate: Dict[str, Any] = ctx.filtered_candidates[-1].copy()
+        final_candidate["strategy"] = " + ".join(strategy_names)
+        final_candidate["applied_strategies"] = strategy_names
+        
+        ctx.best_result = final_candidate
+        ctx.strategy_selection_reason = f"合并应用了 {len(strategy_names)} 个策略: {', '.join(strategy_names)}"
+        
+        logger.info(f"[策略合并] 合并了 {len(strategy_names)} 个策略: {strategy_names}")
 
 
 async def inject_persistent_knowledge(

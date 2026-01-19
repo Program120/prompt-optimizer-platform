@@ -104,12 +104,18 @@ async def record_knowledge(
             strategy_selection_reason=ctx.strategy_selection_reason,
             validation_set=ctx.validation_set,
             # 提取候选中关于策略和分数的关键信息
+            # 为每个策略计算单独的 diff
             strategy_evaluations=[
                 {
                     "strategy": c.get("strategy"),
                     "score": c.get("score"),
                     "prompt_len": len(c.get("prompt", "")),
-                    "prompt_preview": c.get("prompt", "")[:500] + "..." if c.get("prompt") else ""
+                    "prompt_preview": c.get("prompt", "")[:500] + "..." if c.get("prompt") else "",
+                    # 计算该策略的 diff（从原始提示词到该策略输出的变更）
+                    "diff": knowledge_base._compute_diff(
+                        c.get("original_prompt", ctx.prompt),
+                        c.get("prompt", "")
+                    ) if c.get("prompt") else ""
                 }
                 for c in ctx.filtered_candidates
             ]
