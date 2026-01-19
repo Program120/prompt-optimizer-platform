@@ -42,6 +42,11 @@ class IntentAnalyzer:
     # 深度分析提示词模板
     DEEP_ANALYSIS_PROMPT: str = """你是一个意图分类错误分析专家。请分析以下失败意图的错误模式。
 
+## 当前意图分类提示词
+```
+{current_prompt}
+```
+
 ## 失败意图: {intent_name}
 - 总错误数: {error_count}
 - 错误率: {error_rate:.1%}
@@ -52,9 +57,9 @@ class IntentAnalyzer:
 ## 主要混淆目标
 {confusion_targets}
 
-请根据以上错误案例进行分析，回答：
+请根据【当前意图分类提示词】和以上错误案例进行分析，回答：
 1. 这些错误的共同特征是什么？
-2. 为什么模型会将这些输入错误分类？
+2. 结合当前提示词的定义，分析为什么模型会将这些输入错误分类？
 3. 提供 2-3 条针对性的改进建议
 
 【重要约束】
@@ -260,7 +265,8 @@ class IntentAnalyzer:
         errors: List[Dict[str, Any]],
         top_n: int = 3,
         should_stop: Any = None,
-        extraction_rule: Optional[str] = None
+        extraction_rule: Optional[str] = None,
+        current_prompt: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         对 Top N 失败意图进行 LLM 深度分析 (并发版本)
@@ -269,6 +275,7 @@ class IntentAnalyzer:
         :param top_n: 分析的失败意图数量，默认 3
         :param should_stop: 停止回调函数
         :param extraction_rule: 提取规则（可选）
+        :param current_prompt: 当前意图分类提示词（可选，用于提供分析上下文）
         :return: 深度分析结果
         """
         if not errors:
@@ -325,8 +332,14 @@ class IntentAnalyzer:
             # 计算错误率
             error_rate: float = error_count / total_count if total_count > 0 else 0
             
+            # 处理提示词：如果过长则截断，保留关键信息
+            prompt_text: str = current_prompt or "未提供提示词"
+            if len(prompt_text) > 3000:
+                prompt_text = prompt_text[:3000] + "\n... (提示词过长，已截断)"
+            
             # 构建分析提示词
             prompt: str = self.DEEP_ANALYSIS_PROMPT.format(
+                current_prompt=prompt_text,
                 intent_name=intent,
                 error_count=error_count,
                 error_rate=error_rate,

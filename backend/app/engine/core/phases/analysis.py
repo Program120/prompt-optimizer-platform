@@ -179,7 +179,8 @@ async def deep_intent_analysis(
             ctx.errors, 
             top_n=3,
             should_stop=ctx.should_stop,
-            extraction_rule=ctx.extraction_rule
+            extraction_rule=ctx.extraction_rule,
+            current_prompt=ctx.prompt
         )
     except Exception as e:
         logger.error(f"深度意图分析失败: {e}")
