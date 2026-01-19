@@ -55,7 +55,8 @@ export default function HistoryPanel({
     const fetchReasons = useCallback(async () => {
         if (!project?.id) return;
         try {
-            const res = await fetch(`${API_BASE}/projects/${project.id}/interventions`);
+            // 使用较大的 page_size 确保获取所有干预数据
+            const res = await fetch(`${API_BASE}/projects/${project.id}/interventions?page_size=10000`);
             if (res.ok) {
                 const data = await res.json();
                 const map: Record<string, any> = {};

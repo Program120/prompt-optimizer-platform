@@ -328,21 +328,27 @@ def background_optimize_task(
             if model_config.get("enable_standard_module", False):
                 selected_modules = model_config.get("selected_modules", [])
 
-            # 在后台线程中运行 async 函数需要 new loop 或者 asyncio.run
-            result = asyncio.run(multi_strategy_optimize(
-                project["current_prompt"], 
-                errors, 
-                model_config,
-                dataset=dataset,
-                total_count=total_count,
-                strategy_mode="auto",
-                max_strategies=model_config.get("max_strategy_count", 3),
-                project_id=project_id,
-                should_stop=check_stop,
-                verification_config=verification_config,
-                selected_modules=selected_modules,
-                on_progress=lambda msg: optimization_status[project_id].update({"message": msg})
-            ))
+            # 创建独立的事件循环，避免与 uvicorn 主循环冲突
+            # 注意：asyncio.run() 会创建新循环并在完成后关闭，但在后台线程中可能导致死锁
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(multi_strategy_optimize(
+                    project["current_prompt"], 
+                    errors, 
+                    model_config,
+                    dataset=dataset,
+                    total_count=total_count,
+                    strategy_mode="auto",
+                    max_strategies=model_config.get("max_strategy_count", 3),
+                    project_id=project_id,
+                    should_stop=check_stop,
+                    verification_config=verification_config,
+                    selected_modules=selected_modules,
+                    on_progress=lambda msg: optimization_status[project_id].update({"message": msg})
+                ))
+            finally:
+                loop.close()
             new_prompt = result.get("optimized_prompt", project["current_prompt"])
             applied_strategies = result.get("applied_strategies", [])
             diagnosis = result.get("diagnosis")
@@ -366,13 +372,23 @@ def background_optimize_task(
             import os
             dataset_name = os.path.basename(dataset_path)
 
+        # 计算当前准确率
+        current_accuracy = (len(task_status["results"]) - len(task_status["errors"])) / len(task_status["results"]) if task_status.get("results") else 0
+
         iteration_record = {
+            # 兼容旧字段
             "old_prompt": project["current_prompt"],
             "new_prompt": new_prompt,
+            # 用于 IterationHistoryTab 显示
+            "previous_prompt": project["current_prompt"],
+            "optimized_prompt": new_prompt,
             "task_id": task_id,
             "dataset_path": dataset_path,
             "dataset_name": dataset_name,
-            "accuracy": (len(task_status["results"]) - len(task_status["errors"])) / len(task_status["results"]) if task_status.get("results") else 0,
+            # 准确率字段
+            "accuracy": current_accuracy,
+            "accuracy_before": current_accuracy,
+            "accuracy_after": None,  # 待下一次验证后回填
             "applied_strategies": [s.get("name") for s in applied_strategies if s.get("success")],
             "created_at": datetime.now().isoformat()
         }
@@ -394,6 +410,17 @@ def background_optimize_task(
             # 确保 iterations 字段存在
             if "iterations" not in curr_project:
                 curr_project["iterations"] = []
+            
+            # 回填上一个迭代记录的 accuracy_after
+            if len(curr_project["iterations"]) > 0:
+                last_iteration = curr_project["iterations"][-1]
+                # 只有当上一轮的 accuracy_after 为 None 时才回填
+                if last_iteration.get("accuracy_after") is None:
+                    last_iteration["accuracy_after"] = current_accuracy
+                    logger.info(f"Backfilled accuracy_after={current_accuracy:.2%} to previous iteration")
+            
+            # 设置版本号
+            iteration_record["version"] = len(curr_project["iterations"]) + 1
                 
             curr_project["iterations"].append(iteration_record)
             

@@ -36,14 +36,14 @@ LOG_CONFIG = {
 }
 
 # 添加文件 Handler (按级别分文件)
-# debug 包含所有级别, enqueue=True 确保线程安全
-loguru_logger.add("logs/debug-{time:YYYY-MM-DD}.log", level="DEBUG", enqueue=True, **LOG_CONFIG)
+# 注意：enqueue=False 同步写入，避免队列积压阻塞主事件循环
+loguru_logger.add("logs/debug-{time:YYYY-MM-DD}.log", level="DEBUG", enqueue=False, **LOG_CONFIG)
 # info 包含 INFO 及以上
-loguru_logger.add("logs/info-{time:YYYY-MM-DD}.log", level="INFO", enqueue=True, **LOG_CONFIG)
+loguru_logger.add("logs/info-{time:YYYY-MM-DD}.log", level="INFO", enqueue=False, **LOG_CONFIG)
 # warn 包含 WARNING 及以上
-loguru_logger.add("logs/warn-{time:YYYY-MM-DD}.log", level="WARNING", enqueue=True, **LOG_CONFIG)
+loguru_logger.add("logs/warn-{time:YYYY-MM-DD}.log", level="WARNING", enqueue=False, **LOG_CONFIG)
 # error 包含 ERROR 及以上
-loguru_logger.add("logs/error-{time:YYYY-MM-DD}.log", level="ERROR", enqueue=True, **LOG_CONFIG)
+loguru_logger.add("logs/error-{time:YYYY-MM-DD}.log", level="ERROR", enqueue=False, **LOG_CONFIG)
 
 class InterceptHandler(logging.Handler):
     def emit(self, record):

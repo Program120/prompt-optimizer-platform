@@ -678,12 +678,21 @@ export default function ProjectDetail() {
             const res = await axios.get(`${API_BASE}/projects/${id}`);
             const proj = res.data;
             proj.iterations = proj.iterations || [];
+            // 计算版本号
+            const newVersion = (proj.iterations.length || 0) + 1;
             proj.iterations.push({
                 old_prompt: project.current_prompt,
                 new_prompt: externalPrompt.trim(),
+                // 用于 IterationHistoryTab 显示
+                optimized_prompt: externalPrompt.trim(),
+                previous_prompt: project.current_prompt,
                 task_id: taskStatus?.id || "external",
                 accuracy: accuracy,
+                // 用于 IterationHistoryTab 显示准确率
+                accuracy_before: accuracy,
+                accuracy_after: null,  // 外部优化暂无验证后准确率
                 source: "external",
+                version: newVersion,
                 created_at: new Date().toISOString()
             });
             proj.current_prompt = externalPrompt.trim();

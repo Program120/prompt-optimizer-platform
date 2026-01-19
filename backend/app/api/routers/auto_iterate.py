@@ -280,21 +280,28 @@ async def start_auto_iterate(
                             if opt_model_config.get("enable_standard_module", False):
                                 selected_modules = opt_model_config.get("selected_modules", [])
                             
-                            result = asyncio.run(multi_strategy_optimize(
-                                current_prompt, 
-                                task_status["errors"], 
-                                opt_model_config,
-                                dataset=dataset,
-                                total_count=total_count,
-                                strategy_mode="auto",
-                                max_strategies=opt_model_config.get("max_strategy_count", 3),
-                                project_id=project_id,
-                                newly_failed_cases=regression_cases,
-                                should_stop=check_stop,
-                                verification_config=model_config,
-                                selected_modules=selected_modules,
-                                on_progress=lambda msg: _update_progress(project_id, round_num, max_rounds, status, msg)
-                            ))
+                            # 创建独立的事件循环，避免与 uvicorn 主循环冲突
+                            # 注意：asyncio.run() 会创建新循环并在完成后关闭，但在后台线程中可能导致死锁
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                result = loop.run_until_complete(multi_strategy_optimize(
+                                    current_prompt, 
+                                    task_status["errors"], 
+                                    opt_model_config,
+                                    dataset=dataset,
+                                    total_count=total_count,
+                                    strategy_mode="auto",
+                                    max_strategies=opt_model_config.get("max_strategy_count", 3),
+                                    project_id=project_id,
+                                    newly_failed_cases=regression_cases,
+                                    should_stop=check_stop,
+                                    verification_config=model_config,
+                                    selected_modules=selected_modules,
+                                    on_progress=lambda msg: _update_progress(project_id, round_num, max_rounds, status, msg)
+                                ))
+                            finally:
+                                loop.close()
                         
                         # 优化完成后再次检查停止信号
                         curr_status = auto_iterate_status.get(project_id)
@@ -320,6 +327,17 @@ async def start_auto_iterate(
                             # 保存失败的迭代记录（包含备注说明）
                             project = storage.get_project(project_id)
                             if project:
+                                # 确保 iterations 列表存在
+                                if "iterations" not in project:
+                                    project["iterations"] = []
+                                
+                                # 回填上一个迭代记录的 accuracy_after
+                                if len(project["iterations"]) > 0:
+                                    last_iteration = project["iterations"][-1]
+                                    if last_iteration.get("accuracy_after") is None:
+                                        last_iteration["accuracy_after"] = accuracy
+                                        logger.info(f"[AutoIterate {project_id}] Backfilled accuracy_after={accuracy:.2%} to previous iteration")
+                                
                                 # 构建备注内容：未应用提示词及原因
                                 not_applied_note = f"未应用提示词, 原因: {failure_reason}"
                                 
@@ -328,7 +346,8 @@ async def start_auto_iterate(
                                     "optimized_prompt": new_prompt,
                                     "task_id": task_id,
                                     "accuracy_before": accuracy,
-                                    "version": round_num,
+                                    "accuracy_after": None,
+                                    "version": len(project["iterations"]) + 1,
                                     "created_at": datetime.now().isoformat(),
                                     "is_failed": True,
                                     "failure_reason": failure_reason,
@@ -348,12 +367,24 @@ async def start_auto_iterate(
                         # 保存迭代记录
                         project = storage.get_project(project_id)
                         if project:
+                            # 确保 iterations 列表存在
+                            if "iterations" not in project:
+                                project["iterations"] = []
+                            
+                            # 回填上一个迭代记录的 accuracy_after
+                            if len(project["iterations"]) > 0:
+                                last_iteration = project["iterations"][-1]
+                                if last_iteration.get("accuracy_after") is None:
+                                    last_iteration["accuracy_after"] = accuracy
+                                    logger.info(f"[AutoIterate {project_id}] Backfilled accuracy_after={accuracy:.2%} to previous iteration")
+                            
                             project["iterations"].append({
                                 "previous_prompt": current_prompt,
                                 "optimized_prompt": new_prompt,
                                 "task_id": task_id,
                                 "accuracy_before": accuracy,
-                                "version": round_num,
+                                "accuracy_after": None,
+                                "version": len(project["iterations"]) + 1,
                                 "created_at": datetime.now().isoformat()
                             })
                             project["current_prompt"] = new_prompt
