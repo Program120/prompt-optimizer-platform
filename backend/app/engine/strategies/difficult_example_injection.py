@@ -6,7 +6,10 @@
 
 核心功能：
 1. 使用向量相似度计算样本难度评分
-2. 按意图分组控制样本数量（普通意图 ≤10%，澄清/多意图 ≤5%）
+2. 按意图分组控制样本数量：
+   - 普通单意图: 不超过该意图在数据集中对应数量的 10%
+   - 澄清意图: 不超过数据集总数的 10%
+   - 多意图: 不超过数据集总数的 10%
 3. 达到配额时自动替换低分样本
 """
 import json
@@ -101,15 +104,19 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
             project_id, file_id
         )
         
-        # 对困难案例进行评分并尝试添加
+        # 批量计算难度评分
+        # 使用 errors 作为参考样本（全集），hard_cases 作为目标样本
+        difficulty_scores: List[float] = sample_manager.batch_calculate_difficulty_scores(
+            hard_cases, errors
+        )
+        
+        # 对困难案例进行处理并尝试添加
         selected_samples: List[Dict[str, Any]] = []
         replaced_samples: List[Dict[str, Any]] = []
         
-        for case in hard_cases:
-            # 计算难度评分
-            difficulty_score: float = sample_manager.calculate_difficulty_score(
-                case, errors
-            )
+        for i, case in enumerate(hard_cases):
+            # 获取对应的难度评分
+            difficulty_score: float = difficulty_scores[i]
             
             # 更新案例的难度评分
             case_with_score: Dict[str, Any] = case.copy()
@@ -451,22 +458,34 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
 ### 格式一致性要求
 - 新增的示例**必须**与原提示词中现有的示例或输出要求保持**完全一致**的格式
 
-### 参考业务案例
-以下是可供选择添加的业务案例（精选 1-3 个添加即可）：
+### 参考业务案例（严禁编造或改写）
+> **[最高优先级约束]** 以下是**唯一可用**的业务案例来源：
 {example_cases_text}
 
+**强制规则：**
+1. 你添加的每个示例的 `query` 字段**必须逐字复制**自上方参考案例
+2. **严禁**编造、改写、省略或添加任何字符
+3. **严禁**使用不在上方列表中的任何 query
+4. 如果参考案例不足 3 个，则只添加已有的案例数量
+
 ### 示例结构要求
-生成的示例**必须**采用 **JSON 格式**：
+添加的示例**必须**采用 **JSON 格式**，且 `query` 字段必须**逐字复制**自上方参考案例：
 ```json
 {{
   "examples": [
     {{
-      "query": "原始用户输入",
+      "query": "必须逐字复制自上方参考案例的 query，严禁改写",
       "intent": "意图名称",
       "reason": "简要原因（为什么是这个意图）"
     }}
   ]
 }}
 ```
+
+> **[输出前自检 - 必须执行]**
+> 对每个新增示例执行以下检查，任一检查不通过则删除该示例：
+> 1. 该 query 是否**逐字**出现在「参考业务案例」中？ → 必须为 Yes
+> 2. query 是否有任何字符被改写、省略或添加？ → 必须为 No
+> 3. 如果该 query 不在参考案例中，**立即删除该示例**
 
 """

@@ -165,7 +165,7 @@ class Verifier:
         extracted_val = ResultExtractor.extract(output, extract_field)
         
         # 调试日志
-        logger.debug(f"[Verifier] check_match - target: '{target}', extract_field: '{extract_field}', extracted_val: '{extracted_val}', output[:100]: '{output[:100]}'")
+        # logger.debug(f"[Verifier] check_match - target: '{target}', extract_field: '{extract_field}', extracted_val: '{extracted_val}', output[:100]: '{output[:100]}'")
         
         # 1. 提取到具体值的情况
         if extracted_val is not None:
