@@ -159,12 +159,11 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
             current_fewshot_samples, max_per_intent=3
         )
         
-        # 构建优化指令
-        hard_cases_text: str = self._build_hard_cases_text(injection_samples[:5])
-        example_cases_text: str = self._build_example_cases_from_errors(injection_samples[:3])
+        # 构建优化指令（使用统一的参考案例）
+        reference_cases_text: str = self._build_reference_cases(injection_samples[:3])
         
         optimization_instruction: str = self._build_optimization_instruction(
-            hard_cases_text, example_cases_text
+            reference_cases_text
         )
         
         # 使用通用元优化方法
@@ -362,17 +361,19 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
         logger.debug(f"案例去重: 原始 {len(cases)} 个, 去重后 {len(unique_cases)} 个")
         return unique_cases
     
-    def _build_hard_cases_text(self, hard_cases: List[Dict[str, Any]]) -> str:
+    def _build_reference_cases(self, cases: List[Dict[str, Any]]) -> str:
         """
-        构建困难案例 JSON 文本
+        构建统一的参考案例 JSON 文本
         
-        :param hard_cases: 困难案例列表
-        :return: JSON 格式的案例文本
+        同时用于分析和约束，避免数量不一致的冲突
+        
+        :param cases: 困难案例列表（已排序，最多3个）
+        :return: JSON 格式的参考案例文本
         """
-        unique_cases: List[Dict[str, Any]] = self._deduplicate_cases(hard_cases)
+        unique_cases: List[Dict[str, Any]] = self._deduplicate_cases(cases)
         
         if not unique_cases:
-            return "暂无困难案例"
+            return "暂无参考案例"
         
         cases_list: List[Dict[str, Any]] = []
         
@@ -382,110 +383,59 @@ class DifficultExampleInjectionStrategy(BaseStrategy):
                 "correct_intent": str(case.get('target', '')),
                 "model_output": str(case.get('output', ''))[:50]
             }
-            # 如果有难度评分，添加到输出
+            # 添加难度评分辅助决策
             if "difficulty_score" in case:
                 case_data["difficulty_score"] = round(case["difficulty_score"], 1)
             cases_list.append(case_data)
         
-        return json.dumps({"hard_cases": cases_list}, ensure_ascii=False, indent=2)
+        return json.dumps({"reference_cases": cases_list}, ensure_ascii=False, indent=2)
     
-    def _build_example_cases_from_errors(self, cases: List[Dict[str, Any]]) -> str:
+    def _build_optimization_instruction(self, reference_cases_text: str) -> str:
         """
-        从实际错误案例中构建示例 JSON，供 LLM 参考生成业务相关的 Few-Shot 示例
+        构建优化指令（精简版）
         
-        :param cases: 错误案例列表
-        :return: JSON 格式的示例文本
-        """
-        unique_cases: List[Dict[str, Any]] = self._deduplicate_cases(cases)
+        使用统一的参考案例，消除冲突
         
-        if not unique_cases:
-            return "暂无实际业务案例可供参考"
-        
-        examples_list: List[Dict[str, str]] = []
-        
-        for case in unique_cases:
-            examples_list.append({
-                "query": str(case.get('query', ''))[:100],
-                "correct_intent": str(case.get('target', '')),
-                "wrong_output": str(case.get('output', ''))[:50]
-            })
-        
-        return json.dumps({"reference_cases": examples_list}, ensure_ascii=False, indent=2)
-    
-    def _build_optimization_instruction(
-        self, 
-        hard_cases_text: str, 
-        example_cases_text: str
-    ) -> str:
-        """
-        构建优化指令
-        
-        :param hard_cases_text: 困难案例文本
-        :param example_cases_text: 示例案例文本
+        :param reference_cases_text: 统一的参考案例 JSON 文本
         :return: 完整的优化指令
         """
-        return f"""当前提示词的 Few-Shot 示例需要优化，重点是**保留现有示例，并精选添加新的困难案例示例**。
+        return f"""当前提示词的 Few-Shot 示例需要优化。
 
-## 困难案例分析
-以下是模型难以正确处理的典型案例（仅供分析，不要全部添加）：
-{hard_cases_text}
+## 参考案例（唯一可用的数据来源）
+以下是经过筛选的高难度案例，**仅从中选择 1-3 个**添加为 Few-Shot 示例：
+{reference_cases_text}
 
-## 优化要求
+## ⚠️ 核心约束
 
-请按照以下**严格流程**完善提示词的 Few-Shot 场景示例部分：
+1. **保留现有示例**：100%保留原提示词中已有的所有 Few-Shot 示例
+2. **精选添加**：从上方参考案例中选择 1-3 个（优先选 difficulty_score ≥ 7 的）
+3. **严禁编造**：`query` 字段必须**逐字复制**自参考案例，不得改写
+4. **格式统一**：新增示例需与原提示词的示例格式保持一致
 
-### 第一步：识别并保留现有示例 (CRITICAL - 必须执行)
-1. 仔细阅读原提示词，**完整识别**其中已有的所有 Few-Shot 示例
-2. **必须100%保留**原有示例，不得删除或遗漏任何一个
-3. 如原提示词没有示例部分，则跳过此步骤
+## 操作流程
 
-### 第二步：精选添加困难案例示例
-> **[核心约束]** 仅从困难案例中**精选 1-3 个最具代表性的案例**添加为 Few-Shot 示例
-> **严禁**为每个困难案例都添加示例！选择最能覆盖核心错误模式的案例即可
+### 第一步：识别现有示例
+- 找到原提示词中的 Few-Shot 示例部分
+- 确认已有示例的格式和结构
 
-选择标准：
-- 优先选择难度评分最高（difficulty_score ≥ 7）的案例
-- 优先选择能代表一类错误模式的案例（而非个例）
-- 优先选择与现有示例互补的案例（避免重复覆盖同类场景）
-- **直接使用原始 Query**，不做泛化
+### 第二步：精选添加
+从参考案例中选择最具代表性的案例，添加到现有示例部分：
+- 优先选择 difficulty_score 最高的
+- 优先选择与现有示例互补的（避免重复覆盖同类场景）
 
-### 整合原则 (严禁重复)
-- **严禁**删除原有的任何示例
-- **严禁**新增独立的 "## Few-Shot 场景示例" 标题，必须**整合**到原提示词中已有的该部分
-- **严禁**重复添加 "单意图示例"、"多意图示例" 等类型标签，如已有则在其下优化示例
-- 如原提示词中没有该部分，则在正确位置**新增一个**（仅此一个）
+### 第三步：整合输出
+- **严禁**新增独立的 "## Few-Shot 场景示例" 标题
+- **必须**整合到原提示词已有的示例部分
 
-### 格式一致性要求
-- 新增的示例**必须**与原提示词中现有的示例或输出要求保持**完全一致**的格式
-
-### 参考业务案例（严禁编造或改写）
-> **[最高优先级约束]** 以下是**唯一可用**的业务案例来源：
-{example_cases_text}
-
-**强制规则：**
-1. 你添加的每个示例的 `query` 字段**必须逐字复制**自上方参考案例
-2. **严禁**编造、改写、省略或添加任何字符
-3. **严禁**使用不在上方列表中的任何 query
-4. 如果参考案例不足 3 个，则只添加已有的案例数量
-
-### 示例结构要求
-添加的示例**必须**采用 **JSON 格式**，且 `query` 字段必须**逐字复制**自上方参考案例：
+## 示例格式
 ```json
 {{
-  "examples": [
-    {{
-      "query": "必须逐字复制自上方参考案例的 query，严禁改写",
-      "intent": "意图名称",
-      "reason": "简要原因（为什么是这个意图）"
-    }}
-  ]
+  "query": "必须逐字复制自参考案例",
+  "intent": "意图名称",
+  "reason": "简要原因"
 }}
 ```
 
-> **[输出前自检 - 必须执行]**
-> 对每个新增示例执行以下检查，任一检查不通过则删除该示例：
-> 1. 该 query 是否**逐字**出现在「参考业务案例」中？ → 必须为 Yes
-> 2. query 是否有任何字符被改写、省略或添加？ → 必须为 No
-> 3. 如果该 query 不在参考案例中，**立即删除该示例**
+> **输出前自检**：确认每个新增示例的 query 都逐字来自参考案例
 
 """
