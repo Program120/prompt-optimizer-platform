@@ -559,6 +559,12 @@ class IntentIntervention(SQLModel, table=True):
     
     # 新增：文件版本控制
     file_id: str = Field(default="", index=True) # 关联的文件 ID
+    
+    # 新增：Few-Shot 样本管理字段
+    # 难度评分（0-10，基于向量相似度计算，值越高越难区分）
+    difficulty_score: float = Field(default=0.0)
+    # 是否被选为 Few-Shot 样本
+    is_fewshot_sample: bool = Field(default=False)
 
     # 创建时间
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
@@ -580,6 +586,9 @@ class IntentIntervention(SQLModel, table=True):
             "original_target": self.original_target,
             "is_target_modified": self.is_target_modified,
             "file_id": self.file_id,
+            "difficulty_score": self.difficulty_score,
+            "is_fewshot_sample": self.is_fewshot_sample,
             "created_at": self.created_at,
             "updated_at": self.updated_at
         }
+

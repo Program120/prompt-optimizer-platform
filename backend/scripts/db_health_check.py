@@ -458,6 +458,21 @@ def check_and_migrate_schema() -> None:
             "''",
             None
         ),
+        # 新增：Few-Shot 样本管理字段
+        (
+            "intent_interventions",
+            "difficulty_score",
+            "REAL",
+            "0.0",
+            None
+        ),
+        (
+            "intent_interventions",
+            "is_fewshot_sample",
+            "BOOLEAN",
+            "0",
+            None
+        ),
     ]
     
     conn: sqlite3.Connection = sqlite3.connect(db_path)
