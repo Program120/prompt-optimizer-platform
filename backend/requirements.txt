@@ -15,4 +15,5 @@ starlette
 fastapi
 sqlmodel
 aiosqlite
-python==3.11
+torch
+text2vec
