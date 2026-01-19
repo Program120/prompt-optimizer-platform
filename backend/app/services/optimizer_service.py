@@ -23,14 +23,15 @@ def _build_error_samples_table(errors: List[Dict[str, Any]]) -> str:
     :param errors: 错误样例列表
     :return: Markdown 格式的表格字符串
     """
-    table: str = "| 用户输入 | 预期输出 | 模型实际输出 |\n| :--- | :--- | :--- |\n"
+    table: str = "| 原因 | 用户输入 | 预期输出 | 模型实际输出 |\n| :--- | :--- | :--- | :--- |\n"
     # 取前x个错误样例
     for err in errors[:]:
         # 处理换行符和管道符，避免表格格式错乱
+        reason: str = str(err.get('reason', '')).replace('\n', ' ').replace('|', '\\|')
         query: str = str(err.get('query', '')).replace('\n', ' ').replace('|', '\\|')
         target: str = str(err.get('target', '')).replace('\n', ' ').replace('|', '\\|')
         output: str = str(err.get('output', '')).replace('\n', ' ').replace('|', '\\|')
-        table += f"| {query} | {target} | {output} |\n"
+        table += f"| {reason} | {query} | {target} | {output} |\n"
     return table
 
 
@@ -69,7 +70,7 @@ def optimize_prompt(
     system_prompt_template: Optional[str] = None
 ) -> str:
     """
-    调用 LLM 优化提示词（原有方法，向后兼容）
+    调用 LLM 优化提示词
     :param old_prompt: 当前提示词
     :param errors: 错误样例列表
     :param model_config: 模型配置（可选，为空则从 storage 获取）

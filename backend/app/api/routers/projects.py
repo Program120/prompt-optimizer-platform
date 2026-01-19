@@ -313,7 +313,7 @@ def background_optimize_task(
                 model_config,
                 optimization_prompt
             )
-            applied_strategies = [{"name": "Simple Optimization", "success": True}]
+            applied_strategies = [{"name": "Simple Optimization (Quick Mode)", "success": True}]
         else:
             # 多策略优化 (需要 async 运行)
             dataset = task_status.get("results", [])

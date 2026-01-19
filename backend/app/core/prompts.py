@@ -30,6 +30,8 @@ DEFAULT_OPTIMIZATION_PROMPT: str = """你是由OpenAI/Google研发的顶尖提�
 * **严禁标签**: 绝对禁止使用 <result>, <output> 等任何XML/HTML标签包裹。
 * **语言**: 如果原提示词使用的语言是中文或英文, 那给出的提示词也必须和原提示词一致.
 
+
+
 请直接输出优化后的提示词内容："""
 
 PROMPT_SPLIT_INTENT: str = """你是一个专业的系统提示词架构师。你的任务是将一个复杂的系统提示词（System Prompt）根据不同的业务意图（Intent）拆解为多个独立的子提示词。
