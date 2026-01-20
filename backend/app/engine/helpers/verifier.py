@@ -158,8 +158,8 @@ class Verifier:
         """检查结果是否匹配"""
         from .extractor import ResultExtractor
         
-        output = output.strip().lower()
-        target = target.strip().lower()
+        output = output.strip()
+        target = target.strip()
         
         # 使用统一提取器
         extracted_val = ResultExtractor.extract(output, extract_field)
@@ -172,14 +172,14 @@ class Verifier:
             # 如果提取结果是字典（说明 extract_field 为空或无效），需要遍历值
             if isinstance(extracted_val, dict):
                  for val in extracted_val.values():
-                    if str(val).lower() == target:
+                    if str(val) == target:
                         return True
             else:
                 # 提取到了具体值（布尔或字符串等）
                 if isinstance(extracted_val, bool):
                     return extracted_val
-                result = str(extracted_val).lower() == target
-                logger.debug(f"[Verifier] Extracted comparison: '{str(extracted_val).lower()}' == '{target}' => {result}")
+                result = str(extracted_val) == target
+                logger.debug(f"[Verifier] Extracted comparison: '{str(extracted_val)}' == '{target}' => {result}")
                 return result
         
         # 2. 兜底逻辑：直接匹配字符串
