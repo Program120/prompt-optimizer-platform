@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from app.db.database import get_db_session, DATA_DIR
 from app.models import (
     Project, ProjectIteration, Task, TaskResult, TaskError,
-    GlobalModel, ModelConfig, AutoIterateStatus
+    GlobalModel, ModelConfig, AutoIterateStatus, IntentIntervention
 )
 
 
