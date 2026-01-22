@@ -179,7 +179,7 @@ class Verifier:
                 if isinstance(extracted_val, bool):
                     return extracted_val
                 result = str(extracted_val) == target
-                logger.debug(f"[Verifier] Extracted comparison: '{str(extracted_val)}' == '{target}' => {result}")
+                # logger.debug(f"[Verifier] Extracted comparison: '{str(extracted_val)}' == '{target}' => {result}")
                 return result
         
         # 2. 兜底逻辑：直接匹配字符串

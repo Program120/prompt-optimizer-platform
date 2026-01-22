@@ -40,3 +40,5 @@ data/
 /.joycode/
 
 **.xlsx
+
+**/prompts/
