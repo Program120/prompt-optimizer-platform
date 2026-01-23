@@ -119,45 +119,40 @@ async def delete_iteration(project_id: str, timestamp: str) -> Dict[str, str]:
         raise HTTPException(status_code=404, detail="Iteration not found")
     return {"status": "success"}
 
+
+class ProjectUpdateRequest(BaseModel):
+    """
+    项目更新请求体模型
+    使用 JSON body 替代 Form data 以绕过 1MB multipart 限制
+    """
+    current_prompt: str
+    name: Optional[str] = None
+    query_col: Optional[str] = None
+    target_col: Optional[str] = None
+    reason_col: Optional[str] = None
+    extract_field: Optional[str] = None
+    file_info: Optional[Dict[str, Any]] = None
+    auto_iterate_config: Optional[Dict[str, Any]] = None
+    iterations: Optional[List[Dict[str, Any]]] = None
+    model_cfg: Optional[Dict[str, Any]] = None
+    optimization_model_config: Optional[Dict[str, Any]] = None
+    optimization_prompt: Optional[str] = None
+    validation_limit: Optional[str] = None
+
+
 @router.put("/{project_id}")
 async def update_project(
     project_id: str,
-    request: Request,
-    current_prompt: str = Form(...),
-    name: Optional[str] = Form(None),
-    query_col: Optional[str] = Form(None),
-    target_col: Optional[str] = Form(None),
-    reason_col: Optional[str] = Form(None),
-    extract_field: Optional[str] = Form(None),
-    file_info: Optional[str] = Form(None),
-    auto_iterate_config: Optional[str] = Form(None),
-    iterations: Optional[str] = Form(None),
-    model_cfg: Optional[str] = Form(None),
-    optimization_model_config: Optional[str] = Form(None),
-    optimization_prompt: Optional[str] = Form(None),
-    validation_limit: Optional[str] = Form(None)
+    body: ProjectUpdateRequest
 ) -> Dict[str, Any]:
     """
-    保存/更新项目配置
+    保存/更新项目配置 (JSON Body 版本)
+    
     :param project_id: 项目ID
-    :param current_prompt: 当前提示词
-    :param name: 项目名称
-    :param query_col: 输入列名
-    :param target_col: 输出列名
-    :param reason_col: 推理列名
-    :param extract_field: 提取字段
-    :param file_info: 文件信息(JSON)
-    :param auto_iterate_config: 自动迭代配置(JSON)
-    :param iterations: 迭代记录(JSON)
-    :param model_cfg: 模型配置(JSON)
-    :param optimization_model_config: 优化模型配置(JSON)
-    :param optimization_prompt: 优化提示词
-    :param validation_limit: 验证数量限制
+    :param body: 项目更新请求体（JSON）
     :return: 更新后的项目信息
     """
-    import json as json_lib
-    
-    logger.info(f"Update project {project_id} - Prompt len: {len(current_prompt) if current_prompt else 0}")
+    logger.info(f"Update project {project_id} - Prompt len: {len(body.current_prompt) if body.current_prompt else 0}")
     
     # 获取现有项目以进行增量更新
     existing_project = storage.get_project(project_id)
@@ -169,79 +164,51 @@ async def update_project(
     config = existing_project.get("config", {})
     
     # 仅当参数不为 None 时才更新 config
-    if query_col is not None:
-        config["query_col"] = query_col
-    if target_col is not None:
-        config["target_col"] = target_col
-    if reason_col is not None:
+    if body.query_col is not None:
+        config["query_col"] = body.query_col
+    if body.target_col is not None:
+        config["target_col"] = body.target_col
+    if body.reason_col is not None:
         # 如果是空字符串，表示清除
-        config["reason_col"] = reason_col if reason_col != "" else None
-    if extract_field is not None:
-        config["extract_field"] = extract_field
+        config["reason_col"] = body.reason_col if body.reason_col != "" else None
+    if body.extract_field is not None:
+        config["extract_field"] = body.extract_field
 
-    # 使用 request.form() 来准确判断字段是否存在，解决 FastAPI 将空字符串转为 None 导致无法清除字段的问题
-    form_data = await request.form()
-    if "validation_limit" in form_data:
-        raw_val = form_data.get("validation_limit")
-        # raw_val 可能是 ''，FastAPI 默认将其解析为 None，导致无法清除
-        # 因此我们需要手动处理：如果字段存在且值为空字符串或 None，则视为清除
-        val_str = str(raw_val) if raw_val is not None else ""
-        config["validation_limit"] = val_str if val_str != "" else None
+    # 处理 validation_limit
+    if body.validation_limit is not None:
+        config["validation_limit"] = body.validation_limit if body.validation_limit != "" else None
 
-    # 解析文件信息 JSON
-    if file_info:
-        try:
-            config["file_info"] = json_lib.loads(file_info)
-        except Exception:
-            logger.warning(f"Failed to parse file_info JSON for project {project_id}")
-            pass
+    # 文件信息 (已经是 dict，无需解析)
+    if body.file_info is not None:
+        config["file_info"] = body.file_info
             
-    # 解析自动迭代配置 JSON
-    if auto_iterate_config:
-        try:
-            config["auto_iterate_config"] = json_lib.loads(auto_iterate_config)
-        except Exception:
-            logger.warning(f"Failed to parse auto_iterate_config JSON for project {project_id}")
-            pass
+    # 自动迭代配置 (已经是 dict)
+    if body.auto_iterate_config is not None:
+        config["auto_iterate_config"] = body.auto_iterate_config
     
-    # 解析迭代历史 JSON
-    iterations_list = None
-    if iterations:
-        try:
-            iterations_list = json_lib.loads(iterations)
-        except Exception:
-            logger.warning(f"Failed to parse iterations JSON for project {project_id}")
-            pass
-    
-    updates = {
-        "current_prompt": current_prompt,
+    updates: Dict[str, Any] = {
+        "current_prompt": body.current_prompt,
         "config": config
     }
-    if iterations_list is not None:
-        updates["iterations"] = iterations_list
     
-    # 解析模型配置 JSON (校验模型)
-    if model_cfg:
-        try:
-            updates["model_config"] = json_lib.loads(model_cfg)
-        except Exception:
-            logger.warning(f"Failed to parse model_cfg JSON for project {project_id}")
-            pass
+    # 迭代历史 (已经是 list)
+    if body.iterations is not None:
+        updates["iterations"] = body.iterations
+    
+    # 模型配置 (校验模型)
+    if body.model_cfg is not None:
+        updates["model_config"] = body.model_cfg
             
-    # 解析优化模型配置 JSON
-    if optimization_model_config:
-        try:
-            updates["optimization_model_config"] = json_lib.loads(optimization_model_config)
-        except Exception:
-            logger.warning(f"Failed to parse optimization_model_config JSON for project {project_id}")
-            pass
+    # 优化模型配置
+    if body.optimization_model_config is not None:
+        updates["optimization_model_config"] = body.optimization_model_config
             
     # 优化提示词
-    if optimization_prompt is not None:
-        updates["optimization_prompt"] = optimization_prompt
+    if body.optimization_prompt is not None:
+        updates["optimization_prompt"] = body.optimization_prompt
 
-    if name:
-        updates["name"] = name
+    if body.name:
+        updates["name"] = body.name
     
     result = await run_in_threadpool(storage.update_project, project_id, updates)
     if not result:

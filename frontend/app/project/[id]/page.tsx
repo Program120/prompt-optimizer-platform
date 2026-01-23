@@ -703,15 +703,15 @@ export default function ProjectDetail() {
             });
             proj.current_prompt = externalPrompt.trim();
 
-            // 更新项目
-            const formData = new FormData();
-            formData.append("current_prompt", externalPrompt.trim());
-            formData.append("query_col", config.query_col);
-            formData.append("target_col", config.target_col);
-            formData.append("extract_field", extractField);
-            // 这里必须要传iterations，否则后端不会更新历史记录
-            formData.append("iterations", JSON.stringify(proj.iterations));
-            await axios.put(`${API_BASE}/projects/${id}`, formData);
+            // 更新项目 (使用 JSON body)
+            const payload = {
+                current_prompt: externalPrompt.trim(),
+                query_col: config.query_col,
+                target_col: config.target_col,
+                extract_field: extractField,
+                iterations: proj.iterations
+            };
+            await axios.put(`${API_BASE}/projects/${id}`, payload);
 
             // 更新本地状态
             setProject({ ...project, current_prompt: externalPrompt.trim(), iterations: proj.iterations });
@@ -731,27 +731,20 @@ export default function ProjectDetail() {
         // 只有手动保存时才更新 UI 状态（显示保存中）
         if (!silent) setIsSaving(true);
         try {
-            const formData = new FormData();
-            formData.append("current_prompt", project.current_prompt);
-            formData.append("query_col", config.query_col);
-            formData.append("target_col", config.target_col);
-            // 确保 reason_col 也被保存 (如果 config 中存在)
-            if (config.reason_col) {
-                formData.append("reason_col", config.reason_col);
-            }
-            formData.append("extract_field", extractField);
-            // 保存文件信息
-            if (fileInfo) {
-                formData.append("file_info", JSON.stringify(fileInfo));
-            }
-            // 保存项目名称
-            formData.append("name", project.name);
-            // 保存自动迭代配置
-            formData.append("auto_iterate_config", JSON.stringify(autoIterateConfig));
-            // 保存验证配置
-            formData.append("validation_limit", validationLimit === "" ? "" : validationLimit.toString());
+            // 使用 JSON body 替代 FormData 以绕过 1MB multipart 限制
+            const payload = {
+                current_prompt: project.current_prompt,
+                query_col: config.query_col,
+                target_col: config.target_col,
+                reason_col: config.reason_col || null,
+                extract_field: extractField,
+                file_info: fileInfo || null,
+                name: project.name,
+                auto_iterate_config: autoIterateConfig,
+                validation_limit: validationLimit === "" ? "" : validationLimit?.toString()
+            };
 
-            await axios.put(`${API_BASE}/projects/${id}`, formData);
+            await axios.put(`${API_BASE}/projects/${id}`, payload);
             if (!silent) showToast("项目保存成功！", "success");
         } catch (e) {
             showToast("保存失败", "error");
