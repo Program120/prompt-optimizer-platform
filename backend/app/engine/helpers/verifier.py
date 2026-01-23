@@ -233,7 +233,7 @@ class Verifier:
         
         logger.debug(f"[Verifier] _call_llm_raw - 请求 URL: {request_url}")
         logger.debug(f"[Verifier] _call_llm_raw - 模型: {model_name}, temperature: {temperature}")
-        logger.info(f"[Verifier] _call_llm_raw - 请求头: {json.dumps(headers, ensure_ascii=False)}")
+        logger.debug(f"[Verifier] _call_llm_raw - 请求头: {json.dumps(headers, ensure_ascii=False)}")
         logger.debug(f"[Verifier] _call_llm_raw - 请求参数: {json.dumps(payload, ensure_ascii=False, indent=2)}")
         
         # 发送 POST 请求
@@ -272,7 +272,7 @@ class Verifier:
             logger.warning(f"[Verifier] _call_llm_raw - 响应内容为空")
         
         # 打印完整响应内容
-        logger.info(f"[Verifier] _call_llm_raw - 完整响应: {json.dumps(resp_json, ensure_ascii=False, indent=2)}")
+        logger.debug(f"[Verifier] _call_llm_raw - 完整响应: {json.dumps(resp_json, ensure_ascii=False, indent=2)}")
         logger.debug(f"[Verifier] _call_llm_raw - 响应长度: {len(content)} 字符")
         return content
 
