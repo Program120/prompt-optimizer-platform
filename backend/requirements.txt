@@ -17,3 +17,7 @@ sqlmodel
 aiosqlite
 torch
 text2vec
+requests
+httpx
+pytest
+tenacity

@@ -13,6 +13,7 @@ from loguru import logger
 from app.core.llm_factory import LLMFactory
 from app.core.prompts import DEFAULT_OPTIMIZATION_PROMPT
 from app.db import storage
+import json
 # 导入多策略优化模块
 from app.engine import MultiStrategyOptimizer
 
@@ -87,8 +88,8 @@ def optimize_prompt(
     if not model_config:
         model_config = storage.get_model_config()
     
-    # 使用 Factory 初始化 OpenAI 客户端
-    client = LLMFactory.create_client(model_config)
+    # 使用 Factory 初始化 Raw HTTP 客户端
+    client = LLMFactory.create_raw_client(model_config)
     
     # 复用 generate_optimize_context 生成用户消息内容
     user_content: str = generate_optimize_context(
@@ -106,13 +107,24 @@ def optimize_prompt(
     # 调用 LLM
     logger.debug(f"Calling LLM for optimization with model: {model_config.get('model_name', 'gpt-3.5-turbo')}")
     try:
+        extra_body = model_config.get("extra_body")
+        extra_params = {}
+        if extra_body:
+            try:
+                if isinstance(extra_body, str):
+                    extra_params = json.loads(extra_body)
+                elif isinstance(extra_body, dict):
+                    extra_params = extra_body
+            except Exception as e:
+                logger.warning(f"Failed to parse extra_body: {e}")
+
         response = client.chat.completions.create(
             model=model_config.get("model_name", "gpt-3.5-turbo"),
             messages=messages,
             temperature=float(model_config.get("temperature", 0.7)),
             max_tokens=int(model_config.get("max_tokens", 2000)),
             timeout=int(model_config.get("timeout", 60)),
-            extra_body=model_config.get("extra_body")
+            **extra_params
         )
         
         response_content = response.choices[0].message.content.strip()
@@ -173,13 +185,13 @@ async def multi_strategy_optimize(
     if not model_config:
         model_config = storage.get_model_config()
     
-    # 创建主要 LLM 客户端 (优化用)
-    client = LLMFactory.create_async_client(model_config)
+    # 创建主要 LLM 客户端 (优化用) - 使用 Raw HTTP Client
+    client = LLMFactory.create_raw_async_client(model_config)
 
     # 创建验证专用 LLM 客户端 (如有)
     verification_client = None
     if verification_config:
-        verification_client = LLMFactory.create_async_client(verification_config)
+        verification_client = LLMFactory.create_raw_async_client(verification_config)
     
     # 创建多策略优化器
     optimizer = MultiStrategyOptimizer(
@@ -236,7 +248,7 @@ def diagnose_and_get_recommendations(
     
     # 获取模型配置
     model_config = storage.get_model_config()
-    client = LLMFactory.create_client(model_config)
+    client = LLMFactory.create_raw_client(model_config)
     
     # 创建优化器并诊断
     optimizer = MultiStrategyOptimizer(
