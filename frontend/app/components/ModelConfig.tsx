@@ -70,6 +70,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
     const [config, setConfig] = useState({
         base_url: "",
         api_key: "",
+        protocol: "openai",
         max_tokens: 2000,
         timeout: 60,
         model_name: "gpt-3.5-turbo",
@@ -82,6 +83,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
     const [optConfig, setOptConfig] = useState({
         base_url: "",
         api_key: "",
+        protocol: "openai",
         max_tokens: 2000,
         timeout: 180,  // 优化任务需要更长的超时时间
         model_name: "gpt-3.5-turbo",
@@ -167,6 +169,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 base_url: model.base_url,
                 api_key: model.api_key,
                 model_name: model.model_name,
+                protocol: model.protocol || "openai",
                 max_tokens: model.max_tokens,
                 temperature: model.temperature,
                 timeout: model.timeout,
@@ -192,6 +195,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 base_url: model.base_url,
                 api_key: model.api_key,
                 model_name: model.model_name,
+                protocol: model.protocol || "openai",
                 max_tokens: model.max_tokens,
                 temperature: model.temperature,
                 timeout: model.timeout,
@@ -357,6 +361,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         formData.append("base_url", targetConfig.base_url);
         formData.append("api_key", targetConfig.api_key);
         formData.append("model_name", targetConfig.model_name);
+        formData.append("protocol", targetConfig.protocol || "openai");
         formData.append("max_tokens", String(targetConfig.max_tokens));
         formData.append("temperature", String(targetConfig.temperature));
 
@@ -480,6 +485,20 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                         placeholder={cfg.validation_mode === "interface" ? "https://api.example.com/check" : "https://api.openai.com/v1"}
                     />
                 </div>
+                {(!isVerification || cfg.validation_mode !== "interface") && (
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1.5">协议</label>
+                        <select
+                            value={cfg.protocol || "openai"}
+                            onChange={e => setCfg({ ...cfg, protocol: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm appearance-none cursor-pointer"
+                        >
+                            <option value="openai" className="bg-slate-800">OpenAI (及兼容)</option>
+                            <option value="anthropic" className="bg-slate-800">Anthropic</option>
+                            <option value="gemini" className="bg-slate-800">Google Gemini</option>
+                        </select>
+                    </div>
+                )}
                 {(!isVerification || cfg.validation_mode !== "interface") && (
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1.5">API Key</label>

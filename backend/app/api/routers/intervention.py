@@ -19,6 +19,7 @@ router = APIRouter()
 
 class InterventionUpsertRequest(BaseModel):
     """意图干预更新请求模型"""
+    id: Optional[int] = None
     query: str
     reason: str = ""
     target: str = ""
@@ -100,7 +101,8 @@ async def upsert_intervention(project_id: str, request: InterventionUpsertReques
             query=request.query,
             reason=request.reason,
             target=request.target,
-            file_id=request.file_id
+            file_id=request.file_id,
+            id=request.id
         )
         if not result:
             raise HTTPException(status_code=500, detail="Failed to save intervention")

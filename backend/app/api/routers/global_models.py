@@ -20,6 +20,7 @@ class GlobalModelCreate(BaseModel):
     base_url: str
     api_key: str
     model_name: str = "gpt-3.5-turbo"
+    protocol: str = "openai"
     max_tokens: int = 2000
     temperature: float = 0.0
     timeout: int = 60
@@ -35,6 +36,7 @@ class GlobalModelUpdate(BaseModel):
     base_url: Optional[str] = None
     api_key: Optional[str] = None
     model_name: Optional[str] = None
+    protocol: Optional[str] = None
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
     timeout: Optional[int] = None

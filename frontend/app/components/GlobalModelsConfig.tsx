@@ -20,6 +20,7 @@ interface GlobalModel {
     base_url: string;
     api_key: string;
     model_name: string;
+    protocol: string;
     max_tokens: number;
     temperature: number;
     timeout: number;
@@ -66,6 +67,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
         base_url: "",
         api_key: "",
         model_name: "gpt-3.5-turbo",
+        protocol: "openai",
         max_tokens: "2000",
         temperature: "0",
         timeout: "60",
@@ -107,6 +109,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
             base_url: "",
             api_key: "",
             model_name: "gpt-3.5-turbo",
+            protocol: "openai",
             max_tokens: "2000",
             temperature: "0",
             timeout: "60",
@@ -128,6 +131,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
             base_url: model.base_url,
             api_key: model.api_key,
             model_name: model.model_name,
+            protocol: model.protocol || "openai",
             max_tokens: String(model.max_tokens),
             temperature: String(model.temperature),
             timeout: String(model.timeout),
@@ -196,6 +200,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                 base_url: formData.base_url,
                 api_key: formData.api_key,
                 model_name: formData.model_name,
+                protocol: formData.protocol,
                 max_tokens: isNaN(maxTokensValue) ? 2000 : maxTokensValue,
                 temperature: isNaN(temperatureValue) ? 0 : temperatureValue,
                 timeout: isNaN(timeoutValue) ? 60 : timeoutValue,
@@ -260,6 +265,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                 base_url: model.base_url,
                 api_key: model.api_key,
                 model_name: model.model_name,
+                protocol: model.protocol || "openai",
                 max_tokens: model.max_tokens,
                 temperature: model.temperature,
                 timeout: model.timeout,
@@ -290,6 +296,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
         testFormData.append("base_url", model.base_url);
         testFormData.append("api_key", model.api_key);
         testFormData.append("model_name", model.model_name);
+        testFormData.append("protocol", model.protocol || "openai");
         testFormData.append("max_tokens", "5");
         testFormData.append("temperature", String(model.temperature));
 
@@ -351,7 +358,20 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
     const renderForm = () => (
         <div className="space-y-4 p-4 bg-white/5 rounded-xl border border-white/10">
             <div className="grid grid-cols-2 gap-4">
-                {/* 模型名称 */}
+                {/* 协议选择 */}
+                <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-2">协议类型</label>
+                    <select
+                        value={formData.protocol}
+                        onChange={e => setFormData({ ...formData, protocol: e.target.value })}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 text-sm appearance-none cursor-pointer"
+                    >
+                        <option value="openai" className="bg-slate-800">OpenAI (及兼容)</option>
+                        <option value="anthropic" className="bg-slate-800">Anthropic</option>
+                        <option value="gemini" className="bg-slate-800">Google Gemini</option>
+                    </select>
+                </div>
+                {/* 配置名称 */}
                 <div>
                     <label className="block text-sm font-medium text-slate-400 mb-2">配置名称</label>
                     <input
@@ -579,6 +599,9 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                                                         {/* 模型名称：使用 flex-shrink-0 防止过度收缩，但添加 max-w 限制 */}
                                                         <span className="text-xs px-2 py-0.5 bg-slate-700 rounded-full text-slate-300 truncate max-w-[40%] flex-shrink-0" title={model.model_name}>
                                                             {model.model_name}
+                                                        </span>
+                                                        <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full truncate flex-shrink-0">
+                                                            {model.protocol || "openai"}
                                                         </span>
                                                     </div>
                                                     {/* URL 截断显示 */}

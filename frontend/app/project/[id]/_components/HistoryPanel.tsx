@@ -83,14 +83,15 @@ export default function HistoryPanel({
     }, [project?.id, reasonsUpdateCount, fileId]);
 
     // Save Reason Handler - 使用 useCallback 保持引用稳定，避免子组件不必要的重渲染
-    const saveReason = useCallback(async (query: string, reason: string, target: string) => {
+    const saveReason = useCallback(async (query: string, reason: string, target: string, id?: number) => {
         if (!project?.id) return;
         try {
             const res = await fetch(`${API_BASE}/projects/${project.id}/interventions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 // [修复] 添加 file_id 确保更新正确的记录
-                body: JSON.stringify({ query, reason, target, file_id: fileId || "" })
+                // [修复] 添加 id 确保更新唯一记录
+                body: JSON.stringify({ query, reason, target, file_id: fileId || "", id })
             });
             if (res.ok) {
                 await fetchReasons();

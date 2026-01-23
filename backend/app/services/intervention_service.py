@@ -200,11 +200,12 @@ def get_intervention_map(project_id: str, file_id: Optional[str] = None) -> Dict
     return {r.query: r.reason for r in interventions if r.reason}
 
 
-def upsert_intervention(project_id: str, query: str, reason: str, target: str = "", is_import: bool = False, file_id: str = "") -> Optional[IntentIntervention]:
+def upsert_intervention(project_id: str, query: str, reason: str, target: str = "", is_import: bool = False, file_id: str = "", id: Optional[int] = None) -> Optional[IntentIntervention]:
     """
     添加或更新意图干预项
     
     查找逻辑：
+    0. 如果提供了 id，优先按 id 查找
     1. 首先按 project_id + query 查找（不限制 file_id）
     2. 如果找到多条记录，优先更新 is_target_modified=True 的记录
     3. 如果找不到，则创建新记录
@@ -218,6 +219,7 @@ def upsert_intervention(project_id: str, query: str, reason: str, target: str = 
     :param target: 预期输出
     :param is_import: 是否为导入模式
     :param file_id: 文件版本 ID
+    :param id: 记录 ID (可选，用于精确更新)
     :return: 更新后的 IntentIntervention 对象
     """
     if not query:
@@ -225,24 +227,33 @@ def upsert_intervention(project_id: str, query: str, reason: str, target: str = 
         
     try:
         with get_db_session() as session:
-            # [修复] 查找时不限制 file_id，确保能找到已有记录
-            statement = select(IntentIntervention).where(
-                IntentIntervention.project_id == project_id,
-                IntentIntervention.query == query
-            )
-            
-            all_matches = list(session.exec(statement).all())
             existing: Optional[IntentIntervention] = None
             
-            if all_matches:
-                # 如果有多条记录，优先使用 is_target_modified=True 的
-                for m in all_matches:
-                    if m.is_target_modified:
-                        existing = m
-                        break
-                # 如果没有修正过的记录，使用第一条
-                if existing is None:
-                    existing = all_matches[0]
+            # 0. 优先按 ID 查找
+            if id is not None:
+                existing = session.get(IntentIntervention, id)
+                # 确保 ID 对应的记录属于该项目 (安全检查)
+                if existing and existing.project_id != project_id:
+                    existing = None
+            
+            if not existing:
+                # 1. 查找时不限制 file_id，确保能找到已有记录
+                statement = select(IntentIntervention).where(
+                    IntentIntervention.project_id == project_id,
+                    IntentIntervention.query == query
+                )
+                
+                all_matches = list(session.exec(statement).all())
+                
+                if all_matches:
+                    # 如果有多条记录，优先使用 is_target_modified=True 的
+                    for m in all_matches:
+                        if m.is_target_modified:
+                            existing = m
+                            break
+                    # 如果没有修正过的记录，使用第一条
+                    if existing is None:
+                        existing = all_matches[0]
             
             if existing:
                 # 更新已有记录
@@ -266,7 +277,7 @@ def upsert_intervention(project_id: str, query: str, reason: str, target: str = 
                 session.add(existing)
                 session.commit()
                 session.refresh(existing)
-                logger.info(f"Updated intervention for query: {query[:20]}... in project {project_id}")
+                logger.info(f"Updated intervention for query: {query[:20]}... (ID: {existing.id}) in project {project_id}")
                 return existing
             else:
                 # 创建新记录

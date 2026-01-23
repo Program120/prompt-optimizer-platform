@@ -861,6 +861,7 @@ def save_model_config(config: Dict[str, Any]) -> None:
             existing.max_tokens = config.get("max_tokens", existing.max_tokens)
             existing.timeout = config.get("timeout", existing.timeout)
             existing.model_name = config.get("model_name", existing.model_name)
+            existing.protocol = config.get("protocol", existing.protocol)
             existing.temperature = config.get("temperature", existing.temperature)
         else:
             new_config = ModelConfig(
@@ -870,6 +871,7 @@ def save_model_config(config: Dict[str, Any]) -> None:
                 max_tokens=config.get("max_tokens", 2000),
                 timeout=config.get("timeout", 60),
                 model_name=config.get("model_name", "gpt-3.5-turbo"),
+                protocol=config.get("protocol", "openai"),
                 temperature=config.get("temperature", 0.0)
             )
             session.add(new_config)
@@ -921,6 +923,7 @@ def create_global_model(model_data: Dict[str, Any]) -> Dict[str, Any]:
         base_url=model_data.get("base_url", ""),
         api_key=model_data.get("api_key", ""),
         model_name=model_data.get("model_name", "gpt-3.5-turbo"),
+        protocol=model_data.get("protocol", "openai"),
         max_tokens=model_data.get("max_tokens", 2000),
         temperature=model_data.get("temperature", 0.0),
         timeout=model_data.get("timeout", 60),
@@ -954,7 +957,7 @@ def update_global_model(model_id: str, updates: Dict[str, Any]) -> Optional[Dict
         
         # 更新允许的字段
         allowed_fields: List[str] = [
-            "name", "base_url", "api_key", "model_name",
+            "name", "base_url", "api_key", "model_name", "protocol",
             "max_tokens", "temperature", "timeout", "concurrency"
         ]
         for field in allowed_fields:

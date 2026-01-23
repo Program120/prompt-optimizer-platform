@@ -380,6 +380,9 @@ class GlobalModel(SQLModel, table=True):
     # 模型名称
     model_name: str = Field(default="gpt-3.5-turbo")
     
+    # 协议类型 (openai, anthropic, gemini)
+    protocol: str = Field(default="openai")
+    
     # 最大 Token 数
     max_tokens: int = Field(default=2000)
     
@@ -415,6 +418,7 @@ class GlobalModel(SQLModel, table=True):
             "base_url": self.base_url,
             "api_key": self.api_key,
             "model_name": self.model_name,
+            "protocol": self.protocol,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "timeout": self.timeout,
@@ -477,6 +481,7 @@ class ModelConfig(SQLModel, table=True):
             "max_tokens": self.max_tokens,
             "timeout": self.timeout,
             "model_name": self.model_name,
+            "protocol": self.protocol,
             "temperature": self.temperature,
             "do_sample": self.do_sample,
         }

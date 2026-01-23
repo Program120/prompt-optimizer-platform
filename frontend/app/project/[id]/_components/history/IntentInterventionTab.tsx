@@ -12,13 +12,14 @@ const API_BASE = "/api";
 interface IntentInterventionTabProps {
     project: any;
     fileId?: string;
-    saveReason: (query: string, reason: string, target: string) => Promise<void>;
+    saveReason: (query: string, reason: string, target: string, id?: number) => Promise<void>;
 }
 
 /**
  * 编辑状态接口
  */
 interface EditingState {
+    id?: number;
     query: string;
     value: string;
     target: string;
@@ -768,7 +769,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                 ) : (
                     <>
                         {intentItems.map((item, index) => {
-                            const isEditing = editingReason?.query === item.query;
+                            const isEditing = editingReason?.id ? editingReason.id === item.id : editingReason?.query === item.query;
                             const hasModification = item.is_target_modified;
                             const hasReason = !!item.reason;
                             // 使用唯一 key：优先 id，其次 query，最后使用索引
@@ -886,6 +887,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         setEditingReason({
+                                                            id: item.id,
                                                             query: item.query,
                                                             value: item.reason || '',
                                                             target: item.target || '',
@@ -956,7 +958,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                                     <button
                                                         onClick={async () => {
                                                             if (editingReason) {
-                                                                await saveReason(editingReason.query, editingReason.value, editingReason.target);
+                                                                await saveReason(editingReason.query, editingReason.value, editingReason.target, editingReason.id);
                                                                 // 保存后刷新当前视图（保持页码）
                                                                 const currentPages = loadedPagesRef.current;
                                                                 refreshResults(currentPages * 20, searchQuery, filterStatus);
@@ -998,6 +1000,7 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setEditingReason({
+                                                        id: item.id,
                                                         query: item.query,
                                                         target: item.target || '',
                                                         value: item.reason || '',

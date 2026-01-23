@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Form, HTTPException, BackgroundTasks, Request
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.db import storage
@@ -122,6 +122,7 @@ async def delete_iteration(project_id: str, timestamp: str) -> Dict[str, str]:
 @router.put("/{project_id}")
 async def update_project(
     project_id: str,
+    request: Request,
     current_prompt: str = Form(...),
     name: Optional[str] = Form(None),
     query_col: Optional[str] = Form(None),
@@ -177,9 +178,15 @@ async def update_project(
         config["reason_col"] = reason_col if reason_col != "" else None
     if extract_field is not None:
         config["extract_field"] = extract_field
-    if validation_limit is not None:
-        # 如果是空字符串，表示清除
-        config["validation_limit"] = validation_limit if validation_limit != "" else None
+
+    # 使用 request.form() 来准确判断字段是否存在，解决 FastAPI 将空字符串转为 None 导致无法清除字段的问题
+    form_data = await request.form()
+    if "validation_limit" in form_data:
+        raw_val = form_data.get("validation_limit")
+        # raw_val 可能是 ''，FastAPI 默认将其解析为 None，导致无法清除
+        # 因此我们需要手动处理：如果字段存在且值为空字符串或 None，则视为清除
+        val_str = str(raw_val) if raw_val is not None else ""
+        config["validation_limit"] = val_str if val_str != "" else None
 
     # 解析文件信息 JSON
     if file_info:

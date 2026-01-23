@@ -473,6 +473,21 @@ def check_and_migrate_schema() -> None:
             "0",
             None
         ),
+        # 新增：protocol 字段支持
+        (
+            "global_models",
+            "protocol",
+            "VARCHAR",
+            "'openai'",
+            None
+        ),
+        (
+            "model_config",
+            "protocol",
+            "VARCHAR",
+            "'openai'",
+            None
+        ),
     ]
     
     conn: sqlite3.Connection = sqlite3.connect(db_path)
