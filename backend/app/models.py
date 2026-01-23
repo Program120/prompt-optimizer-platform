@@ -389,6 +389,9 @@ class GlobalModel(SQLModel, table=True):
     # 超时时间（秒）
     timeout: int = Field(default=60)
     
+    # 是否启用采样
+    do_sample: bool = Field(default=False)
+    
     # 并发数
     concurrency: int = Field(default=5)
     
@@ -415,6 +418,7 @@ class GlobalModel(SQLModel, table=True):
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "timeout": self.timeout,
+            "do_sample": self.do_sample,
             "concurrency": self.concurrency,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -462,6 +466,9 @@ class ModelConfig(SQLModel, table=True):
     # 温度参数
     temperature: float = Field(default=0.0)
     
+    # 是否启用采样
+    do_sample: bool = Field(default=False)
+    
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
         return {
@@ -471,6 +478,7 @@ class ModelConfig(SQLModel, table=True):
             "timeout": self.timeout,
             "model_name": self.model_name,
             "temperature": self.temperature,
+            "do_sample": self.do_sample,
         }
 
 

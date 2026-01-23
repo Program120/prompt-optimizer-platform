@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { CheckCircle2, AlertCircle, ArrowRight, Save, X, Search, FlaskConical } from "lucide-react";
+import TestResultModal, { TestResultData } from "@/app/components/TestResultModal";
 
 const API_BASE = "/api";
 
@@ -28,8 +29,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
 
     // Test State
     const [testingQuery, setTestingQuery] = useState<string | null>(null);
-    const [testResult, setTestResult] = useState<{ query: string, is_correct: boolean, output: string, reason: string, target: string } | null>(null);
-    const testResultRef = useRef<HTMLDivElement | null>(null);
+    const [testResult, setTestResult] = useState<TestResultData | null>(null);
 
     // Ref for scroll container (用于 IntersectionObserver 的 root)
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -57,7 +57,9 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                     is_correct: data.is_correct,
                     output: data.output,
                     reason: data.reason,
-                    target: target
+                    target: target,
+                    latency_ms: data.latency_ms,
+                    request_id: data.request_id
                 });
             } else {
                 const err = await res.json();
@@ -71,19 +73,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
         }
     };
 
-    // Global Click Outside Listener for Test Result Modal
-    useEffect(() => {
-        const handleGlobalClick = (event: MouseEvent) => {
-            if (testResult && testResultRef.current && !testResultRef.current.contains(event.target as Node)) {
-                setTestResult(null);
-            }
-        };
 
-        if (testResult) {
-            document.addEventListener('mousedown', handleGlobalClick);
-        }
-        return () => document.removeEventListener('mousedown', handleGlobalClick);
-    }, [testResult]);
 
     /**
      * 加载更多数据 (用于无限滚动)
@@ -426,89 +416,12 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
             {!results.length && !isLoadingMore && !isRefreshing && <p className="text-center text-slate-600 mt-20">暂无运行日志</p>}
 
             {/* 测试结果 Modal */}
-            {
-                testResult && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div
-                            ref={testResultRef}
-                            className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]"
-                        >
-                            <div className="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 shrink-0">
-                                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                                    <FlaskConical size={14} className="text-indigo-400" /> 测试结果
-                                </h3>
-                                <button
-                                    onClick={() => setTestResult(null)}
-                                    className="text-slate-500 hover:text-white transition-colors"
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-
-                            <div className="p-0 overflow-y-auto custom-scrollbar flex-1">
-                                {/* 状态横幅 */}
-                                <div className={`p-4 flex items-center gap-3 border-b border-slate-800 ${testResult?.is_correct ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${testResult?.is_correct ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                                        {testResult?.is_correct ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
-                                    </div>
-                                    <div>
-                                        <h4 className={`text-base font-bold ${testResult?.is_correct ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            {testResult?.is_correct ? '验证通过' : '验证不通过'}
-                                        </h4>
-                                        <p className="text-xs text-slate-400 mt-0.5">
-                                            Query: <span className="font-mono text-slate-300">{testResult?.query}</span>
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="p-4 space-y-4">
-                                    {/* 对比区域 */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {/* 预期结果 */}
-                                        <div className="space-y-1.5 overflow-hidden">
-                                            <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                                                <CheckCircle2 size={10} className="text-emerald-500" /> 预期结果 (Target)
-                                            </label>
-                                            <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-100/90 font-mono min-h-[100px] whitespace-pre-wrap break-all overflow-hidden">
-                                                {testResult?.target || <span className="text-slate-600 italic">未设置</span>}
-                                            </div>
-                                        </div>
-
-                                        {/* 实际输出 */}
-                                        <div className="space-y-1.5 overflow-hidden">
-                                            <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                                                <AlertCircle size={10} className="text-indigo-500" /> 实际输出 (Actual)
-                                            </label>
-                                            <div className={`bg-slate-950/50 border rounded-lg p-3 text-xs font-mono min-h-[100px] whitespace-pre-wrap break-all overflow-hidden ${testResult?.is_correct ? 'border-emerald-500/20 text-emerald-100/90' : 'border-rose-500/20 text-rose-100/90'}`}>
-                                                {testResult?.output}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* 提取原因/分析 (如果有) */}
-                                    {testResult?.reason && (
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-medium text-slate-500">分析/原因 (Reason)</label>
-                                            <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 text-xs text-slate-300">
-                                                {testResult?.reason}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="p-3 border-t border-slate-800 bg-slate-900/50 flex justify-end">
-                                <button
-                                    onClick={() => setTestResult(null)}
-                                    className="px-4 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs hover:bg-slate-700 transition-colors"
-                                >
-                                    关闭
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            {testResult && (
+                <TestResultModal
+                    testResult={testResult}
+                    onClose={() => setTestResult(null)}
+                />
+            )}
         </div>
     );
 }

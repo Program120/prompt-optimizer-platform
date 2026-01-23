@@ -7,10 +7,12 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import time
 import asyncio
+import uuid
 from app.core.llm_factory import LLMFactory
 from loguru import logger
 
 router = APIRouter(prefix="/playground", tags=["playground"])
+
 
 class TestPromptRequest(BaseModel):
     """
@@ -20,19 +22,17 @@ class TestPromptRequest(BaseModel):
     query: str
     llm_config: Dict[str, Any]
 
+
 @router.post("/test")
 async def test_prompt_output(request: TestPromptRequest) -> Dict[str, Any]:
     """
     测试提示词输出
     
     :param request: 测试请求参数，包含提示词、查询输入和模型配置
-    :return: 包含模型输出结果、耗时及使用的模型名称
+    :return: 包含模型输出结果、耗时、使用的模型名称及请求ID
     """
     prompt = request.prompt
     query = request.query
-    # 兼容前端可能传过来的 model_config (如果前端没更新)
-    # 但 Pydantic verification 会在 request validation 阶段就报错如果名字不对
-    # 所以前端必须更新
     model_config = request.llm_config
 
     # 校验逻辑优化：
@@ -41,13 +41,15 @@ async def test_prompt_output(request: TestPromptRequest) -> Dict[str, Any]:
     if validation_mode != "interface" and (not model_config or not model_config.get("api_key")):
          raise HTTPException(status_code=400, detail="未配置模型参数(API Key)")
 
+    # 生成请求 ID
+    request_id: str = str(uuid.uuid4())
+    
     start_time = time.time()
     try:
         if validation_mode == "interface":
             # 接口模式：调用 Verifier._call_interface
-            #由于 Playground 没有 target，传空字符串
-            from app.engine.verifier import Verifier
-            # Verifier._call_interface 是静态方法
+            # 由于 Playground 没有 target，传空字符串
+            from app.engine.helpers.verifier import Verifier
             output = Verifier._call_interface(
                 query=query, 
                 target="", 
@@ -59,37 +61,25 @@ async def test_prompt_output(request: TestPromptRequest) -> Dict[str, Any]:
             model_name = "Interface API"
             
         else:
-            # LLM 模式
-            # 使用 LLMFactory 创建客户端
-            # 构造消息
-            messages = []
-            if prompt:
-                messages.append({"role": "system", "content": prompt})
-            messages.append({"role": "user", "content": query})
-
-            # 异步调用模型
-            client = LLMFactory.create_async_client(model_config)
+            # LLM 模式：使用 Verifier._call_llm（支持 chatrhino 等自动切换到 raw HTTP）
+            from app.engine.helpers.verifier import Verifier
             
             model_name = model_config.get("model_name", "gpt-3.5-turbo")
             
-            # 准备参数
-            params = {
-                "model": model_name,
-                "messages": messages,
-                "temperature": model_config.get("temperature", 0.0),
-            }
+            # 将 request_id 注入到配置中，以便 _call_llm_raw 使用
+            config_with_request_id = {**model_config, "_request_id": request_id}
             
-            if model_config.get("max_tokens"):
-                params["max_tokens"] = int(model_config.get("max_tokens"))
-                
-            # 处理 extra_body
-            if model_config.get("extra_body"):
-                params["extra_body"] = model_config.get("extra_body")
-
-            logger.info(f"Playground Test - Model: {model_name}, Prompt Len: {len(prompt)}, Query Len: {len(query)}")
+            logger.info(f"Playground Test - Model: {model_name}, Prompt Len: {len(prompt)}, Query Len: {len(query)}, RequestId: {request_id}")
             
-            response = await client.chat.completions.create(**params)
-            output = response.choices[0].message.content
+            # 使用线程池运行同步方法
+            from starlette.concurrency import run_in_threadpool
+            output = await run_in_threadpool(
+                Verifier._call_llm,
+                query,
+                prompt,
+                config_with_request_id,
+                None
+            )
         
         end_time = time.time()
         latency_ms = (end_time - start_time) * 1000
@@ -97,7 +87,8 @@ async def test_prompt_output(request: TestPromptRequest) -> Dict[str, Any]:
         return {
             "output": output,
             "latency_ms": round(latency_ms, 2),
-            "model_used": model_name
+            "model_used": model_name,
+            "request_id": request_id
         }
 
     except Exception as e:

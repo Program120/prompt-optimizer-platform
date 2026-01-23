@@ -66,6 +66,9 @@ def init_db() -> None:
     # 创建所有表
     SQLModel.metadata.create_all(engine)
     logger.info("数据库表初始化完成")
+    
+    # 执行数据库迁移（添加新字段）
+    _migrate_database()
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -86,3 +89,36 @@ def get_db_session() -> Session:
     :return: 数据库会话对象
     """
     return Session(engine)
+
+
+def _migrate_database() -> None:
+    """
+    执行数据库迁移
+    检查并添加新字段到已存在的表中
+    """
+    from sqlalchemy import text, inspect
+    
+    with Session(engine) as session:
+        inspector = inspect(engine)
+        
+        # 迁移 global_models 表：添加 do_sample 字段
+        if "global_models" in inspector.get_table_names():
+            columns: list = [col["name"] for col in inspector.get_columns("global_models")]
+            if "do_sample" not in columns:
+                try:
+                    session.execute(text("ALTER TABLE global_models ADD COLUMN do_sample INTEGER DEFAULT 0"))
+                    session.commit()
+                    logger.info("[迁移] global_models 表添加 do_sample 字段成功")
+                except Exception as e:
+                    logger.warning(f"[迁移] global_models 表添加 do_sample 字段失败（可能已存在）: {e}")
+        
+        # 迁移 model_config 表：添加 do_sample 字段
+        if "model_config" in inspector.get_table_names():
+            columns: list = [col["name"] for col in inspector.get_columns("model_config")]
+            if "do_sample" not in columns:
+                try:
+                    session.execute(text("ALTER TABLE model_config ADD COLUMN do_sample INTEGER DEFAULT 0"))
+                    session.commit()
+                    logger.info("[迁移] model_config 表添加 do_sample 字段成功")
+                except Exception as e:
+                    logger.warning(f"[迁移] model_config 表添加 do_sample 字段失败（可能已存在）: {e}")

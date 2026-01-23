@@ -23,6 +23,7 @@ interface GlobalModel {
     max_tokens: number;
     temperature: number;
     timeout: number;
+    do_sample: boolean;
     extra_body?: Record<string, any> | null;
     default_headers?: Record<string, any> | null;
     created_at: string;
@@ -68,6 +69,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
         max_tokens: "2000",
         temperature: "0",
         timeout: "60",
+        do_sample: false,
         extra_body: "",
         default_headers: ""
     });
@@ -108,6 +110,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
             max_tokens: "2000",
             temperature: "0",
             timeout: "60",
+            do_sample: false,
             extra_body: "",
             default_headers: ""
         });
@@ -128,6 +131,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
             max_tokens: String(model.max_tokens),
             temperature: String(model.temperature),
             timeout: String(model.timeout),
+            do_sample: model.do_sample ?? false,
             extra_body: model.extra_body ? JSON.stringify(model.extra_body, null, 2) : "",
             default_headers: model.default_headers ? JSON.stringify(model.default_headers, null, 2) : ""
         });
@@ -195,6 +199,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                 max_tokens: isNaN(maxTokensValue) ? 2000 : maxTokensValue,
                 temperature: isNaN(temperatureValue) ? 0 : temperatureValue,
                 timeout: isNaN(timeoutValue) ? 60 : timeoutValue,
+                do_sample: formData.do_sample,
                 extra_body: extraBody,
                 default_headers: defaultHeaders
             };
@@ -258,6 +263,7 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                 max_tokens: model.max_tokens,
                 temperature: model.temperature,
                 timeout: model.timeout,
+                do_sample: model.do_sample,
                 extra_body: model.extra_body,
                 default_headers: model.default_headers
             };
@@ -408,12 +414,22 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                 <div>
                     <label className="block text-sm font-medium text-slate-400 mb-2">Temperature</label>
                     <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="2"
+                        type="text"
+                        inputMode="decimal"
                         value={formData.temperature}
-                        onChange={e => setFormData({ ...formData, temperature: e.target.value })}
+                        onChange={e => {
+                            const val = e.target.value;
+                            // 允许输入小数点和数字
+                            if (val === '' || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                                setFormData({ ...formData, temperature: val });
+                            }
+                        }}
+                        onBlur={e => {
+                            const val = parseFloat(e.target.value);
+                            // 限制范围 0-2，默认 0
+                            const finalVal = isNaN(val) ? 0 : Math.min(Math.max(val, 0), 2);
+                            setFormData({ ...formData, temperature: String(finalVal) });
+                        }}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 text-sm"
                         placeholder="0"
                     />
@@ -430,27 +446,55 @@ export default function GlobalModelsConfig({ onClose }: GlobalModelsConfigProps)
                 </div>
             </div>
 
-            {/* Extra Body */}
-            <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Extra Body (JSON)</label>
-                <textarea
-                    value={formData.extra_body}
-                    onChange={e => setFormData({ ...formData, extra_body: e.target.value })}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 text-sm font-mono h-20"
-                    placeholder='{"top_k": 40}'
-                />
-            </div>
+            {/* 高级设置（可折叠） */}
+            <details className="group">
+                <summary className="text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-400 transition-colors flex items-center gap-2 mb-3">
+                    <span className="transform group-open:rotate-90 transition-transform">▶</span>
+                    高级设置
+                </summary>
+                <div className="space-y-4 pl-4 border-l-2 border-white/10">
+                    {/* Do Sample 开关 */}
+                    <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10">
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <label className="block text-sm font-medium text-slate-300">Do Sample</label>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                    部分模型可用
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5">是否启用采样模式</p>
+                        </div>
+                        <button
+                            onClick={() => setFormData({ ...formData, do_sample: !formData.do_sample })}
+                            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${formData.do_sample ? "bg-blue-600" : "bg-slate-600"}`}
+                        >
+                            <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${formData.do_sample ? "translate-x-5" : "translate-x-0"}`} />
+                        </button>
+                    </div>
 
-            {/* Default Headers */}
-            <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Default Headers (JSON)</label>
-                <textarea
-                    value={formData.default_headers}
-                    onChange={e => setFormData({ ...formData, default_headers: e.target.value })}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 text-sm font-mono h-20"
-                    placeholder='{"X-Custom-Header": "value"}'
-                />
-            </div>
+                    {/* Extra Body */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">Extra Body (JSON)</label>
+                        <textarea
+                            value={formData.extra_body}
+                            onChange={e => setFormData({ ...formData, extra_body: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 text-sm font-mono h-20"
+                            placeholder='{"top_k": 40}'
+                        />
+                    </div>
+
+                    {/* Default Headers */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">Default Headers (JSON)</label>
+                        <textarea
+                            value={formData.default_headers}
+                            onChange={e => setFormData({ ...formData, default_headers: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 text-sm font-mono h-20"
+                            placeholder='{"X-Custom-Header": "value"}'
+                        />
+                    </div>
+                </div>
+            </details>
 
             {/* 操作按钮 */}
             <div className="flex gap-3 pt-2">

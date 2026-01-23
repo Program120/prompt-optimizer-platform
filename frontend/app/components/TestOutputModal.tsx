@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, Clock, Cpu, ChevronDown } from "lucide-react";
+import { X, Play, Clock, Cpu, ChevronDown, Copy, Check } from "lucide-react";
 import axios from "axios";
 
 interface TestOutputModalProps {
@@ -14,6 +14,8 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
     const [query, setQuery] = useState("");
     const [output, setOutput] = useState("");
     const [latency, setLatency] = useState<number | null>(null);
+    const [requestId, setRequestId] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -73,6 +75,8 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
         setError("");
         setOutput("");
         setLatency(null);
+        setRequestId(null);
+        setCopied(false);
 
         try {
             const res = await axios.post("/api/playground/test", {
@@ -83,6 +87,7 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
 
             setOutput(res.data.output);
             setLatency(res.data.latency_ms);
+            setRequestId(res.data.request_id);
         } catch (e: any) {
             console.error(e);
             setError(e.response?.data?.detail || "请求失败");
@@ -183,13 +188,29 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
                             </div>
 
                             <div className="flex-1 flex flex-col min-h-0">
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="block text-sm font-medium text-slate-400">Model Output (模型输出)</label>
-                                    {latency !== null && (
-                                        <span className="text-xs text-emerald-400 flex items-center gap-1">
-                                            <Clock size={12} />
-                                            耗时: {latency}ms
-                                        </span>
+                                <div className="mb-2">
+                                    <div className="flex justify-between items-center">
+                                        <label className="block text-sm font-medium text-slate-400">Model Output (模型输出)</label>
+                                        {latency !== null && (
+                                            <span className="text-xs text-emerald-400 flex items-center gap-1">
+                                                <Clock size={12} />
+                                                耗时: {latency}ms
+                                            </span>
+                                        )}
+                                    </div>
+                                    {requestId && (
+                                        <div
+                                            className="mt-1 text-xs text-blue-400 flex items-center gap-1 cursor-pointer hover:text-blue-300 transition-colors w-fit"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(requestId);
+                                                setCopied(true);
+                                                setTimeout(() => setCopied(false), 2000);
+                                            }}
+                                            title="点击复制完整 Request ID"
+                                        >
+                                            {copied ? <Check size={12} /> : <Copy size={12} />}
+                                            <span className="font-mono">RequestId: {requestId}</span>
+                                        </div>
                                     )}
                                 </div>
                                 <div className="flex-1 bg-black/30 border border-white/10 rounded-xl p-4 overflow-y-auto font-mono text-sm whitespace-pre-wrap text-slate-300">

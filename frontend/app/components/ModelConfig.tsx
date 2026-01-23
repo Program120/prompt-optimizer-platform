@@ -75,6 +75,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         model_name: "gpt-3.5-turbo",
         concurrency: 5,
         temperature: 0.0,
+        do_sample: false,
         extra_body: "",
         default_headers: ""
     });
@@ -86,6 +87,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         model_name: "gpt-3.5-turbo",
         concurrency: 5,
         temperature: 0.7,
+        do_sample: false,
         extra_body: "",
         default_headers: "",
         enable_standard_module: false,
@@ -169,6 +171,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 temperature: model.temperature,
                 timeout: model.timeout,
                 concurrency: model.concurrency || 5,
+                do_sample: model.do_sample ?? false,
                 extra_body: model.extra_body ? JSON.stringify(model.extra_body, null, 2) : "",
                 default_headers: model.default_headers ? JSON.stringify(model.default_headers, null, 2) : ""
             }));
@@ -193,6 +196,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 temperature: model.temperature,
                 timeout: model.timeout,
                 concurrency: model.concurrency || 5,
+                do_sample: model.do_sample ?? false,
                 extra_body: model.extra_body ? JSON.stringify(model.extra_body, null, 2) : "",
                 default_headers: model.default_headers ? JSON.stringify(model.default_headers, null, 2) : ""
             }));
@@ -511,13 +515,27 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                                 <input
                                     type="range"
                                     min="0"
-                                    max="1"
-                                    step="0.1"
+                                    max="2"
+                                    step="0.01"
                                     value={cfg.temperature}
                                     onChange={e => setCfg({ ...cfg, temperature: parseFloat(e.target.value) })}
                                     className="flex-1 accent-blue-500 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer"
                                 />
-                                <span className="w-10 text-center text-sm text-slate-300 bg-white/5 rounded px-2 py-1">{cfg.temperature}</span>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max="2"
+                                    value={cfg.temperature}
+                                    onChange={e => {
+                                        const val = parseFloat(e.target.value);
+                                        if (!isNaN(val)) {
+                                            setCfg({ ...cfg, temperature: Math.min(Math.max(val, 0), 2) });
+                                        }
+                                    }}
+                                    className="w-20 text-center text-sm text-slate-300 bg-white/5 border border-white/10 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                    placeholder="0"
+                                />
                             </div>
                         </div>
                     </div>
@@ -699,6 +717,25 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                                 className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm font-mono h-[80px]"
                                 placeholder={`{"X-Header": "value"}`}
                             />
+                        </div>
+
+                        {/* Do Sample 开关 */}
+                        <div className="col-span-2 flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 w-full">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <label className="block text-sm font-medium text-slate-300">Do Sample</label>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                        部分模型可用
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-0.5">是否启用采样模式</p>
+                            </div>
+                            <button
+                                onClick={() => setCfg({ ...cfg, do_sample: !cfg.do_sample })}
+                                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${cfg.do_sample ? "bg-blue-600" : "bg-slate-600"}`}
+                            >
+                                <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${cfg.do_sample ? "translate-x-5" : "translate-x-0"}`} />
+                            </button>
                         </div>
                     </div>
                 </details>
