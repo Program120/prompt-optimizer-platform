@@ -73,46 +73,51 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
             .catch(console.error);
     };
 
-    /** 恢复历史记录 */
-    const restoreHistory = (item: any) => {
-        setPrompt(item.prompt || "");
-        setQuery(item.query || "");
-
-        // 处理 history_messages：可能是 JSON 字符串或数组
-        let parsedMessages: HistoryMessage[] = [];
+    /** 恢复历史记录（异步获取完整详情） */
+    const restoreHistory = async (item: any) => {
         try {
-            if (typeof item.history_messages === 'string') {
-                // 如果是字符串，尝试解析 JSON
-                parsedMessages = JSON.parse(item.history_messages) || [];
-            } else if (Array.isArray(item.history_messages)) {
-                // 如果已经是数组，直接使用
-                parsedMessages = item.history_messages;
+            // 先调用详情接口获取完整记录（包含 prompt）
+            const detailRes = await axios.get(`/api/playground/history/${item.id}`);
+            const fullItem = detailRes.data;
+
+            setPrompt(fullItem.prompt || "");
+            setQuery(fullItem.query || "");
+
+            // 处理 history_messages：可能是 JSON 字符串或数组
+            let parsedMessages: HistoryMessage[] = [];
+            try {
+                if (typeof fullItem.history_messages === 'string') {
+                    // 如果是字符串，尝试解析 JSON
+                    parsedMessages = JSON.parse(fullItem.history_messages) || [];
+                } else if (Array.isArray(fullItem.history_messages)) {
+                    // 如果已经是数组，直接使用
+                    parsedMessages = fullItem.history_messages;
+                }
+            } catch (e) {
+                // 解析失败时使用空数组
+                console.error("解析历史消息失败:", e);
+                parsedMessages = [];
             }
+            setHistoryMessages(parsedMessages);
+
+            // 如果有历史消息，自动展开消息列表
+            if (parsedMessages.length > 0) {
+                setShowHistory(true);
+            }
+
+            setOutput(fullItem.output || "");
+            setLatency(fullItem.latency_ms);
+            if (fullItem.model_config) {
+                // 简单处理：如果是历史记录恢复的，尝试匹配 Config
+                // 这里为了简化，我们可能无法完全恢复复杂的 model selection 状态
+                // 但可以使用 custom config 模式
+                setUseCustomConfig(true);
+            }
+            setShowRunHistory(false);
         } catch (e) {
-            // 解析失败时使用空数组
-            console.error("解析历史消息失败:", e);
-            parsedMessages = [];
+            console.error("获取历史记录详情失败:", e);
+            setError("加载历史记录失败");
         }
-        setHistoryMessages(parsedMessages);
-
-        // 如果有历史消息，自动展开消息列表
-        if (parsedMessages.length > 0) {
-            setShowHistory(true);
-        }
-
-        setOutput(item.output || "");
-        setLatency(item.latency_ms);
-        if (item.model_config) {
-            // 简单处理：如果是历史记录恢复的，尝试匹配 Config
-            // 这里为了简化，我们可能无法完全恢复复杂的 model selection 状态
-            // 但可以使用 custom config 模式
-            setUseCustomConfig(true);
-            // 注意: initialModelConfig prop 不会变，我们无法直接修改 ModelConfig state
-            // 除非我们添加一个 activeConfig state.
-            // 当前简化：仅恢复文本内容，模型配置暂不需要严格恢复 UI 选中状态，
-            // 因为 playground 调用主要依赖 state.
-        }
-        setShowRunHistory(false);
     };
 
     /** 删除历史记录 */
@@ -159,6 +164,8 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
      * 重置所有状态（恢复到初始打开状态）
      */
     const handleReset = () => {
+        // 将 prompt 恢复为项目初始提示词
+        setPrompt(initialPrompt);
         setQuery("");
         setOutput("");
         setError("");
@@ -169,6 +176,7 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
         setJsonError("");
         setInputMode("manual");
         setCopied(false);
+        setShowHistory(false);
     };
 
     /**
@@ -331,8 +339,12 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-            {/* 点击背景关闭 */}
-            <div className="absolute inset-0" onClick={onClose} />
+            {/* 点击背景关闭（带确认提示） */}
+            <div className="absolute inset-0" onClick={() => {
+                if (confirm("确定要退出 Playground 吗？未保存的内容将丢失。")) {
+                    onClose();
+                }
+            }} />
 
             <motion.div
                 initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -346,9 +358,19 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
                         <Cpu size={24} className="text-blue-400" />
                         模型输出测试 (Playground)
                     </h2>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
-                        <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {/* 历史记录按钮 */}
+                        <button
+                            onClick={() => setShowRunHistory(!showRunHistory)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium ${showRunHistory ? "bg-white/10 text-white" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
+                        >
+                            <History size={16} />
+                            {showRunHistory ? "隐藏记录" : "历史记录"}
+                        </button>
+                        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex-1 flex overflow-hidden">
@@ -669,10 +691,10 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    <div className="text-slate-300 line-clamp-2 mb-1">
+                                                    <div className="text-xs text-slate-300 line-clamp-2 mb-1">
                                                         <span className="text-purple-400">Q:</span> {run.query || "(空)"}
                                                     </div>
-                                                    <div className="text-slate-400 line-clamp-1">
+                                                    <div className="text-xs text-slate-400 line-clamp-1">
                                                         <span className="text-emerald-500">A:</span> {run.output}
                                                     </div>
                                                 </div>
@@ -690,16 +712,28 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
                     </AnimatePresence>
                 </div>
 
-                <div className="mt-6 flex justify-between items-center pt-4 border-t border-white/5">
-                    <button
-                        onClick={() => setShowRunHistory(!showRunHistory)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors text-sm font-medium ${showRunHistory ? "bg-white/10 text-white" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
-                    >
-                        <History size={16} />
-                        {showRunHistory ? "隐藏记录" : "历史记录"}
-                    </button>
+                <div className="mt-6 flex justify-end items-center pt-4 border-t border-white/5">
 
                     <div className="flex gap-3">
+                        {/* 清空会话按钮：只清空 Query 和历史消息，不动 Prompt */}
+                        <button
+                            onClick={() => {
+                                setQuery("");
+                                setHistoryMessages([]);
+                                setOutput("");
+                                setError("");
+                                setLatency(null);
+                                setRequestId(null);
+                                setJsonInput("");
+                                setJsonError("");
+                                setShowHistory(false);
+                            }}
+                            className="px-4 py-2.5 rounded-xl hover:bg-white/5 transition-colors text-slate-400 hover:text-amber-400 font-medium flex items-center gap-2"
+                            title="清空会话（保留 Prompt）"
+                        >
+                            <Trash2 size={16} />
+                            清空会话
+                        </button>
                         <button
                             onClick={handleReset}
                             className="px-4 py-2.5 rounded-xl hover:bg-white/5 transition-colors text-slate-400 hover:text-red-400 font-medium flex items-center gap-2"
