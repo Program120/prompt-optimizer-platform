@@ -136,39 +136,32 @@ class Verifier:
             return resp.text
 
     @staticmethod
-    def _call_llm(query: str, prompt: str, config: Dict[str, Any], client=None) -> str:
+    def _call_llm(
+        query: str, 
+        prompt: str, 
+        config: Dict[str, Any], 
+        client=None,
+        history_messages: Optional[list] = None
+    ) -> str:
         """
         调用 LLM
         
         :param query: 用户输入
         :param prompt: 提示词
         :param config: 模型配置
-        :param client: OpenAI 客户端（可选）
+        :param client: OpenAI 客户端（可选，当前未使用）
+        :param history_messages: 历史消息列表（可选），每条消息包含 role 和 content
         :return: LLM 响应内容
         """
-        # # 获取模型名称
-        # model_name: str = config.get("model_name", "gpt-3.5-turbo")
-        
-        # # 标准 OpenAI 客户端方式
-        # if client is None:
-        #     client = LLMFactory.create_client(config)
-            
-        # response = client.chat.completions.create(
-        #     model=model_name,
-        #     messages=[
-        #         {"role": "user", "content": prompt},
-        #         {"role": "user", "content": query}
-        #     ],
-        #     temperature=float(config.get("temperature", 0)),
-        #     max_tokens=int(config.get("max_tokens", 2000)),
-        #     timeout=int(config.get("timeout", 60))
-        # )
-        # return response.choices[0].message.content
-
-        return Verifier._call_llm_raw(query, prompt, config)
+        return Verifier._call_llm_raw(query, prompt, config, history_messages)
 
     @staticmethod
-    def _call_llm_raw(query: str, prompt: str, config: Dict[str, Any]) -> str:
+    def _call_llm_raw(
+        query: str, 
+        prompt: str, 
+        config: Dict[str, Any],
+        history_messages: Optional[list] = None
+    ) -> str:
         """
         通过原生 HTTP POST 请求调用 LLM API (OpenAI 兼容格式)
         
@@ -178,6 +171,7 @@ class Verifier:
         :param query: 用户输入
         :param prompt: 提示词
         :param config: 模型配置，包含 base_url, api_key, model_name 等
+        :param history_messages: 可选的历史消息列表，每条消息格式为 {"role": str, "content": str}
         :return: LLM 响应内容
         :raises ValueError: 当配置缺失或响应格式异常时抛出
         :raises requests.RequestException: 当网络请求失败时抛出
@@ -215,13 +209,58 @@ class Verifier:
             # 兼容 Azure OpenAI 格式
             headers["api-key"] = api_key
         
+        # 构建消息列表
+        # 顺序: system prompt -> 历史消息上下文(aggregated) -> 当前 query
+        messages: list = [{"role": "system", "content": prompt}]
+        
+        # 1. 整合完整的会话时间线
+        full_timeline = []
+        if history_messages:
+            full_timeline.extend(history_messages)
+        if query and query.strip():
+            full_timeline.append({"role": "user", "content": query})
+            
+        # 2. 如果有会话内容，拆分为上下文和当前消息
+        if full_timeline:
+            # 取出最后一条作为"当前待回复的 Query" (无论其角色是什么，但通常应该是 user)
+            current_msg = full_timeline[-1]
+            history_msgs = full_timeline[:-1]
+            
+            # 3. 构建历史上下文
+            if history_msgs:
+                history_context_parts: list = []
+                for msg_data in history_msgs:
+                    role = msg_data.get("role")
+                    content = msg_data.get("content", "")
+                    # 模拟简单的格式化，或者复用 Msg 结构逻辑
+                    if role == "user":
+                        history_context_parts.append(f"[用户]：{content}")
+                    elif role == "assistant":
+                        history_context_parts.append(f"[模型回复]：{content}")
+                
+                if history_context_parts:
+                    history_context_str = "\n".join(history_context_parts)
+                    # 作为一条 assistant 消息插入，提供上下文
+                    context_msg = {
+                        "role": "assistant",
+                        "content": f"【历史对话上下文】\n{history_context_str}"
+                    }
+                    messages.append(context_msg)
+            
+            # 4. 追加最后一条消息
+            # 按照要求添加标识头
+            current_content = current_msg.get("content", "")
+            if current_msg.get("role") == "user":
+                 final_content = f"【当前用户请求】\n{current_content}"
+            else:
+                 final_content = current_content
+                 
+            messages.append({"role": current_msg.get("role", "user"), "content": final_content})
+        
         # 构建请求体
         payload: Dict[str, Any] = {
             "model": model_name,
-            "messages": [
-                {"role": "user", "content": prompt},
-                {"role": "user", "content": query}
-            ],
+            "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens
         }

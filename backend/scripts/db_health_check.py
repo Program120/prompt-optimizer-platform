@@ -18,7 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.db.database import init_db, get_db_session, DATA_DIR
 from app.models import (
     Project, ProjectIteration, Task, TaskResult, TaskError,
-    GlobalModel, ModelConfig, AutoIterateStatus, IntentIntervention
+    GlobalModel, ModelConfig, AutoIterateStatus, IntentIntervention,
+    PlaygroundHistory
 )
 
 

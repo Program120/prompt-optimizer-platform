@@ -60,7 +60,8 @@ def init_db() -> None:
     # 导入所有模型以确保它们被注册
     from app.models import (
         Project, ProjectIteration, Task, TaskResult, TaskError,
-        GlobalModel, ModelConfig, AutoIterateStatus
+        GlobalModel, ModelConfig, AutoIterateStatus, IntentIntervention,
+        PlaygroundHistory
     )
     
     # 创建所有表

@@ -59,6 +59,10 @@ class InterceptHandler(logging.Handler):
             frame = frame.f_back
             depth += 1
 
+        # Filter out noisy Uvicorn access logs for polling endpoints
+        if level == "INFO" and "GET /tasks/" in record.getMessage() and "results?page=" in record.getMessage():
+            return
+
         loguru_logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 # 配置标准 logging 使用 Loguru

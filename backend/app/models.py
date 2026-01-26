@@ -605,3 +605,30 @@ class IntentIntervention(SQLModel, table=True):
             "updated_at": self.updated_at
         }
 
+
+class PlaygroundHistory(SQLModel, table=True):
+    """
+    Playground 测试历史记录表
+    """
+    __tablename__ = "playground_history"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    prompt: str = Field(default="", sa_column=Column(Text))
+    query: str = Field(default="", sa_column=Column(Text))
+    history_messages: str = Field(default="[]", sa_column=Column(Text))  # JSON
+    model_config_data: str = Field(default="{}", sa_column=Column(Text)) # JSON
+    output: str = Field(default="", sa_column=Column(Text))
+    latency_ms: float = Field(default=0.0)
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "prompt": self.prompt,
+            "query": self.query,
+            "history_messages": json.loads(self.history_messages) if self.history_messages else [],
+            "model_config": json.loads(self.model_config_data) if self.model_config_data else {},
+            "output": self.output,
+            "latency_ms": self.latency_ms,
+            "created_at": self.created_at
+        }
