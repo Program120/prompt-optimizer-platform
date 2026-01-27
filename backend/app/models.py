@@ -612,16 +612,31 @@ class PlaygroundHistory(SQLModel, table=True):
     """
     __tablename__ = "playground_history"
 
+    # 主键 ID
     id: Optional[int] = Field(default=None, primary_key=True)
+    # 提示词内容
     prompt: str = Field(default="", sa_column=Column(Text))
+    # 用户查询
     query: str = Field(default="", sa_column=Column(Text))
-    history_messages: str = Field(default="[]", sa_column=Column(Text))  # JSON
-    model_config_data: str = Field(default="{}", sa_column=Column(Text)) # JSON
+    # 历史消息（JSON 格式）
+    history_messages: str = Field(default="[]", sa_column=Column(Text))
+    # 模型配置（JSON 格式）
+    model_config_data: str = Field(default="{}", sa_column=Column(Text))
+    # 模型输出
     output: str = Field(default="", sa_column=Column(Text))
+    # 延迟时间（毫秒）
     latency_ms: float = Field(default=0.0)
+    # 是否收藏
+    is_favorite: bool = Field(default=False)
+    # 创建时间
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
     def to_dict(self) -> Dict[str, Any]:
+        """
+        转换为字典格式
+        
+        :return: 包含所有字段的字典
+        """
         return {
             "id": self.id,
             "prompt": self.prompt,
@@ -630,5 +645,6 @@ class PlaygroundHistory(SQLModel, table=True):
             "model_config": json.loads(self.model_config_data) if self.model_config_data else {},
             "output": self.output,
             "latency_ms": self.latency_ms,
+            "is_favorite": self.is_favorite,
             "created_at": self.created_at
         }

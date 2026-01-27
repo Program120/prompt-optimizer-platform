@@ -12,7 +12,7 @@ const API_BASE = "/api";
 interface IntentInterventionTabProps {
     project: any;
     fileId?: string;
-    saveReason: (query: string, reason: string, target: string, id?: number) => Promise<void>;
+    saveReason: (query: string, reason: string, target: string, id?: number) => Promise<boolean>;
 }
 
 /**

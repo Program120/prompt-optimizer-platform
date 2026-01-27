@@ -137,13 +137,44 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import JSONResponse
 
+def _convert_bytes_to_str(obj):
+    """
+    递归遍历对象，将 bytes 类型转换为字符串
+    
+    :param obj: 需要转换的对象（可以是 dict, list, bytes 或其他类型）
+    :return: 转换后的对象
+    """
+    if isinstance(obj, bytes):
+        try:
+            return obj.decode("utf-8")
+        except UnicodeDecodeError:
+            return obj.decode("latin-1")
+    elif isinstance(obj, dict):
+        return {k: _convert_bytes_to_str(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_bytes_to_str(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_convert_bytes_to_str(item) for item in obj)
+    return obj
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     """处理请求参数验证异常"""
     loguru_logger.error(f"Validation error: {exc.errors()} - Body: {exc.body}")
+    # 将 errors 中的 bytes 转换为字符串，避免 JSON 序列化失败
+    safe_errors = _convert_bytes_to_str(exc.errors())
+    # 同样处理 body 字段
+    safe_body: str = ""
+    if isinstance(exc.body, bytes):
+        try:
+            safe_body = exc.body.decode("utf-8")
+        except UnicodeDecodeError:
+            safe_body = exc.body.decode("latin-1")
+    else:
+        safe_body = str(exc.body)
     return JSONResponse(
         status_code=400,
-        content={"detail": exc.errors(), "body": str(exc.body)},
+        content={"detail": safe_errors, "body": safe_body},
     )
 
 @app.exception_handler(StarletteHTTPException)

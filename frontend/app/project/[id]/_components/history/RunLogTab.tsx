@@ -10,7 +10,7 @@ interface RunLogTabProps {
     totalCount?: number; // From taskStatus
     currentIndex?: number; // 当前处理进度，用于实时刷新
     reasons: Record<string, any>;
-    saveReason: (query: string, reason: string, target: string) => Promise<void>;
+    saveReason: (query: string, reason: string, target: string) => Promise<boolean>;
     onSelectLog: (log: any) => void;
 }
 
@@ -26,6 +26,8 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
     const [searchQuery, setSearchQuery] = useState("");
     const [filterStatus, setFilterStatus] = useState<'all' | 'success' | 'failed'>('all');
     const [editingReason, setEditingReason] = useState<{ query: string, value: string, target: string } | null>(null);
+    // 保存反馈状态
+    const [saveFeedback, setSaveFeedback] = useState<{ query: string, success: boolean } | null>(null);
 
     // Test State
     const [testingQuery, setTestingQuery] = useState<string | null>(null);
@@ -301,8 +303,9 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
 
             {results.map((r: any, idx: number) => {
                 const reasonItem = reasons[r.query];
-                const currentReason = reasonItem?.reason || r.reason;
-                const currentTarget = reasonItem?.target || r.target;
+                // 使用 ?? 而非 ||，确保空字符串 "" 也能正确显示（|| 会将空字符串视为 falsy）
+                const currentReason = reasonItem?.reason ?? r.reason;
+                const currentTarget = reasonItem?.target ?? r.target;
                 const isEditing = editingReason?.query === r.query;
 
                 // 直接使用后端返回的 is_correct（后端已使用最新的意图修正计算）
@@ -367,8 +370,12 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                                     />
                                     <button
                                         onClick={async () => {
-                                            await saveReason(r.query, editingReason.value, editingReason.target);
+                                            const success = await saveReason(r.query, editingReason.value, editingReason.target);
                                             setEditingReason(null);
+                                            // 显示保存反馈
+                                            setSaveFeedback({ query: r.query, success });
+                                            // 2秒后清除反馈
+                                            setTimeout(() => setSaveFeedback(null), 2000);
                                         }}
                                         className="bg-emerald-600 hover:bg-emerald-500 px-2 py-1 rounded text-xs"
                                     >
@@ -389,9 +396,15 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
                                         setEditingReason({ query: r.query, value: currentReason || "", target: currentTarget });
                                     }}
                                 >
-                                    <div className="text-xs text-amber-500/80 w-full">
+                                    <div className="text-xs text-amber-500/80 w-full flex items-center gap-2">
                                         <span className="font-medium mr-1">原因:</span>
                                         {currentReason || "点击添加原因..."}
+                                        {/* 保存反馈提示 */}
+                                        {saveFeedback && saveFeedback.query === r.query && (
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${saveFeedback.success ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"}`}>
+                                                {saveFeedback.success ? "✓ 已保存" : "✗ 保存失败"}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             )}

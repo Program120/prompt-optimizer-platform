@@ -270,10 +270,9 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         setIsSaving(true);
 
         if (projectId) {
-            // 保存到项目
-            const formData: FormData = new FormData();
+            // 保存到项目（使用 JSON body 格式以匹配后端 ProjectUpdateRequest）
 
-            // Process extra_body and default_headers
+            // 处理 extra_body 和 default_headers 字段
             const processConfig = (cfg: any) => {
                 const newCfg = { ...cfg };
                 if (newCfg.extra_body) {
@@ -301,18 +300,23 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 const finalConfig = processConfig(config);
                 const finalOptConfig = processConfig(optConfig);
 
-                formData.append("model_cfg", JSON.stringify(finalConfig));
-                formData.append("optimization_model_config", JSON.stringify(finalOptConfig));
-                formData.append("optimization_prompt", optPrompt);
-                formData.append("current_prompt", "");
-
                 // 获取当前项目的 prompt
                 const projectRes = await axios.get(`${API_BASE}/projects/${projectId}`);
-                formData.set("current_prompt", projectRes.data.current_prompt);
+                const currentPrompt: string = projectRes.data.current_prompt || "";
 
-                await axios.put(`${API_BASE}/projects/${projectId}`, formData);
+                // 构建 JSON 请求体（匹配后端 ProjectUpdateRequest 模型）
+                const requestBody = {
+                    current_prompt: currentPrompt,
+                    model_cfg: finalConfig,
+                    optimization_model_config: finalOptConfig,
+                    optimization_prompt: optPrompt
+                };
+
+                await axios.put(`${API_BASE}/projects/${projectId}`, requestBody, {
+                    headers: { "Content-Type": "application/json" }
+                });
                 success("项目配置已保存");
-                if (onSave) onSave(); // Call callback
+                if (onSave) onSave();
                 onClose();
             } catch (e: any) {
                 error(e.message || "保存失败");

@@ -146,13 +146,23 @@ async def test_prompt_output(request: TestPromptRequest) -> Dict[str, Any]:
 
 
 @router.get("/history")
-async def get_playground_history(limit: int = 50):
+async def get_playground_history(
+    limit: int = 50,
+    keyword: Optional[str] = Query(None, description="模糊搜索关键词（匹配 query）"),
+    turn_type: Optional[str] = Query(None, description="会话类型筛选：multi（多轮）, single（单轮）, 空为全部"),
+    favorite_only: Optional[bool] = Query(None, description="是否只显示收藏记录")
+):
     """
     获取最近的测试记录（列表模式，不包含Prompt等大字段）
+    
+    :param limit: 返回记录数量限制
+    :param keyword: 模糊搜索关键词（匹配 query 字段）
+    :param turn_type: 会话类型筛选，multi=多轮，single=单轮
+    :param favorite_only: 是否只显示收藏记录
+    :return: 历史记录列表
     """
     with get_db_session() as session:
-        # 修正：使用 defer 在 session 关闭后会导致 lazy load 失败 (DetachedInstanceError)
-        # 改为显式查询需要的字段
+        # 构建基础查询
         statement = (
             select(
                 PlaygroundHistory.id,
@@ -160,11 +170,45 @@ async def get_playground_history(limit: int = 50):
                 PlaygroundHistory.output,
                 PlaygroundHistory.created_at,
                 PlaygroundHistory.latency_ms,
-                PlaygroundHistory.history_messages 
+                PlaygroundHistory.history_messages,
+                PlaygroundHistory.is_favorite
             )
-            .order_by(PlaygroundHistory.created_at.desc())
-            .limit(limit)
         )
+        
+        # 添加关键词模糊搜索条件
+        if keyword and keyword.strip():
+            statement = statement.where(
+                PlaygroundHistory.query.contains(keyword.strip())
+            )
+        
+        # 添加收藏筛选条件
+        if favorite_only:
+            statement = statement.where(PlaygroundHistory.is_favorite == True)
+        
+        # 添加会话类型筛选条件
+        if turn_type == "multi":
+            # 多轮：history_messages 不为空数组（长度大于2，因为空数组是 "[]"）
+            from sqlalchemy import func, and_, or_
+            statement = statement.where(
+                and_(
+                    PlaygroundHistory.history_messages.isnot(None),
+                    PlaygroundHistory.history_messages != "[]",
+                    PlaygroundHistory.history_messages != "",
+                    func.length(PlaygroundHistory.history_messages) > 2
+                )
+            )
+        elif turn_type == "single":
+            # 单轮：history_messages 为空数组、空字符串或 NULL
+            from sqlalchemy import or_
+            statement = statement.where(
+                or_(
+                    PlaygroundHistory.history_messages.is_(None),
+                    PlaygroundHistory.history_messages == "[]",
+                    PlaygroundHistory.history_messages == ""
+                )
+            )
+        
+        statement = statement.order_by(PlaygroundHistory.created_at.desc()).limit(limit)
         results = session.exec(statement).all()
         
         # 转换为字典列表返回
@@ -176,10 +220,12 @@ async def get_playground_history(limit: int = 50):
                 "output": row.output,
                 "created_at": row.created_at,
                 "latency_ms": row.latency_ms,
-                "history_messages": row.history_messages
+                "history_messages": row.history_messages,
+                "is_favorite": row.is_favorite
             })
             
         return history_list
+
 
 @router.get("/history/{record_id}")
 async def get_history_detail(record_id: int):
@@ -219,6 +265,33 @@ async def clear_playground_history():
         session.commit()
         return {"success": True}
 
+
+@router.patch("/history/{history_id}/favorite")
+async def toggle_favorite(history_id: int) -> Dict[str, Any]:
+    """
+    切换历史记录的收藏状态
+    
+    :param history_id: 历史记录 ID
+    :return: 包含更新后的收藏状态
+    """
+    with get_db_session() as session:
+        record: Optional[PlaygroundHistory] = session.get(PlaygroundHistory, history_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="记录不存在")
+        
+        # 切换收藏状态
+        record.is_favorite = not record.is_favorite
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+        
+        logger.info(f"切换历史记录 {history_id} 的收藏状态为: {record.is_favorite}")
+        
+        return {
+            "success": True,
+            "id": history_id,
+            "is_favorite": record.is_favorite
+        }
 
 class FixJsonRequest(BaseModel):
     text: str

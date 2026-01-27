@@ -4,7 +4,7 @@
  */
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, Clock, Cpu, ChevronDown, Copy, Check, Plus, Trash2, MessageSquare, FileJson, RefreshCcw, History, RotateCcw, Wand2 } from "lucide-react";
+import { X, Play, Clock, Cpu, ChevronDown, Copy, Check, Plus, Trash2, MessageSquare, FileJson, RefreshCcw, History, RotateCcw, Wand2, Search, Star } from "lucide-react";
 import axios from "axios";
 
 /**
@@ -65,22 +65,61 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
     // Playground 运行历史
     const [runHistory, setRunHistory] = useState<any[]>([]);
     const [showRunHistory, setShowRunHistory] = useState(false);
+    // 搜索和筛选状态
+    const [searchKeyword, setSearchKeyword] = useState("");
+    const [turnTypeFilter, setTurnTypeFilter] = useState<"" | "multi" | "single">("");
+    // 收藏筛选状态
+    const [favoriteOnly, setFavoriteOnly] = useState<boolean>(false);
 
-    /** 获取运行历史 */
-    const fetchRunHistory = () => {
-        axios.get("/api/playground/history")
+    // 脚脏状态追踪：用于判断是否有未保存的修改
+    const [isDirty, setIsDirty] = useState(false);
+    const [hasRun, setHasRun] = useState(false);
+    // 自定义确认对话框状态
+    const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+
+    /** 获取运行历史（支持搜索和筛选） */
+    const fetchRunHistory = (keyword?: string, turnType?: string, onlyFavorite?: boolean) => {
+        const params = new URLSearchParams();
+        if (keyword) params.append("keyword", keyword);
+        if (turnType) params.append("turn_type", turnType);
+        if (onlyFavorite) params.append("favorite_only", "true");
+        const queryStr = params.toString() ? `?${params.toString()}` : "";
+        axios.get(`/api/playground/history${queryStr}`)
             .then(res => setRunHistory(res.data || []))
             .catch(console.error);
     };
 
-    /** 恢复历史记录（异步获取完整详情） */
+    /**
+     * 切换收藏状态
+     * @param e - 鼠标事件
+     * @param id - 历史记录 ID
+     */
+    const toggleFavorite = (e: React.MouseEvent, id: number) => {
+        e.stopPropagation();
+        axios.patch(`/api/playground/history/${id}/favorite`)
+            .then(res => {
+                if (res.data.success) {
+                    // 更新本地状态
+                    setRunHistory(prev => prev.map(item =>
+                        item.id === id ? { ...item, is_favorite: res.data.is_favorite } : item
+                    ));
+                }
+            })
+            .catch(console.error);
+    };
+
+    /** 
+     * 恢复历史记录（异步获取完整详情）
+     * 注意：加载时使用当前项目的 prompt，而非历史记录中保存的 prompt
+     */
     const restoreHistory = async (item: any) => {
         try {
             // 先调用详情接口获取完整记录（包含 prompt）
             const detailRes = await axios.get(`/api/playground/history/${item.id}`);
             const fullItem = detailRes.data;
 
-            setPrompt(fullItem.prompt || "");
+            // 使用当前项目的 prompt，而非历史记录中的 prompt
+            setPrompt(initialPrompt);
             setQuery(fullItem.query || "");
 
             // 处理 history_messages：可能是 JSON 字符串或数组
@@ -328,6 +367,9 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
             setOutput(res.data.output);
             setLatency(res.data.latency_ms);
             setRequestId(res.data.request_id);
+            // 标记已执行测试，重置脏状态
+            setHasRun(true);
+            setIsDirty(false);
             fetchRunHistory(); // 刷新历史
         } catch (e: any) {
             console.error(e);
@@ -339,12 +381,51 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-            {/* 点击背景关闭（带确认提示） */}
+            {/* 点击背景关闭（智能判断是否需要确认） */}
             <div className="absolute inset-0" onClick={() => {
-                if (confirm("确定要退出 Playground 吗？未保存的内容将丢失。")) {
+                // 只有在有未保存修改且未执行测试时才显示确认
+                if (isDirty && !hasRun) {
+                    setShowConfirmDialog(true);
+                } else {
                     onClose();
                 }
             }} />
+
+            {/* 自定义确认对话框 */}
+            <AnimatePresence>
+                {showConfirmDialog && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="fixed inset-0 z-[200] flex items-center justify-center"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="absolute inset-0 bg-black/50" onClick={() => setShowConfirmDialog(false)} />
+                        <div className="relative bg-slate-900 border border-white/10 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+                            <h3 className="text-lg font-semibold text-white mb-2">确认退出</h3>
+                            <p className="text-slate-400 text-sm mb-6">您有未执行的修改，确定要退出 Playground 吗？</p>
+                            <div className="flex gap-3 justify-end">
+                                <button
+                                    onClick={() => setShowConfirmDialog(false)}
+                                    className="px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors text-sm font-medium"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowConfirmDialog(false);
+                                        onClose();
+                                    }}
+                                    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white transition-colors text-sm font-medium"
+                                >
+                                    确认退出
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <motion.div
                 initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -564,7 +645,7 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
                                 <label className="block text-sm font-medium text-slate-400 mb-2">System Prompt (提示词)</label>
                                 <textarea
                                     value={prompt}
-                                    onChange={e => setPrompt(e.target.value)}
+                                    onChange={e => { setPrompt(e.target.value); setIsDirty(true); }}
                                     className="flex-1 w-full bg-white/5 border border-white/10 rounded-xl p-4 focus:outline-none focus:border-blue-500 transition-colors resize-none font-mono text-sm leading-relaxed"
                                     placeholder="输入系统提示词..."
                                 />
@@ -574,7 +655,7 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
                                     <label className="block text-sm font-medium text-slate-400 mb-2">User Query (用户输入)</label>
                                     <textarea
                                         value={query}
-                                        onChange={e => setQuery(e.target.value)}
+                                        onChange={e => { setQuery(e.target.value); setIsDirty(true); }}
                                         className="w-full h-24 bg-white/5 border border-white/10 rounded-xl p-4 focus:outline-none focus:border-blue-500 transition-colors resize-none font-mono text-sm"
                                         placeholder="输入测试 Query..."
                                     />
@@ -629,87 +710,150 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
                         )}
                     </div>
 
-                    {/* History Sidebar Toggle */}
-                    <AnimatePresence>
-                        {showRunHistory && (
-                            <motion.div
-                                initial={{ width: 0, opacity: 0 }}
-                                animate={{ width: 300, opacity: 1 }}
-                                exit={{ width: 0, opacity: 0 }}
-                                className="border-l border-white/10 bg-black/20 overflow-hidden flex flex-col"
+                    {/* History Sidebar - 使用 CSS transition 优化性能 */}
+                    <div
+                        className={`border-l border-white/10 bg-black/20 overflow-hidden flex flex-col transition-all duration-200 ease-out ${showRunHistory ? 'w-[300px] opacity-100' : 'w-0 opacity-0'}`}
+                    >
+                        <div className="p-4 border-b border-white/10 flex justify-between items-center">
+                            <h3 className="font-medium text-slate-300 flex items-center gap-2 text-sm">
+                                <History size={14} />
+                                测试记录
+                            </h3>
+                            <button
+                                onClick={clearRunHistory}
+                                className="p-1 hover:bg-white/10 rounded text-slate-500 hover:text-red-400"
+                                title="清空所有记录"
                             >
-                                <div className="p-4 border-b border-white/10 flex justify-between items-center">
-                                    <h3 className="font-medium text-slate-300 flex items-center gap-2">
-                                        <History size={16} />
-                                        测试记录
-                                    </h3>
-                                    <button
-                                        onClick={clearRunHistory}
-                                        className="p-1 hover:bg-white/10 rounded text-slate-500 hover:text-red-400"
-                                        title="清空所有记录"
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
-                                    <div className="space-y-4">
-                                        {runHistory.map((run) => {
-                                            // 解析历史消息以判断是否多轮
-                                            let isMultiTurn = false;
-                                            try {
-                                                const msgs = typeof run.history_messages === 'string'
-                                                    ? JSON.parse(run.history_messages)
-                                                    : run.history_messages;
-                                                if (Array.isArray(msgs) && msgs.length > 0) {
-                                                    isMultiTurn = true;
-                                                }
-                                            } catch (e) { }
+                                <Trash2 size={14} />
+                            </button>
+                        </div>
+                        {/* 搜索和筛选区域 */}
+                        <div className="p-2 border-b border-white/10 space-y-2">
+                            {/* 搜索框 */}
+                            <div className="relative">
+                                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                                <input
+                                    type="text"
+                                    placeholder="搜索 Query..."
+                                    value={searchKeyword}
+                                    onChange={(e) => setSearchKeyword(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                            fetchRunHistory(searchKeyword, turnTypeFilter, favoriteOnly);
+                                        }
+                                    }}
+                                    className="w-full bg-black/30 border border-white/10 rounded-lg pl-7 pr-2 py-1.5 text-xs focus:outline-none focus:border-blue-500 text-slate-300 placeholder-slate-600"
+                                />
+                            </div>
+                            {/* 类型筛选标签 */}
+                            <div className="flex gap-1 flex-wrap">
+                                <button
+                                    onClick={() => {
+                                        setTurnTypeFilter("");
+                                        fetchRunHistory(searchKeyword, "", favoriteOnly);
+                                    }}
+                                    className={`px-2 py-0.5 rounded text-[10px] transition-colors ${turnTypeFilter === "" ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300"}`}
+                                >
+                                    全部
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setTurnTypeFilter("single");
+                                        fetchRunHistory(searchKeyword, "single", favoriteOnly);
+                                    }}
+                                    className={`px-2 py-0.5 rounded text-[10px] transition-colors ${turnTypeFilter === "single" ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "text-slate-500 hover:text-slate-300"}`}
+                                >
+                                    单轮
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setTurnTypeFilter("multi");
+                                        fetchRunHistory(searchKeyword, "multi", favoriteOnly);
+                                    }}
+                                    className={`px-2 py-0.5 rounded text-[10px] transition-colors ${turnTypeFilter === "multi" ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "text-slate-500 hover:text-slate-300"}`}
+                                >
+                                    多轮
+                                </button>
+                                {/* 收藏筛选按钮 */}
+                                <button
+                                    onClick={() => {
+                                        const newVal = !favoriteOnly;
+                                        setFavoriteOnly(newVal);
+                                        fetchRunHistory(searchKeyword, turnTypeFilter, newVal);
+                                    }}
+                                    className={`px-2 py-0.5 rounded text-[10px] transition-colors flex items-center gap-1 ${favoriteOnly ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "text-slate-500 hover:text-slate-300"}`}
+                                >
+                                    <Star size={10} className={favoriteOnly ? "fill-current" : ""} />
+                                    收藏
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
+                            <div className="space-y-4">
+                                {runHistory.map((run) => {
+                                    // 解析历史消息以判断是否多轮
+                                    let isMultiTurn = false;
+                                    try {
+                                        const msgs = typeof run.history_messages === 'string'
+                                            ? JSON.parse(run.history_messages)
+                                            : run.history_messages;
+                                        if (Array.isArray(msgs) && msgs.length > 0) {
+                                            isMultiTurn = true;
+                                        }
+                                    } catch (e) { }
 
-                                            return (
-                                                <div
-                                                    key={run.id}
-                                                    className="bg-black/40 border border-white/5 rounded-lg p-3 cursor-pointer hover:bg-white/5 transition-colors group relative"
-                                                    onClick={() => restoreHistory(run)}
-                                                >
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <div className="text-[10px] text-slate-500 font-mono">
-                                                            {new Date(run.created_at).toLocaleTimeString()}
-                                                        </div>
-                                                        <div className="flex gap-1">
-                                                            {/* 轮次标签 */}
-                                                            <span className={`text-[9px] px-1 rounded border ${isMultiTurn
-                                                                ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
-                                                                : "bg-blue-500/10 border-blue-500/30 text-blue-400"
-                                                                }`}>
-                                                                {isMultiTurn ? "多轮" : "单轮"}
-                                                            </span>
-                                                            <button
-                                                                onClick={(e) => deleteRunHistory(e, run.id)}
-                                                                className="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                            >
-                                                                <Trash2 size={12} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-xs text-slate-300 line-clamp-2 mb-1">
-                                                        <span className="text-purple-400">Q:</span> {run.query || "(空)"}
-                                                    </div>
-                                                    <div className="text-xs text-slate-400 line-clamp-1">
-                                                        <span className="text-emerald-500">A:</span> {run.output}
-                                                    </div>
+                                    return (
+                                        <div
+                                            key={run.id}
+                                            className="bg-black/40 border border-white/5 rounded-lg p-3 cursor-pointer hover:bg-white/5 transition-colors group relative"
+                                            onClick={() => restoreHistory(run)}
+                                        >
+                                            <div className="flex justify-between items-start mb-1">
+                                                <div className="text-[10px] text-slate-500 font-mono">
+                                                    {new Date(run.created_at).toLocaleTimeString()}
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                    {runHistory.length === 0 && (
-                                        <div className="text-center py-8 text-slate-600 text-xs">
-                                            暂无测试记录
+                                                <div className="flex gap-1 items-center">
+                                                    {/* 轮次标签 */}
+                                                    <span className={`text-[9px] px-1 rounded border ${isMultiTurn
+                                                        ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
+                                                        : "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                                                        }`}>
+                                                        {isMultiTurn ? "多轮" : "单轮"}
+                                                    </span>
+                                                    {/* 收藏按钮 */}
+                                                    <button
+                                                        onClick={(e) => toggleFavorite(e, run.id)}
+                                                        className={`transition-colors ${run.is_favorite ? "text-amber-400" : "text-slate-600 hover:text-amber-400 opacity-0 group-hover:opacity-100"}`}
+                                                        title={run.is_favorite ? "取消收藏" : "收藏"}
+                                                    >
+                                                        <Star size={12} className={run.is_favorite ? "fill-current" : ""} />
+                                                    </button>
+                                                    {/* 删除按钮 */}
+                                                    <button
+                                                        onClick={(e) => deleteRunHistory(e, run.id)}
+                                                        className="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="text-xs text-slate-300 line-clamp-2 mb-1">
+                                                <span className="text-purple-400">Q:</span> {run.query || "(空)"}
+                                            </div>
+                                            <div className="text-xs text-slate-400 line-clamp-1">
+                                                <span className="text-emerald-500">A:</span> {run.output}
+                                            </div>
                                         </div>
-                                    )}
+                                    );
+                                })}
+                            </div>
+                            {runHistory.length === 0 && (
+                                <div className="text-center py-8 text-slate-600 text-xs">
+                                    暂无测试记录
                                 </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 <div className="mt-6 flex justify-end items-center pt-4 border-t border-white/5">
@@ -758,7 +902,7 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
                         </button>
                     </div>
                 </div>
-            </motion.div>
-        </div>
+            </motion.div >
+        </div >
     );
 }

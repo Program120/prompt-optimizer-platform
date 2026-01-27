@@ -123,3 +123,14 @@ def _migrate_database() -> None:
                     logger.info("[迁移] model_config 表添加 do_sample 字段成功")
                 except Exception as e:
                     logger.warning(f"[迁移] model_config 表添加 do_sample 字段失败（可能已存在）: {e}")
+        
+        # 迁移 playground_history 表：添加 is_favorite 字段
+        if "playground_history" in inspector.get_table_names():
+            columns: list = [col["name"] for col in inspector.get_columns("playground_history")]
+            if "is_favorite" not in columns:
+                try:
+                    session.execute(text("ALTER TABLE playground_history ADD COLUMN is_favorite INTEGER DEFAULT 0"))
+                    session.commit()
+                    logger.info("[迁移] playground_history 表添加 is_favorite 字段成功")
+                except Exception as e:
+                    logger.warning(f"[迁移] playground_history 表添加 is_favorite 字段失败（可能已存在）: {e}")

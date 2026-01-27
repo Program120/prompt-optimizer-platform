@@ -83,8 +83,9 @@ export default function HistoryPanel({
     }, [project?.id, reasonsUpdateCount, fileId]);
 
     // Save Reason Handler - 使用 useCallback 保持引用稳定，避免子组件不必要的重渲染
-    const saveReason = useCallback(async (query: string, reason: string, target: string, id?: number) => {
-        if (!project?.id) return;
+    // 返回 boolean 表示保存成功/失败
+    const saveReason = useCallback(async (query: string, reason: string, target: string, id?: number): Promise<boolean> => {
+        if (!project?.id) return false;
         try {
             const res = await fetch(`${API_BASE}/projects/${project.id}/interventions`, {
                 method: "POST",
@@ -95,12 +96,14 @@ export default function HistoryPanel({
             });
             if (res.ok) {
                 await fetchReasons();
+                return true;
             } else {
-                alert("保存原因失败");
+                console.error("保存原因失败:", await res.text());
+                return false;
             }
         } catch (e) {
-            console.error(e);
-            alert("保存原因出错");
+            console.error("保存原因出错:", e);
+            return false;
         }
     }, [project?.id, fetchReasons, fileId]);
 
