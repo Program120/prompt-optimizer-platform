@@ -48,39 +48,43 @@ export default function Home() {
       const res = await axios.post(`${API_BASE}/projects`, formData);
       const createdProject = res.data;
 
-      // 如果是拷贝项目，则需要把源项目的配置更新过去
+      // 如果是拷贝项目，则需要把源项目的配置更新过去（使用 JSON body 格式）
       if (copySourceProject && createdProject.id) {
-        const updateData = new FormData();
-        updateData.append("current_prompt", newProject.prompt || createdProject.current_prompt);
+        // 构建 JSON 请求体（匹配后端 ProjectUpdateRequest 模型）
+        const updateData: Record<string, any> = {
+          current_prompt: newProject.prompt || createdProject.current_prompt
+        };
 
         // 1. 基础配置映射
         if (copySourceProject.config) {
           const cfg = copySourceProject.config;
-          if (cfg.query_col) updateData.append("query_col", cfg.query_col);
-          if (cfg.target_col) updateData.append("target_col", cfg.target_col);
-          if (cfg.reason_col) updateData.append("reason_col", cfg.reason_col);
-          if (cfg.extract_field) updateData.append("extract_field", cfg.extract_field);
-          if (cfg.validation_limit) updateData.append("validation_limit", cfg.validation_limit);
-          if (cfg.auto_iterate_config) updateData.append("auto_iterate_config", JSON.stringify(cfg.auto_iterate_config));
-          // file_info 通常不拷贝，因为新文件需要重新上传，或者看需求。这里暂不拷贝文件路径，只拷贝配置。
+          if (cfg.query_col) updateData.query_col = cfg.query_col;
+          if (cfg.target_col) updateData.target_col = cfg.target_col;
+          if (cfg.reason_col) updateData.reason_col = cfg.reason_col;
+          if (cfg.extract_field) updateData.extract_field = cfg.extract_field;
+          if (cfg.validation_limit) updateData.validation_limit = cfg.validation_limit;
+          if (cfg.auto_iterate_config) updateData.auto_iterate_config = cfg.auto_iterate_config;
+          // file_info 通常不拷贝，因为新文件需要重新上传
         }
 
         // 2. 模型配置
         if (copySourceProject.model_config) {
-          updateData.append("model_cfg", JSON.stringify(copySourceProject.model_config));
+          updateData.model_cfg = copySourceProject.model_config;
         }
 
         // 3. 优化模型配置
         if (copySourceProject.optimization_model_config) {
-          updateData.append("optimization_model_config", JSON.stringify(copySourceProject.optimization_model_config));
+          updateData.optimization_model_config = copySourceProject.optimization_model_config;
         }
 
         // 4. 优化提示词
         if (copySourceProject.optimization_prompt) {
-          updateData.append("optimization_prompt", copySourceProject.optimization_prompt);
+          updateData.optimization_prompt = copySourceProject.optimization_prompt;
         }
 
-        await axios.put(`${API_BASE}/projects/${createdProject.id}`, updateData);
+        await axios.put(`${API_BASE}/projects/${createdProject.id}`, updateData, {
+          headers: { "Content-Type": "application/json" }
+        });
       }
 
       setNewProject({ name: "", prompt: "" });
