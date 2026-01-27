@@ -240,6 +240,7 @@ export default function HistoryPanel({
                         project={project}
                         fileId={fileId}
                         saveReason={saveReason}
+                        reasonsUpdateCount={reasonsUpdateCount}
                     />
                 </div>
             </div>

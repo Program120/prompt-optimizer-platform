@@ -13,6 +13,7 @@ interface IntentInterventionTabProps {
     project: any;
     fileId?: string;
     saveReason: (query: string, reason: string, target: string, id?: number) => Promise<boolean>;
+    reasonsUpdateCount?: number;  // 用于监听外部数据变更（如导入），触发列表刷新
 }
 
 /**
@@ -32,7 +33,7 @@ interface EditingState {
  * 用于展示和编辑意图干预数据
  * 重构：采用 RunLogTab 的稳定无限滚动模式
  */
-export default function IntentInterventionTab({ project, fileId, saveReason }: IntentInterventionTabProps) {
+export default function IntentInterventionTab({ project, fileId, saveReason, reasonsUpdateCount = 0 }: IntentInterventionTabProps) {
     // Local State for Pagination & Data
     const [intentItems, setIntentItems] = useState<any[]>([]);
     const [page, setPage] = useState(1);
@@ -192,6 +193,13 @@ export default function IntentInterventionTab({ project, fileId, saveReason }: I
             refreshResults(20, searchQuery, filterStatus);
         }
     }, [project?.id, fileId, filterStatus]); // searchQuery has its own debounce effect
+
+    // 监听外部数据变更（如导入意图干预数据），刷新列表
+    useEffect(() => {
+        if (project?.id && fileId && reasonsUpdateCount > 0) {
+            refreshResults(20, searchQuery, filterStatus);
+        }
+    }, [reasonsUpdateCount]);
 
     // Search Debounce
     useEffect(() => {

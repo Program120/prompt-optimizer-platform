@@ -38,6 +38,7 @@ interface ExecutionPanelProps {
     setValidationLimit: (limit: number | "") => void;
     optimizationStatus: any;
     onImportReasons: () => void;
+    interventionCount?: number;  // 意图干预记录数量，用于数据范围联动
 }
 
 export default function ExecutionPanel({
@@ -70,8 +71,13 @@ export default function ExecutionPanel({
     validationLimit,
     setValidationLimit,
     optimizationStatus,
-    onImportReasons
+    onImportReasons,
+    interventionCount
 }: ExecutionPanelProps) {
+    // 计算数据范围最大值：优先使用意图干预数量，否则使用文件行数
+    const maxDataCount: number = interventionCount && interventionCount > 0
+        ? interventionCount
+        : (fileInfo?.row_count || 300);
     return (
         <section className="glass p-6 rounded-2xl">
             <div className="flex justify-between items-center mb-6">
@@ -121,7 +127,13 @@ export default function ExecutionPanel({
                 <div className="bg-slate-800/40 border border-white/5 rounded-xl p-4">
                     <label className="block text-sm font-medium text-slate-400 mb-3">数据导入</label>
                     <div className="relative group">
-                        <input type="file" onChange={onFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" accept=".xlsx,.csv" />
+                        <input
+                            type="file"
+                            onChange={onFileUpload}
+                            onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            accept=".xlsx,.csv"
+                        />
                         <div className="border-2 border-dashed border-white/10 group-hover:border-blue-500/50 rounded-xl p-4 flex flex-col items-center justify-center gap-2 transition-all min-h-[80px]">
                             <Upload size={20} className="text-slate-500 group-hover:text-blue-400" />
                             <span className="text-sm text-slate-400 group-hover:text-slate-300 text-center">
@@ -221,7 +233,7 @@ export default function ExecutionPanel({
                                     <input
                                         type="range"
                                         min="1"
-                                        max={fileInfo?.row_count || 300}
+                                        max={maxDataCount}
                                         step="1"
                                         value={validationLimit || 50}
                                         onChange={(e) => setValidationLimit(parseInt(e.target.value))}
@@ -240,7 +252,7 @@ export default function ExecutionPanel({
                                 </div>
                                 <div className="flex justify-between text-[10px] text-slate-600 px-1 font-mono">
                                     <span>1</span>
-                                    <span>{fileInfo?.row_count || 300}</span>
+                                    <span>{maxDataCount}</span>
                                 </div>
                             </motion.div>
                         )}

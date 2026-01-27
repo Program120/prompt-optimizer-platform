@@ -21,6 +21,8 @@ def get_interventions_by_project(project_id: str, file_id: Optional[str] = None)
     """
     获取项目下所有已标注的意图干预数据
     
+    按 created_at 倒序排序，新增的数据排在前面（头插效果）
+    
     :param project_id: 项目唯一标识
     :param file_id: 可选，文件版本 ID，用于筛选特定版本
     :return: IntentIntervention 对象列表
@@ -33,11 +35,38 @@ def get_interventions_by_project(project_id: str, file_id: Optional[str] = None)
             if file_id:
                 statement = statement.where(IntentIntervention.file_id == file_id)
             
+            # 按 created_at 倒序排序，新增的数据优先
+            statement = statement.order_by(IntentIntervention.created_at.desc())
+            
             results: List[IntentIntervention] = list(session.exec(statement).all())
             return results
     except Exception as e:
         logger.error(f"Failed to get interventions for project {project_id}: {e}")
         return []
+
+
+def get_intervention_count(project_id: str, file_id: Optional[str] = None) -> int:
+    """
+    获取项目下意图干预记录的总数
+    
+    :param project_id: 项目唯一标识
+    :param file_id: 可选，文件版本 ID，用于筛选特定版本
+    :return: 记录数量
+    """
+    try:
+        with get_db_session() as session:
+            statement = select(func.count()).select_from(IntentIntervention).where(
+                IntentIntervention.project_id == project_id
+            )
+            
+            if file_id:
+                statement = statement.where(IntentIntervention.file_id == file_id)
+            
+            count: int = session.exec(statement).one()
+            return count
+    except Exception as e:
+        logger.error(f"Failed to get intervention count for project {project_id}: {e}")
+        return 0
 
 def get_interventions_paginated(
     project_id: str, 

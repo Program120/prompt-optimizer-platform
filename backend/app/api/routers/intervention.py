@@ -61,6 +61,27 @@ async def list_interventions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/projects/{project_id}/interventions/count", response_model=Dict[str, int])
+async def get_intervention_count_endpoint(
+    project_id: str, 
+    file_id: Optional[str] = None
+) -> Dict[str, int]:
+    """
+    获取项目下意图干预记录的总数
+    
+    用于前端数据范围联动，获取实际的数据条数
+    
+    :param project_id: 项目 ID
+    :param file_id: 可选，文件版本 ID
+    :return: 包含 count 字段的字典
+    """
+    try:
+        count: int = intervention_service.get_intervention_count(project_id, file_id)
+        return {"count": count}
+    except Exception as e:
+        logger.error(f"Error getting intervention count for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/projects/{project_id}/interventions/targets", response_model=List[str])
 async def get_intervention_targets(project_id: str, file_id: Optional[str] = None) -> List[str]:
     """

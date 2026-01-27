@@ -43,6 +43,9 @@ export default function ProjectDetail() {
     const [selectedIteration, setSelectedIteration] = useState<any>(null);
     const [validationLimit, setValidationLimit] = useState<number | "">("");
 
+    // 意图干预数量状态（用于数据范围联动）
+    const [interventionCount, setInterventionCount] = useState<number>(0);
+
     // Auto-iterate config
     const [autoIterateConfig, setAutoIterateConfig] = useState<{
         enabled: boolean;
@@ -130,7 +133,16 @@ export default function ProjectDetail() {
     useEffect(() => {
         fetchProject();
         pollAutoIterateStatus();
+        // 初始加载时获取意图干预数量
+        fetchInterventionCount();
     }, [id]);
+
+    // 当意图干预数据变更时刷新数量
+    useEffect(() => {
+        if (reasonsUpdateCount > 0) {
+            fetchInterventionCount();
+        }
+    }, [reasonsUpdateCount]);
 
     useEffect(() => {
         let timer: any;
@@ -178,6 +190,19 @@ export default function ProjectDetail() {
             setKnowledgeRecords(res.data.records || []);
         } catch (e) {
             console.error("Failed to fetch knowledge base", e);
+        }
+    };
+
+    /**
+     * 获取意图干预记录数量
+     * 用于数据范围滑块的联动
+     */
+    const fetchInterventionCount = async () => {
+        try {
+            const res = await axios.get(`${API_BASE}/projects/${id}/interventions/count`);
+            setInterventionCount(res.data.count || 0);
+        } catch (e) {
+            console.error("Failed to fetch intervention count", e);
         }
     };
 
@@ -360,6 +385,14 @@ export default function ProjectDetail() {
             setFileInfo(res.data);
             if (res.data.columns.length >= 2) {
                 setConfig({ query_col: res.data.columns[0], target_col: res.data.columns[1] });
+            }
+            // 重置验证配置相关状态
+            // 如果之前是 "Top N" 模式，重置为合理的默认值（新文件行数的一半或50，取较小值）
+            // 如果之前是 "全部数据" 模式（validationLimit === ""），保持不变
+            if (validationLimit !== "") {
+                const newRowCount: number = res.data.row_count || 50;
+                const newLimit: number = Math.min(50, newRowCount);
+                setValidationLimit(newLimit);
             }
             showToast(`文件 ${file.name} 上传并解析成功`, "success");
         } catch (e: any) {
@@ -851,6 +884,7 @@ export default function ProjectDetail() {
                         setValidationLimit={setValidationLimit}
                         optimizationStatus={optimizationStatus}
                         onImportReasons={handleImportReasons}
+                        interventionCount={interventionCount}
                     />
                 </div>
 

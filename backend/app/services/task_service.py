@@ -182,12 +182,16 @@ class TaskManager:
                 if not existing.is_target_modified:
                     query_to_intervention[r.query] = r
         
-        # 转换为列表
-        reasons = list(query_to_intervention.values())
+        # 转换为列表，并按 created_at 倒序排序（新增数据优先执行）
+        reasons = sorted(
+            query_to_intervention.values(), 
+            key=lambda r: r.created_at if r.created_at else "", 
+            reverse=True
+        )
         
         # 统计修正记录数量
         modified_count: int = sum(1 for r in reasons if r.is_target_modified)
-        logger.info(f"[Task {task_id}] After deduplication: {len(reasons)} unique queries, {modified_count} modified")
+        logger.info(f"[Task {task_id}] After deduplication: {len(reasons)} unique queries, {modified_count} modified (sorted by created_at desc)")
         
         df = None
         used_source = "file"

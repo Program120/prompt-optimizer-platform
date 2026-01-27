@@ -301,7 +301,10 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
             </div>
 
 
-            {results.map((r: any, idx: number) => {
+            {/* 使用 Map 进行数据去重，以 query 为 key，避免调整期望意图后数据重复 */}
+            {Array.from(
+                new Map(results.map((r: any) => [r.query, r])).values()
+            ).map((r: any, idx: number) => {
                 const reasonItem = reasons[r.query];
                 // 使用 ?? 而非 ||，确保空字符串 "" 也能正确显示（|| 会将空字符串视为 falsy）
                 const currentReason = reasonItem?.reason ?? r.reason;
@@ -313,7 +316,7 @@ export default function RunLogTab({ taskId, projectId, totalCount, currentIndex,
 
                 return (
                     <div
-                        key={`${r.index}-${idx}`}
+                        key={`${r.query}-${idx}`}
                         className={`p-3 rounded-xl border text-xs mb-2 group relative cursor-pointer ${isCorrect ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}
                         onClick={() => onSelectLog({ ...r, reason: currentReason, intervention: reasonItem, is_correct: isCorrect })}
                     >
