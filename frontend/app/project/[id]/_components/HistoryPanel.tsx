@@ -27,6 +27,7 @@ interface HistoryPanelProps {
     onRefresh?: () => void;
     reasonsUpdateCount?: number;
     fileId?: string;
+    onInterventionDataChange?: () => void;  // 意图干预数据变更时回调
 }
 
 export default function HistoryPanel({
@@ -42,7 +43,8 @@ export default function HistoryPanel({
     onDeleteIteration,
     onDeleteKnowledge,
     onRefresh,
-    reasonsUpdateCount = 0
+    reasonsUpdateCount = 0,
+    onInterventionDataChange
 }: HistoryPanelProps) {
     const [activeTab, setActiveTab] = useState("run"); // run, history, runHistory, knowledge, intent
     const [showPromptModal, setShowPromptModal] = useState(false);
@@ -241,6 +243,7 @@ export default function HistoryPanel({
                         fileId={fileId}
                         saveReason={saveReason}
                         reasonsUpdateCount={reasonsUpdateCount}
+                        onDataChange={onInterventionDataChange}
                     />
                 </div>
             </div>

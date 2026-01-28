@@ -370,7 +370,8 @@ export default function TestOutputModal({ onClose, initialPrompt = "", initialMo
             // 标记已执行测试，重置脏状态
             setHasRun(true);
             setIsDirty(false);
-            fetchRunHistory(); // 刷新历史
+            // 刷新历史时保留当前筛选条件
+            fetchRunHistory(searchKeyword, turnTypeFilter, favoriteOnly);
         } catch (e: any) {
             console.error(e);
             setError(e.response?.data?.detail || "请求失败");

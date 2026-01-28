@@ -928,6 +928,7 @@ export default function ProjectDetail() {
                         }}
                         onRefresh={fetchProject}
                         reasonsUpdateCount={reasonsUpdateCount}
+                        onInterventionDataChange={() => setReasonsUpdateCount(c => c + 1)}
                     />
                 </div>
             </div>

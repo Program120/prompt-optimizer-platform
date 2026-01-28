@@ -14,6 +14,7 @@ interface IntentInterventionTabProps {
     fileId?: string;
     saveReason: (query: string, reason: string, target: string, id?: number) => Promise<boolean>;
     reasonsUpdateCount?: number;  // 用于监听外部数据变更（如导入），触发列表刷新
+    onDataChange?: () => void;  // 数据变更时回调，通知父组件更新 interventionCount
 }
 
 /**
@@ -33,7 +34,7 @@ interface EditingState {
  * 用于展示和编辑意图干预数据
  * 重构：采用 RunLogTab 的稳定无限滚动模式
  */
-export default function IntentInterventionTab({ project, fileId, saveReason, reasonsUpdateCount = 0 }: IntentInterventionTabProps) {
+export default function IntentInterventionTab({ project, fileId, saveReason, reasonsUpdateCount = 0, onDataChange }: IntentInterventionTabProps) {
     // Local State for Pagination & Data
     const [intentItems, setIntentItems] = useState<any[]>([]);
     const [page, setPage] = useState(1);
@@ -195,11 +196,12 @@ export default function IntentInterventionTab({ project, fileId, saveReason, rea
     }, [project?.id, fileId, filterStatus]); // searchQuery has its own debounce effect
 
     // 监听外部数据变更（如导入意图干预数据），刷新列表
+    // 注意：需要将 project?.id 和 fileId 加入依赖数组，确保值变化时能正确触发刷新
     useEffect(() => {
         if (project?.id && fileId && reasonsUpdateCount > 0) {
             refreshResults(20, searchQuery, filterStatus);
         }
-    }, [reasonsUpdateCount]);
+    }, [reasonsUpdateCount, project?.id, fileId]);
 
     // Search Debounce
     useEffect(() => {
@@ -339,9 +341,6 @@ export default function IntentInterventionTab({ project, fileId, saveReason, rea
     /**
      * 重置单条意图干预记录
      */
-    /**
-     * 重置单条意图干预记录
-     */
     const executeReset = async (query: string) => {
         if (!project?.id) return;
 
@@ -386,6 +385,8 @@ export default function IntentInterventionTab({ project, fileId, saveReason, rea
                 setShowCreateModal(false);
                 setCreateForm({ query: "", target: "", reason: "" });
                 refreshResults(loadedPagesRef.current * 20, searchQuery, filterStatus);
+                // 通知父组件数据已变更，更新验证范围
+                onDataChange?.();
             } else {
                 alert("创建失败");
             }
@@ -606,6 +607,8 @@ export default function IntentInterventionTab({ project, fileId, saveReason, rea
                 setImportSuccess(true);
                 // 刷新列表
                 refreshResults(loadedPagesRef.current * 20, searchQuery, filterStatus);
+                // 通知父组件数据已变更，更新验证范围
+                onDataChange?.();
             } else {
                 const err = await res.json();
                 alert(`导入失败: ${err.detail || "未知错误"}`);

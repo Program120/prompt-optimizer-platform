@@ -138,12 +138,12 @@ def import_dataset_to_interventions(
         from datetime import datetime
         
         # 1. 获取现有数据映射 {query: intervention}
+        # 注意：去重基于 project_id + query，不根据 file_id 筛选
+        # 这保证了同一项目下相同 query 只存在一条记录
         with get_db_session() as session:
             statement = select(IntentIntervention).where(
                 IntentIntervention.project_id == project_id
             )
-            if file_id:
-                statement = statement.where(IntentIntervention.file_id == file_id)
             
             existing_records = session.exec(statement).all()
             existing_map = {r.query: r for r in existing_records}
