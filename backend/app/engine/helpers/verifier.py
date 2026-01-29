@@ -228,18 +228,53 @@ class Verifier:
             
             # 3. 构建历史上下文
             if history_msgs:
-                history_context_parts: list = []
-                for msg_data in history_msgs:
-                    role = msg_data.get("role")
-                    content = msg_data.get("content", "")
-                    # 模拟简单的格式化，或者复用 Msg 结构逻辑
-                    if role == "user":
-                        history_context_parts.append(f"[用户]：{content}")
-                    elif role == "assistant":
-                        history_context_parts.append(f"[模型回复]：{content}")
+                # 将消息按轮次分组 (User + Assistant = 1 Round)
+                rounds = []
+                current_round = []
                 
-                if history_context_parts:
-                    history_context_str = "\n".join(history_context_parts)
+                for msg in history_msgs:
+                    if msg.get("role") == "user":
+                        # 遇到新用户消息，之前的存为一个轮次
+                        if current_round:
+                            rounds.append(current_round)
+                        current_round = [msg]
+                    else:
+                        current_round.append(msg)
+                
+                # 添加最后一个轮次
+                if current_round:
+                    rounds.append(current_round)
+                
+                history_context_str = ""
+                
+                # 处理 format 单个轮次的 helper
+                def format_round(msgs):
+                    round_content = []
+                    for m in msgs:
+                        r = m.get("role")
+                        c = m.get("content", "")
+                        if r == "user":
+                            round_content.append(f"[用户]: {c}")
+                        elif r == "assistant":
+                            round_content.append(f"[模型回复]: {c}")
+                    return "\n".join(round_content)
+
+                # 按距离标注每一轮对话，如"上1轮对话"、"上2轮对话"等
+                if rounds:
+                    total_rounds: int = len(rounds)
+                    
+                    # 从最早的轮次开始处理（保持时间顺序）
+                    for idx, r_msgs in enumerate(rounds):
+                        # 计算距离当前轮的距离（最后一轮距离=1，倒数第二轮距离=2，以此类推）
+                        distance: int = total_rounds - idx
+                        tag_name: str = f"上{distance}轮对话"
+                        
+                        history_context_str += f"<{tag_name}>\n" + format_round(r_msgs) + f"\n</{tag_name}>\n"
+                    
+                    # 移除最后多余的换行符
+                    history_context_str = history_context_str.rstrip("\n")
+
+                if history_context_str:
                     # 作为一条 assistant 消息插入，提供上下文
                     context_msg = {
                         "role": "assistant",
