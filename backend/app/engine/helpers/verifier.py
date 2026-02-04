@@ -210,87 +210,58 @@ class Verifier:
             headers["api-key"] = api_key
         
         # 构建消息列表
-        # 顺序: system prompt -> 历史消息上下文(aggregated) -> 当前 query
-        messages: list = [{"role": "system", "content": prompt}]
-        
-        # 1. 整合完整的会话时间线
-        full_timeline = []
+        # 顺序: system prompt(作为user) + assistant确认 -> 历史消息(原生多轮格式) -> 任务提醒(可选) -> 当前 query
+        messages: list = []
+
+        # 配置参数
+        max_history_rounds: int = int(config.get("max_history_rounds", 5))  # 最大保留历史轮数
+        task_reminder: str = config.get("task_reminder", "")  # 调用方传入的精准任务提醒
+
+        # 1. 将系统提示词作为第一轮对话，后跟 assistant 确认，形成完整轮次
+        system_msg: Dict[str, str] = {
+            "role": "user",
+            "content": prompt
+        }
+        messages.append(system_msg)
+
+        # 添加 assistant 确认消息，形成完整的第一轮对话
+        ack_msg: Dict[str, str] = {
+            "role": "assistant",
+            "content": "好的，我已理解上述要求，请提供需要处理的内容。"
+        }
+        messages.append(ack_msg)
+
+        # 2. 添加历史对话（保持原生 user/assistant 交替结构）
+        #    排除最后一条（当前问题），仅取最近N轮历史会话
         if history_messages:
-            full_timeline.extend(history_messages)
-        if query and query.strip():
-            full_timeline.append({"role": "user", "content": query})
-            
-        # 2. 如果有会话内容，拆分为上下文和当前消息
-        if full_timeline:
-            # 取出最后一条作为"当前待回复的 Query" (无论其角色是什么，但通常应该是 user)
-            current_msg = full_timeline[-1]
-            history_msgs = full_timeline[:-1]
-            
-            # 3. 构建历史上下文
-            if history_msgs:
-                # 将消息按轮次分组 (User + Assistant = 1 Round)
-                rounds = []
-                current_round = []
-                
-                for msg in history_msgs:
-                    if msg.get("role") == "user":
-                        # 遇到新用户消息，之前的存为一个轮次
-                        if current_round:
-                            rounds.append(current_round)
-                        current_round = [msg]
-                    else:
-                        current_round.append(msg)
-                
-                # 添加最后一个轮次
-                if current_round:
-                    rounds.append(current_round)
-                
-                history_context_str = ""
-                
-                # 处理 format 单个轮次的 helper
-                def format_round(msgs):
-                    round_content = []
-                    for m in msgs:
-                        r = m.get("role")
-                        c = m.get("content", "")
-                        if r == "user":
-                            round_content.append(f"[用户]: {c}")
-                        elif r == "assistant":
-                            round_content.append(f"[模型回复]: {c}")
-                    return "\n".join(round_content)
+            # 限制历史轮数：每轮 = 1个user + 1个assistant，所以消息数 = 轮数 * 2
+            max_messages: int = max_history_rounds * 2
+            truncated_history: list = history_messages[-max_messages:] if len(history_messages) > max_messages else history_messages
 
-                # 按距离标注每一轮对话，如"上1轮对话"、"上2轮对话"等
-                if rounds:
-                    total_rounds: int = len(rounds)
-                    
-                    # 从最早的轮次开始处理（保持时间顺序）
-                    for idx, r_msgs in enumerate(rounds):
-                        # 计算距离当前轮的距离（最后一轮距离=1，倒数第二轮距离=2，以此类推）
-                        distance: int = total_rounds - idx
-                        tag_name: str = f"上{distance}轮对话"
-                        
-                        history_context_str += f"<{tag_name}>\n" + format_round(r_msgs) + f"\n</{tag_name}>\n"
-                    
-                    # 移除最后多余的换行符
-                    history_context_str = history_context_str.rstrip("\n")
-
-                if history_context_str:
-                    # 作为一条 assistant 消息插入，提供上下文
-                    context_msg = {
-                        "role": "assistant",
-                        "content": f"【历史对话上下文】\n{history_context_str}"
+            # 保持原生多轮对话结构，不再压缩成单条消息
+            for msg in truncated_history:
+                role: str = msg.get("role", "user")
+                content: str = msg.get("content", "")
+                if role in ("user", "assistant") and content:
+                    history_msg: Dict[str, str] = {
+                        "role": role,
+                        "content": content
                     }
-                    messages.append(context_msg)
-            
-            # 4. 追加最后一条消息
-            # 按照要求添加标识头
-            current_content = current_msg.get("content", "")
-            if current_msg.get("role") == "user":
-                 final_content = f"【当前用户请求】\n{current_content}"
-            else:
-                 final_content = current_content
-                 
-            messages.append({"role": current_msg.get("role", "user"), "content": final_content})
+                    messages.append(history_msg)
+
+        # 3. 使用调用方传入的精准任务提醒（可选）
+        #    在历史消息后插入一轮"提醒-确认"对话，强化模型对任务的记忆
+        if task_reminder and history_messages:
+            messages.append({"role": "user", "content": f"【重要提醒】{task_reminder}"})
+            messages.append({"role": "assistant", "content": "好的，我会严格按照上述要求执行任务。"})
+
+        # 4. 添加当前用户请求
+        if query and query.strip():
+            current_msg: Dict[str, str] = {
+                "role": "user",
+                "content": query
+            }
+            messages.append(current_msg)
         
         # 构建请求体
         payload: Dict[str, Any] = {
