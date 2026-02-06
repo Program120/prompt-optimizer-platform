@@ -9,6 +9,7 @@ import ModelConfig from "@/app/components/ModelConfig";
 import ProjectHeader from "./_components/ProjectHeader";
 import PromptEditor from "./_components/PromptEditor";
 import ExecutionPanel from "./_components/ExecutionPanel";
+import MultiRoundExecutionPanel from "./_components/MultiRoundExecutionPanel";
 import HistoryPanel from "./_components/HistoryPanel";
 import LogDetailModal from "./_components/LogDetailModal";
 import IterationDetailModal from "./_components/IterationDetailModal";
@@ -59,6 +60,15 @@ export default function ProjectDetail() {
         strategy: "multi"
     });
     const [autoIterateStatus, setAutoIterateStatus] = useState<any>(null);
+
+    // 多轮验证配置状态
+    const [multiRoundConfig, setMultiRoundConfig] = useState<{
+        roundsConfig: any[];
+        intentExtractField: string;
+        responseExtractField: string;
+        validationLimit: number | "";
+        fileInfo: any;
+    } | null>(null);
 
     // 知识库状态
     const [knowledgeRecords, setKnowledgeRecords] = useState<any[]>([]);
@@ -765,7 +775,7 @@ export default function ProjectDetail() {
         if (!silent) setIsSaving(true);
         try {
             // 使用 JSON body 替代 FormData 以绕过 1MB multipart 限制
-            const payload = {
+            const payload: any = {
                 current_prompt: project.current_prompt,
                 query_col: config.query_col,
                 target_col: config.target_col,
@@ -776,6 +786,17 @@ export default function ProjectDetail() {
                 auto_iterate_config: autoIterateConfig,
                 validation_limit: validationLimit === "" ? "" : validationLimit?.toString()
             };
+
+            // 如果是多轮项目，添加多轮配置
+            if (project.config?.project_type === "multi" && multiRoundConfig) {
+                payload.multi_round_config = {
+                    rounds_config: multiRoundConfig.roundsConfig,
+                    intent_extract_field: multiRoundConfig.intentExtractField,
+                    response_extract_field: multiRoundConfig.responseExtractField,
+                    validation_limit: multiRoundConfig.validationLimit
+                };
+                payload.multi_round_file_info = multiRoundConfig.fileInfo;
+            }
 
             await axios.put(`${API_BASE}/projects/${id}`, payload);
             if (!silent) showToast("项目保存成功！", "success");
@@ -853,39 +874,65 @@ export default function ProjectDetail() {
                         isAutoIterating={isAutoIterating}
                     />
 
-                    <ExecutionPanel
-                        taskStatus={taskStatus}
-                        fileInfo={fileInfo}
-                        config={config}
-                        setConfig={setConfig}
-                        extractField={extractField}
-                        setExtractField={setExtractField}
-                        autoIterateConfig={autoIterateConfig}
-                        setAutoIterateConfig={setAutoIterateConfig}
-                        autoIterateStatus={autoIterateStatus}
-                        isAutoIterating={isAutoIterating}
-                        onFileUpload={handleFileUpload}
-                        onStartTask={startTask}
-                        onControlTask={controlTask}
-                        onStopAutoIterate={stopAutoIterate}
-                        onOptimize={handleOptimize}
-                        onStopOptimize={handleStopOptimize}
-                        isOptimizing={isOptimizing}
-                        showExternalOptimize={showExternalOptimize}
-                        setShowExternalOptimize={setShowExternalOptimize}
-                        externalPrompt={externalPrompt}
-                        setExternalPrompt={setExternalPrompt}
-                        onCopyOptimizeContext={copyOptimizeContext}
-                        onApplyExternalOptimize={applyExternalOptimize}
-                        optimizeContext={optimizeContext}
-                        strategy={strategy}
-                        setStrategy={setStrategy}
-                        validationLimit={validationLimit}
-                        setValidationLimit={setValidationLimit}
-                        optimizationStatus={optimizationStatus}
-                        onImportReasons={handleImportReasons}
-                        interventionCount={interventionCount}
-                    />
+                    {/* 根据项目类型渲染不同的执行面板 */}
+                    {project.config?.project_type === "multi" ? (
+                        <MultiRoundExecutionPanel
+                            projectId={id as string}
+                            project={project}
+                            prompt={project.current_prompt}
+                            onProjectUpdate={fetchProject}
+                            showToast={showToast}
+                            onMultiRoundConfigChange={setMultiRoundConfig}
+                            onOptimize={handleOptimize}
+                            onStopOptimize={handleStopOptimize}
+                            isOptimizing={isOptimizing}
+                            optimizationStatus={optimizationStatus}
+                            onCopyOptimizeContext={copyOptimizeContext}
+                            autoIterateConfig={autoIterateConfig}
+                            setAutoIterateConfig={setAutoIterateConfig}
+                            autoIterateStatus={autoIterateStatus}
+                            isAutoIterating={isAutoIterating}
+                            onStartAutoIterate={startAutoIterate}
+                            onStopAutoIterate={stopAutoIterate}
+                            taskStatus={taskStatus}
+                            setTaskStatus={setTaskStatus}
+                        />
+                    ) : (
+                        <ExecutionPanel
+                            projectId={id as string}
+                            taskStatus={taskStatus}
+                            fileInfo={fileInfo}
+                            config={config}
+                            setConfig={setConfig}
+                            extractField={extractField}
+                            setExtractField={setExtractField}
+                            autoIterateConfig={autoIterateConfig}
+                            setAutoIterateConfig={setAutoIterateConfig}
+                            autoIterateStatus={autoIterateStatus}
+                            isAutoIterating={isAutoIterating}
+                            onFileUpload={handleFileUpload}
+                            onStartTask={startTask}
+                            onControlTask={controlTask}
+                            onStopAutoIterate={stopAutoIterate}
+                            onOptimize={handleOptimize}
+                            onStopOptimize={handleStopOptimize}
+                            isOptimizing={isOptimizing}
+                            showExternalOptimize={showExternalOptimize}
+                            setShowExternalOptimize={setShowExternalOptimize}
+                            externalPrompt={externalPrompt}
+                            setExternalPrompt={setExternalPrompt}
+                            onCopyOptimizeContext={copyOptimizeContext}
+                            onApplyExternalOptimize={applyExternalOptimize}
+                            optimizeContext={optimizeContext}
+                            strategy={strategy}
+                            setStrategy={setStrategy}
+                            validationLimit={validationLimit}
+                            setValidationLimit={setValidationLimit}
+                            optimizationStatus={optimizationStatus}
+                            onImportReasons={handleImportReasons}
+                            interventionCount={interventionCount}
+                        />
+                    )}
                 </div>
 
                 {/* Right: History & Info */}
@@ -933,7 +980,7 @@ export default function ProjectDetail() {
                 </div>
             </div>
 
-            {showConfig && <ModelConfig onClose={() => setShowConfig(false)} projectId={id as string} onSave={fetchProject} defaultTab={configTab} />}
+            {showConfig && <ModelConfig onClose={() => setShowConfig(false)} projectId={id as string} onSave={fetchProject} defaultTab={configTab} projectType={project.config?.project_type} />}
 
             <LogDetailModal
                 selectedLog={selectedLog}

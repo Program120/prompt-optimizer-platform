@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, AlertCircle, X, Edit3, Save, AlertTriangle, RotateCcw } from "lucide-react";
+import { CheckCircle2, AlertCircle, X, Edit3, Save, AlertTriangle, RotateCcw, Clock, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface LogDetailModalProps {
@@ -22,6 +22,31 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason, onR
     const [availableTargets, setAvailableTargets] = useState<string[]>([]);
     const [showConfirmClose, setShowConfirmClose] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
+
+    // 展开/折叠状态
+    const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["extracted"]));
+    // 复制状态
+    const [copiedField, setCopiedField] = useState<string | null>(null);
+
+    const toggleSection = (section: string) => {
+        const newExpanded = new Set(expandedSections);
+        if (newExpanded.has(section)) {
+            newExpanded.delete(section);
+        } else {
+            newExpanded.add(section);
+        }
+        setExpandedSections(newExpanded);
+    };
+
+    const handleCopy = async (text: string, field: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedField(field);
+            setTimeout(() => setCopiedField(null), 2000);
+        } catch (err) {
+            console.error("Copy failed:", err);
+        }
+    };
 
     /**
      * 重置当前记录的意图修正和原因
@@ -158,15 +183,56 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason, onR
                 </div>
 
                 <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Query / Input</label>
-                        <div className="bg-black/20 rounded-xl p-4 text-sm whitespace-pre-wrap text-slate-300">{selectedLog.query}</div>
+                    {/* 基本信息：Query + 耗时 */}
+                    <div className="flex gap-4">
+                        <div className="flex-1">
+                            <label className="block text-sm font-medium text-slate-400 mb-1">Query / Input</label>
+                            <div className="bg-black/20 rounded-xl p-4 text-sm whitespace-pre-wrap text-slate-300">{selectedLog.query}</div>
+                        </div>
+                        {selectedLog.latency_ms !== undefined && (
+                            <div className="flex-shrink-0 w-28">
+                                <label className="block text-sm font-medium text-slate-400 mb-1">耗时</label>
+                                <div className="bg-black/20 rounded-xl p-4 text-sm text-slate-300 flex items-center gap-2">
+                                    <Clock size={14} className="text-blue-400" />
+                                    <span className="font-mono">{selectedLog.latency_ms}ms</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 抽取结果区域 */}
+                    <div className="bg-slate-800/50 rounded-xl border border-white/5 overflow-hidden">
+                        <button
+                            onClick={() => toggleSection("extracted")}
+                            className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors"
+                        >
+                            <span className="text-sm font-medium text-cyan-400">抽取结果</span>
+                            {expandedSections.has("extracted") ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+                        {expandedSections.has("extracted") && (
+                            <div className="p-3 pt-0 space-y-3 border-t border-white/5">
+                                {/* 抽取的意图 */}
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-500 mb-1">抽取的意图 (Extracted Intent)</label>
+                                    <div className={`bg-black/20 rounded-lg p-3 text-sm font-mono ${selectedLog.is_correct ? "text-emerald-400" : "text-red-400"}`}>
+                                        {selectedLog.extracted_intent || selectedLog.result || "N/A"}
+                                    </div>
+                                </div>
+                                {/* 抽取的回复内容 */}
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-500 mb-1">抽取的回复内容 (Extracted Response)</label>
+                                    <div className="bg-black/20 rounded-lg p-3 text-sm text-slate-300 max-h-[120px] overflow-y-auto">
+                                        {selectedLog.extracted_response || "N/A"}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Original Target (Read-only) */}
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">预期意图 (Original Target)</label>
-                        <div className="bg-black/20 border border-white/5 rounded-xl p-4 text-sm text-slate-400 italic">
+                        <div className="bg-black/20 border border-white/5 rounded-xl p-4 text-sm text-emerald-400">
                             {selectedLog.target || "无预期结果"}
                         </div>
                     </div>
@@ -211,11 +277,79 @@ export default function LogDetailModal({ selectedLog, onClose, onSaveReason, onR
                         )}
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Actual Output</label>
-                        <pre className="bg-black/20 border border-white/10 rounded-xl p-4 text-sm overflow-x-auto font-mono text-slate-300">
-                            {selectedLog.output}
-                        </pre>
+                    {/* 完整入参 (可折叠) */}
+                    <div className="bg-slate-800/50 rounded-xl border border-white/5 overflow-hidden">
+                        <button
+                            onClick={() => toggleSection("request")}
+                            className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors"
+                        >
+                            <span className="text-sm font-medium text-amber-400">完整入参 (Request Params)</span>
+                            <div className="flex items-center gap-2">
+                                {selectedLog.request_params && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleCopy(typeof selectedLog.request_params === "string" ? selectedLog.request_params : JSON.stringify(selectedLog.request_params, null, 2), "request");
+                                        }}
+                                        className="p-1 hover:bg-white/10 rounded transition-colors"
+                                        title="复制"
+                                    >
+                                        {copiedField === "request" ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                                    </button>
+                                )}
+                                {expandedSections.has("request") ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </div>
+                        </button>
+                        {expandedSections.has("request") && (
+                            <div className="p-3 pt-0 border-t border-white/5">
+                                {selectedLog.request_params ? (
+                                    <pre className="text-xs font-mono text-slate-300 overflow-x-auto max-h-[200px] overflow-y-auto">
+                                        {typeof selectedLog.request_params === "string"
+                                            ? selectedLog.request_params
+                                            : JSON.stringify(selectedLog.request_params, null, 2)}
+                                    </pre>
+                                ) : (
+                                    <div className="text-xs text-slate-500 italic">
+                                        <p className="mb-2">完整入参未记录（旧版本数据）</p>
+                                        <p className="text-slate-400">基本信息：</p>
+                                        <pre className="mt-1 text-slate-400 font-mono">
+{`query: ${selectedLog.query || "N/A"}
+target: ${selectedLog.target || "N/A"}
+session_id: ${selectedLog.session_id || "N/A"}
+round: ${selectedLog.round_number || "N/A"}`}
+                                        </pre>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 完整出参 (可折叠) */}
+                    <div className="bg-slate-800/50 rounded-xl border border-white/5 overflow-hidden">
+                        <button
+                            onClick={() => toggleSection("response")}
+                            className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors"
+                        >
+                            <span className="text-sm font-medium text-purple-400">完整出参 (Raw Output)</span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCopy(selectedLog.output || "", "output");
+                                    }}
+                                    className="p-1 hover:bg-white/10 rounded transition-colors"
+                                    title="复制"
+                                >
+                                    {copiedField === "output" ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                                </button>
+                                {expandedSections.has("response") ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </div>
+                        </button>
+                        {expandedSections.has("response") && (
+                            <pre className="p-3 pt-0 text-xs font-mono text-slate-300 overflow-x-auto max-h-[200px] overflow-y-auto border-t border-white/5">
+                                {selectedLog.output || "N/A"}
+                            </pre>
+                        )}
                     </div>
 
                     {/* Reason Section */}

@@ -583,3 +583,348 @@ class TaskManager:
             
         # 2. 如果任务不在内存中，从数据库查询
         return storage.get_task_results_paginated(task_id, page, page_size, result_type, search)
+
+    def create_multi_round_task(
+        self,
+        project_id: str,
+        file_path: str,
+        prompt: str,
+        model_config: Dict[str, Any],
+        rounds_config: List[Dict[str, Any]],
+        intent_extract_field: str,
+        response_extract_field: str,
+        original_filename: Optional[str] = None,
+        validation_limit: Optional[int] = None,
+        api_config: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        创建多轮验证任务
+
+        新执行逻辑：
+        - 同一轮的所有数据并发请求
+        - 不同轮之间串行执行
+        - 每轮都验证意图，每轮都有 target
+
+        :param project_id: 项目 ID
+        :param file_path: 数据文件绝对路径
+        :param prompt: 提示词模板
+        :param model_config: 模型配置字典
+        :param rounds_config: 轮次配置列表
+            格式: [{"round": 1, "query_col": "query1", "target_col": "target1"}, ...]
+        :param intent_extract_field: 意图提取路径（用于验证，如 data.intent）
+        :param response_extract_field: 回复内容提取路径（用于构建历史，如 data.response）
+        :param original_filename: 原始文件名 (可选)
+        :param validation_limit: 验证数量限制 (可选)
+        :param api_config: 自定义 API 配置 (可选)，包含 api_url, api_headers, api_timeout, request_template
+        :return: 任务 ID
+        """
+        task_id = f"task_{int(time.time())}"
+
+        # 从文件路径提取 file_id
+        file_basename = os.path.basename(file_path)
+        file_id = file_basename.split("_")[0] if "_" in file_basename else file_basename.rsplit(".", 1)[0]
+
+        # 加载数据
+        if file_path.endswith(".csv"):
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+
+        # 计算数据行数
+        row_count = len(df)
+        if validation_limit and isinstance(validation_limit, int) and validation_limit > 0:
+            row_count = min(row_count, validation_limit)
+
+        # 获取轮数
+        max_rounds = len(rounds_config)
+
+        # 总验证次数 = 数据行数 × 轮数
+        total_count = row_count * max_rounds
+
+        task_info = {
+            "id": task_id,
+            "project_id": project_id,
+            "file_path": file_path,
+            "file_id": file_id,
+            "status": "running",
+            "current_index": 0,
+            "total_count": total_count,
+            "current_round": 1,
+            "total_rounds": max_rounds,
+            "row_count": row_count,
+            "prompt": prompt,
+            "intent_extract_field": intent_extract_field,
+            "response_extract_field": response_extract_field,
+            "model_config": model_config,
+            "api_config": api_config,  # 新增：自定义 API 配置
+            "original_filename": original_filename if original_filename is not None else "",
+            "validation_limit": validation_limit,
+            "multi_round_enabled": True,
+            "rounds_config": rounds_config,
+            "round_results": [],  # 每轮的结果汇总
+            "results": [],
+            "errors": []
+        }
+
+        stop_event = threading.Event()
+        pause_event = threading.Event()
+        pause_event.set()
+
+        thread = threading.Thread(
+            target=self._run_multi_round_task,
+            args=(task_id, stop_event, pause_event)
+        )
+
+        self.tasks[task_id] = {
+            "info": task_info,
+            "thread": thread,
+            "stop_event": stop_event,
+            "pause_event": pause_event
+        }
+
+        # 立即保存初始状态
+        storage.save_task_status(project_id, task_id, task_info)
+
+        thread.start()
+        logger.info(f"[Task {task_id}] 多轮验证任务已创建 | 数据行数: {row_count} | 轮数: {max_rounds} | 总验证次数: {total_count}")
+        return task_id
+
+    def _run_multi_round_task(
+        self,
+        task_id: str,
+        stop_event: threading.Event,
+        pause_event: threading.Event,
+        info_override: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        多轮验证任务执行逻辑
+
+        新执行逻辑：
+        1. 同一轮的所有数据并发请求接口
+        2. 等待当前轮全部完成后，再执行下一轮
+        3. 每轮都验证意图（与 target 比对）
+        4. 从响应中提取 assistant 回复，用于构建下一轮的历史消息
+
+        :param task_id: 任务 ID
+        :param stop_event: 停止信号
+        :param pause_event: 暂停信号
+        :param info_override: 任务信息覆盖（用于恢复任务）
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from app.engine.helpers.history_formatter import HistoryFormatter
+        from app.engine.helpers.extractor import ResultExtractor
+
+        task = self.tasks[task_id]
+        info = info_override or task["info"]
+
+        project_id = info["project_id"]
+        file_path = info["file_path"]
+        prompt = info["prompt"]
+        model_config = info.get("model_config", {})
+        api_config = info.get("api_config")  # 获取自定义 API 配置
+        intent_extract_field = info.get("intent_extract_field", "")
+        response_extract_field = info.get("response_extract_field", "")
+        rounds_config = info.get("rounds_config", [])
+        validation_limit = info.get("validation_limit")
+
+        # 并发数：优先从 api_config 获取，否则从 model_config 获取
+        concurrency = int((api_config or {}).get("concurrency") or model_config.get("concurrency", 1))
+
+        # 加载数据
+        if file_path.endswith(".csv"):
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+
+        # 应用验证数量限制
+        if validation_limit and isinstance(validation_limit, int) and validation_limit > 0:
+            df = df.head(validation_limit)
+
+        total_rows = len(df)
+        total_rounds = len(rounds_config)
+
+        logger.info(f"[Task {task_id}] 多轮验证任务开始 | 数据行数: {total_rows} | 轮数: {total_rounds} | 并发: {concurrency}")
+
+        # 为每行数据维护历史消息和 session_id
+        # row_contexts[row_idx] = {"session_id": "...", "history": [...]}
+        row_contexts: Dict[int, Dict[str, Any]] = {}
+        for i in range(total_rows):
+            row_contexts[i] = {
+                "session_id": HistoryFormatter.generate_session_id(),
+                "history": []
+            }
+
+        # 线程安全锁
+        results_lock = threading.Lock()
+        global_index = [info["current_index"]]
+
+        # 逐轮执行
+        for round_idx, round_cfg in enumerate(rounds_config):
+            if stop_event.is_set():
+                info["status"] = "stopped"
+                break
+
+            round_num = round_cfg.get("round", round_idx + 1)
+            query_col = round_cfg.get("query_col", "")
+            target_col = round_cfg.get("target_col", "")
+
+            info["current_round"] = round_num
+            logger.info(f"[Task {task_id}] 开始第 {round_num} 轮验证")
+
+            # 当前轮的结果
+            round_results: List[Dict[str, Any]] = []
+            round_correct = 0
+
+            def process_row_for_round(row_idx: int) -> Optional[Dict[str, Any]]:
+                """处理单行数据的当前轮次"""
+                if stop_event.is_set():
+                    return None
+                pause_event.wait()
+
+                row_data = df.iloc[row_idx].to_dict()
+                ctx = row_contexts[row_idx]
+                session_id = ctx["session_id"]
+                history = ctx["history"].copy()  # 复制历史，避免并发修改
+
+                # 获取当前轮的 query 和 target
+                query = ""
+                target = ""
+
+                if query_col and query_col in row_data:
+                    val = row_data.get(query_col)
+                    if val is not None and not pd.isna(val):
+                        query = str(val).strip()
+
+                if target_col and target_col in row_data:
+                    val = row_data.get(target_col)
+                    if val is not None and not pd.isna(val):
+                        target = str(val).strip()
+
+                # 跳过空 query
+                if not query:
+                    return None
+
+                # 调用验证器（支持自定义 API 配置）
+                result = Verifier.verify_single_with_history(
+                    index=global_index[0],
+                    row_index=row_idx,
+                    round_number=round_num,
+                    session_id=session_id,
+                    query=query,
+                    target=target,
+                    prompt=prompt,
+                    model_config=model_config,
+                    history_messages=history,
+                    extract_field=intent_extract_field,  # 意图提取路径
+                    api_config=api_config,  # 自定义 API 配置
+                    response_extract_path=response_extract_field  # 回复内容提取路径
+                )
+
+                # 从结果中获取提取的回复和意图（如果使用自定义 API，Verifier 已经提取）
+                raw_output = result.get("output", "")
+                extracted_response = result.get("extracted_response", "")
+                extracted_intent = result.get("extracted_intent", "")
+
+                # 如果没有使用自定义 API，需要手动提取
+                if not api_config or not api_config.get("api_url"):
+                    try:
+                        # 提取意图
+                        extracted_intent = ResultExtractor.extract(raw_output, intent_extract_field)
+                        if extracted_intent is None:
+                            extracted_intent = ""
+                        elif isinstance(extracted_intent, dict):
+                            extracted_intent = str(extracted_intent)
+                        else:
+                            extracted_intent = str(extracted_intent)
+
+                        # 提取回复内容
+                        extracted_response = ResultExtractor.extract(raw_output, response_extract_field)
+                        if extracted_response is None:
+                            extracted_response = ""
+                        elif isinstance(extracted_response, dict):
+                            extracted_response = json.dumps(extracted_response, ensure_ascii=False)
+                        else:
+                            extracted_response = str(extracted_response)
+                    except Exception as e:
+                        logger.warning(f"[Task {task_id}] Row {row_idx} Round {round_num}: 提取失败 - {e}")
+
+                # 添加提取结果到 result
+                result["extracted_intent"] = extracted_intent
+                if extracted_response:
+                    result["extracted_response"] = extracted_response
+
+                return result
+
+            # 并发处理当前轮的所有数据行
+            with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                futures = {executor.submit(process_row_for_round, i): i for i in range(total_rows)}
+
+                for future in as_completed(futures):
+                    if stop_event.is_set():
+                        info["status"] = "stopped"
+                        executor.shutdown(wait=False)
+                        break
+
+                    row_idx = futures[future]
+                    result = future.result()
+
+                    if result:
+                        with results_lock:
+                            # 更新全局索引
+                            global_index[0] += 1
+                            info["current_index"] = global_index[0]
+
+                            # 添加到结果
+                            info["results"].append(result)
+                            round_results.append(result)
+
+                            if result["is_correct"]:
+                                round_correct += 1
+                            else:
+                                info["errors"].append(result)
+
+                            # 更新该行的历史消息（用于下一轮）
+                            query = result.get("query", "")
+                            extracted_response = result.get("extracted_response", "")
+
+                            if query:
+                                row_contexts[row_idx]["history"].append({
+                                    "role": "user",
+                                    "content": query
+                                })
+                            if extracted_response:
+                                row_contexts[row_idx]["history"].append({
+                                    "role": "assistant",
+                                    "content": extracted_response
+                                })
+
+                            # 定期保存
+                            if global_index[0] % 10 == 0:
+                                logger.info(f"[Task {task_id}] 进度: {global_index[0]}/{info['total_count']} (第 {round_num} 轮)")
+                                storage.save_task_status(project_id, task_id, info)
+
+            # 当前轮完成，计算准确率并保存
+            round_total = len(round_results)
+            round_accuracy = (round_correct / round_total * 100) if round_total > 0 else 0
+
+            # 只保存错误的结果，减少数据量
+            round_errors = [r for r in round_results if not r.get("is_correct", True)]
+
+            round_summary = {
+                "round": round_num,
+                "total": round_total,
+                "correct": round_correct,
+                "accuracy": round_accuracy,
+                "results": round_errors  # 只保存错误结果
+            }
+            info["round_results"].append(round_summary)
+
+            logger.info(f"[Task {task_id}] 第 {round_num} 轮完成 | 准确率: {round_accuracy:.1f}% ({round_correct}/{round_total})")
+            storage.save_task_status(project_id, task_id, info)
+
+        # 任务完成
+        if info["current_index"] >= info["total_count"]:
+            info["status"] = "completed"
+            logger.info(f"[Task {task_id}] 多轮验证任务完成")
+
+        storage.save_task_status(project_id, task_id, info)

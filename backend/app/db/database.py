@@ -134,3 +134,39 @@ def _migrate_database() -> None:
                     logger.info("[迁移] playground_history 表添加 is_favorite 字段成功")
                 except Exception as e:
                     logger.warning(f"[迁移] playground_history 表添加 is_favorite 字段失败（可能已存在）: {e}")
+
+        # 迁移 task_results 表：添加多轮验证字段
+        if "task_results" in inspector.get_table_names():
+            columns: list = [col["name"] for col in inspector.get_columns("task_results")]
+
+            if "round_number" not in columns:
+                try:
+                    session.execute(text("ALTER TABLE task_results ADD COLUMN round_number INTEGER DEFAULT 1"))
+                    session.commit()
+                    logger.info("[迁移] task_results 表添加 round_number 字段成功")
+                except Exception as e:
+                    logger.warning(f"[迁移] task_results 表添加 round_number 字段失败（可能已存在）: {e}")
+
+            if "session_id" not in columns:
+                try:
+                    session.execute(text("ALTER TABLE task_results ADD COLUMN session_id TEXT DEFAULT ''"))
+                    session.commit()
+                    logger.info("[迁移] task_results 表添加 session_id 字段成功")
+                except Exception as e:
+                    logger.warning(f"[迁移] task_results 表添加 session_id 字段失败（可能已存在）: {e}")
+
+            if "row_index" not in columns:
+                try:
+                    session.execute(text("ALTER TABLE task_results ADD COLUMN row_index INTEGER DEFAULT 0"))
+                    session.commit()
+                    logger.info("[迁移] task_results 表添加 row_index 字段成功")
+                except Exception as e:
+                    logger.warning(f"[迁移] task_results 表添加 row_index 字段失败（可能已存在）: {e}")
+
+            if "history_context" not in columns:
+                try:
+                    session.execute(text("ALTER TABLE task_results ADD COLUMN history_context TEXT DEFAULT '[]'"))
+                    session.commit()
+                    logger.info("[迁移] task_results 表添加 history_context 字段成功")
+                except Exception as e:
+                    logger.warning(f"[迁移] task_results 表添加 history_context 字段失败（可能已存在）: {e}")

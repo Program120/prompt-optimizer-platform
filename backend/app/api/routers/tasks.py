@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import FileResponse
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import os
+import json
 import pandas as pd
 from loguru import logger
 
@@ -85,6 +86,118 @@ async def start_task(
         return {"task_id": task_id}
     except Exception as e:
         logger.exception(f"启动任务失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"启动任务失败: {str(e)}")
+
+
+@router.post("/start-multi-round")
+async def start_multi_round_task(
+    project_id: str = Form(...),
+    file_id: str = Form(...),
+    prompt: str = Form(...),
+    rounds_config: str = Form(...),
+    intent_extract_field: str = Form(...),
+    response_extract_field: str = Form(...),
+    original_filename: Optional[str] = Form(None),
+    validation_limit: Optional[int] = Form(None),
+    api_config: Optional[str] = Form(None)
+) -> Dict[str, str]:
+    """
+    启动多轮验证任务
+
+    :param project_id: 项目ID
+    :param file_id: 文件ID
+    :param prompt: 提示词
+    :param rounds_config: 轮次配置 JSON 字符串
+        格式: [{"round": 1, "query_col": "query1", "target_col": "target1"},
+               {"round": 2, "query_col": "query2", "target_col": "target2"}]
+    :param intent_extract_field: 意图提取路径（用于从响应中提取识别的意图，如 data.intent）
+    :param response_extract_field: 回复内容提取路径（用于构建下一轮历史，如 data.response）
+    :param original_filename: 原始文件名（可选）
+    :param validation_limit: 验证数量限制（可选）
+    :param api_config: 自定义 API 配置 JSON 字符串（可选）
+        格式: {"api_url": "...", "api_headers": "{}", "api_timeout": 60, "request_template": "...", "concurrency": 5}
+    :return: 包含任务ID的字典
+    :raises HTTPException: 如果文件或项目不存在，或配置不正确
+    """
+    logger.info(f"收到多轮验证任务请求: project_id={project_id}, file_id={file_id}")
+
+    # 解析轮次配置
+    try:
+        parsed_rounds_config: List[Dict[str, Any]] = json.loads(rounds_config)
+        if not isinstance(parsed_rounds_config, list) or len(parsed_rounds_config) == 0:
+            raise ValueError("rounds_config 必须是非空列表")
+    except json.JSONDecodeError as e:
+        logger.error(f"解析 rounds_config 失败: {e}")
+        raise HTTPException(status_code=400, detail=f"rounds_config JSON 格式错误: {e}")
+
+    # 验证轮次配置：每轮都需要 query_col 和 target_col
+    for idx, cfg in enumerate(parsed_rounds_config):
+        if "round" not in cfg or "query_col" not in cfg or "target_col" not in cfg:
+            raise HTTPException(
+                status_code=400,
+                detail=f"轮次配置[{idx}]缺少必需字段 (round, query_col, target_col)"
+            )
+
+    # 解析 API 配置
+    parsed_api_config: Optional[Dict[str, Any]] = None
+    if api_config:
+        try:
+            parsed_api_config = json.loads(api_config)
+            if not isinstance(parsed_api_config, dict):
+                raise ValueError("api_config 必须是对象")
+            # 验证必需字段
+            if not parsed_api_config.get("api_url"):
+                raise ValueError("api_config.api_url 不能为空")
+        except json.JSONDecodeError as e:
+            logger.error(f"解析 api_config 失败: {e}")
+            raise HTTPException(status_code=400, detail=f"api_config JSON 格式错误: {e}")
+
+    # 查找文件路径
+    file_path = None
+    for f in os.listdir(storage.DATA_DIR):
+        if f.startswith(file_id):
+            file_path = os.path.join(storage.DATA_DIR, f)
+            break
+
+    if not file_path:
+        logger.error(f"文件未找到: file_id={file_id}")
+        raise HTTPException(status_code=404, detail="文件未找到")
+
+    # 获取项目配置
+    project = storage.get_project(project_id)
+    if not project:
+        logger.error(f"项目未找到: project_id={project_id}")
+        raise HTTPException(status_code=404, detail="项目未找到")
+
+    model_config = project.get("model_config", {})
+
+    # 如果没有提供自定义 API 配置，则需要检查项目的模型配置
+    if not parsed_api_config:
+        # 检查是否配置了接口验证模式
+        if model_config.get("validation_mode") != "interface":
+            logger.warning(f"多轮验证需要配置 API: project_id={project_id}")
+            raise HTTPException(
+                status_code=400,
+                detail="多轮验证需要配置 API 接口信息"
+            )
+
+    try:
+        task_id = tm.create_multi_round_task(
+            project_id=project_id,
+            file_path=file_path,
+            prompt=prompt,
+            model_config=model_config,
+            rounds_config=parsed_rounds_config,
+            intent_extract_field=intent_extract_field,
+            response_extract_field=response_extract_field,
+            original_filename=original_filename,
+            validation_limit=validation_limit,
+            api_config=parsed_api_config
+        )
+        logger.info(f"多轮验证任务启动成功: task_id={task_id}")
+        return {"task_id": task_id}
+    except Exception as e:
+        logger.exception(f"启动多轮验证任务失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"启动任务失败: {str(e)}")
 
 @router.get("/{task_id}")

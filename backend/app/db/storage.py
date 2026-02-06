@@ -73,33 +73,37 @@ def get_project(project_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def create_project(name: str, prompt: str) -> Dict[str, Any]:
+def create_project(name: str, prompt: str, project_type: str = "single") -> Dict[str, Any]:
     """
     创建新项目
-    
+
     :param name: 项目名称
     :param prompt: 初始提示词
+    :param project_type: 项目类型 (single: 单轮验证, multi: 多轮验证)
     :return: 创建的项目字典
     """
     project_id: str = datetime.now().strftime("%Y%m%d%H%M%S")
-    
+
+    # 初始化 config，包含项目类型
+    initial_config = json.dumps({"project_type": project_type}, ensure_ascii=False)
+
     new_project = Project(
         id=project_id,
         name=name,
         current_prompt=prompt,
         # 保存初始提示词，用于重置功能
         initial_prompt=prompt,
-        config="{}",
+        config=initial_config,
         model_config_data="{}",
         optimization_model_config="{}",
         created_at=datetime.now().isoformat()
     )
-    
+
     with get_db_session() as session:
         session.add(new_project)
         session.commit()
         session.refresh(new_project)
-        logger.info(f"创建项目: {project_id} - {name}")
+        logger.info(f"创建项目: {project_id} - {name} (类型: {project_type})")
         return new_project.to_dict()
 
 

@@ -23,16 +23,21 @@ async def list_projects() -> List[Dict[str, Any]]:
     return projects
 
 @router.post("")
-async def create_project(name: str = Form(...), prompt: str = Form("...")) -> Dict[str, Any]:
+async def create_project(
+    name: str = Form(...),
+    prompt: str = Form("..."),
+    project_type: str = Form("single")
+) -> Dict[str, Any]:
     """
     创建新项目
     :param name: 项目名称
     :param prompt: 初始提示词
+    :param project_type: 项目类型 (single: 单轮验证, multi: 多轮验证)
     :return: 创建的项目对象
     """
-    logger.info(f"Creating new project: {name}")
+    logger.info(f"Creating new project: {name}, type: {project_type}")
     try:
-        project = await run_in_threadpool(storage.create_project, name, prompt)
+        project = await run_in_threadpool(storage.create_project, name, prompt, project_type)
         logger.info(f"Project created successfully: {project.get('id')}")
         return project
     except Exception as e:
@@ -138,6 +143,10 @@ class ProjectUpdateRequest(BaseModel):
     optimization_model_config: Optional[Dict[str, Any]] = None
     optimization_prompt: Optional[str] = None
     validation_limit: Optional[str] = None
+    # 多轮验证配置字段
+    multi_round_config: Optional[Dict[str, Any]] = None
+    multi_round_file_info: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None  # 允许直接传入完整配置
 
 
 @router.put("/{project_id}")
@@ -162,7 +171,11 @@ async def update_project(
         
     # 获取现有 config，如果没有则为空字典
     config = existing_project.get("config", {})
-    
+
+    # 如果请求中直接提供了完整 config，则合并
+    if body.config is not None:
+        config.update(body.config)
+
     # 仅当参数不为 None 时才更新 config
     if body.query_col is not None:
         config["query_col"] = body.query_col
@@ -181,10 +194,18 @@ async def update_project(
     # 文件信息 (已经是 dict，无需解析)
     if body.file_info is not None:
         config["file_info"] = body.file_info
-            
+
     # 自动迭代配置 (已经是 dict)
     if body.auto_iterate_config is not None:
         config["auto_iterate_config"] = body.auto_iterate_config
+
+    # 多轮验证配置
+    if body.multi_round_config is not None:
+        config["multi_round_config"] = body.multi_round_config
+
+    # 多轮验证文件信息
+    if body.multi_round_file_info is not None:
+        config["multi_round_file_info"] = body.multi_round_file_info
     
     updates: Dict[str, Any] = {
         "current_prompt": body.current_prompt,

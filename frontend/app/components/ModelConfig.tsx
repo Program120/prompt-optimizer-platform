@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Settings, Save, Loader2, ChevronDown } from "lucide-react";
-import { motion } from "framer-motion";
+import { Settings, Save, Loader2, ChevronDown, Sparkles, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "./ui/Toast";
 
 // 统一使用相对路径
@@ -58,7 +58,7 @@ const STANDARD_MODULES = [
     { id: 9, name: "标准化输出", desc: "统一 JSON 格式与字段定义" }
 ];
 
-export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "verification" }: { onClose: () => void; projectId?: string; onSave?: () => void; defaultTab?: "verification" | "optimization" }) {
+export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "verification", projectType }: { onClose: () => void; projectId?: string; onSave?: () => void; defaultTab?: "verification" | "optimization"; projectType?: "single" | "multi" }) {
     const { success, error, toast } = useToast();
     const [activeTab, setActiveTab] = useState<"verification" | "optimization">(defaultTab);
 
@@ -78,7 +78,10 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         temperature: 0.0,
         do_sample: false,
         extra_body: "",
-        default_headers: ""
+        default_headers: "",
+        validation_mode: "llm" as "llm" | "interface",
+        interface_code: "",
+        session_vars: ""
     });
     const [optConfig, setOptConfig] = useState({
         base_url: "",
@@ -105,6 +108,11 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
     const [selectedVerifyModel, setSelectedVerifyModel] = useState<string>("");
     const [selectedOptModel, setSelectedOptModel] = useState<string>("");
 
+    // AI 补全相关状态
+    const [showAiComplete, setShowAiComplete] = useState<boolean>(false);
+    const [aiCompleteInput, setAiCompleteInput] = useState<string>("");
+    const [isAiCompleting, setIsAiCompleting] = useState<boolean>(false);
+
     useEffect(() => {
         // 获取公共模型列表
         fetchGlobalModels();
@@ -113,7 +121,7 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
         } else {
             fetchConfig();
         }
-    }, [projectId]);
+    }, [projectId, projectType]);
 
     /**
      * 监听 ESC 键关闭弹窗
@@ -221,7 +229,14 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 if (loadedConfig.default_headers && typeof loadedConfig.default_headers === 'object') {
                     loadedConfig.default_headers = formatJSON(loadedConfig.default_headers);
                 }
+                // 多轮项目强制使用接口验证模式
+                if (projectType === "multi") {
+                    loadedConfig.validation_mode = "interface";
+                }
                 setConfig(prev => ({ ...prev, ...loadedConfig }));
+            } else if (projectType === "multi") {
+                // 多轮项目即使没有配置也要设置接口验证模式
+                setConfig(prev => ({ ...prev, validation_mode: "interface" }));
             }
             if (res.data.optimization_model_config) {
                 const loadedOptConfig = { ...res.data.optimization_model_config };
@@ -413,6 +428,52 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
     };
 
     /**
+     * AI 补全参数转换脚本
+     * 根据用户提供的示例入参，自动生成 Python 转换脚本
+     */
+    const handleAiComplete = async (): Promise<void> => {
+        if (!aiCompleteInput.trim()) {
+            error("请输入示例入参");
+            return;
+        }
+
+        // 检查优化模型配置
+        if (!optConfig.api_key) {
+            error("请先在【优化配置】中设置 API Key");
+            return;
+        }
+
+        setIsAiCompleting(true);
+        try {
+            const res = await axios.post(`${API_BASE}/ai/generate-interface-code`, {
+                sample_request: aiCompleteInput,
+                model_config: {
+                    base_url: optConfig.base_url,
+                    api_key: optConfig.api_key,
+                    model_name: optConfig.model_name,
+                    protocol: optConfig.protocol,
+                    max_tokens: optConfig.max_tokens,
+                    temperature: 0.3  // 使用较低温度以获得更稳定的代码生成
+                }
+            });
+
+            if (res.data.code) {
+                setConfig(prev => ({ ...prev, interface_code: res.data.code }));
+                success("脚本生成成功！");
+                setShowAiComplete(false);
+                setAiCompleteInput("");
+            } else {
+                error(res.data.error || "生成失败");
+            }
+        } catch (e: any) {
+            console.error("AI complete failed:", e);
+            error(e.response?.data?.detail || "AI 生成失败，请检查模型配置");
+        } finally {
+            setIsAiCompleting(false);
+        }
+    };
+
+    /**
      * 渲染配置表单
      * 采用分组布局，更清晰地组织配置项
      * @param cfg 配置对象
@@ -421,8 +482,8 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
      */
     const renderConfigForm = (cfg: any, setCfg: any, isVerification: boolean) => (
         <div className="space-y-5">
-            {/* 公共模型快速选择 */}
-            {globalModels.length > 0 && (
+            {/* 公共模型快速选择（多轮项目的验证配置不显示） */}
+            {globalModels.length > 0 && !(isVerification && projectType === "multi") && (
                 <div className="p-4 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl border border-blue-500/20">
                     <label className="block text-sm font-medium text-blue-300 mb-2">
                         ⚡ 快速选择公共模型
@@ -456,8 +517,8 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                 </div>
             )}
 
-            {/* 验证模式切换（仅验证配置显示） */}
-            {isVerification && (
+            {/* 验证模式切换（仅验证配置显示，多轮项目不显示切换按钮） */}
+            {isVerification && projectType !== "multi" && (
                 <div className="bg-white/5 p-1 rounded-lg flex">
                     <button
                         onClick={() => setCfg({ ...cfg, validation_mode: "llm" })}
@@ -471,6 +532,15 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                     >
                         接口调用验证 (Interface)
                     </button>
+                </div>
+            )}
+            {/* 多轮项目固定显示接口验证模式提示 */}
+            {isVerification && projectType === "multi" && (
+                <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg">
+                    <p className="text-xs text-blue-300">
+                        <span className="font-medium">接口调用验证模式</span>
+                        <span className="text-slate-400 ml-2">（多轮验证项目仅支持接口验证）</span>
+                    </p>
                 </div>
             )}
 
@@ -703,15 +773,49 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                     <div>
                         <div className="flex justify-between items-center mb-1.5">
                             <label className="block text-sm font-medium text-slate-400">参数转换脚本 (Python)</label>
-                            <span className="text-xs text-slate-500">query/target/prompt → params</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-500">query/target/prompt → params</span>
+                                <button
+                                    onClick={() => setShowAiComplete(true)}
+                                    className="flex items-center gap-1 text-xs bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 px-2 py-1 rounded-md transition-colors"
+                                >
+                                    <Sparkles size={12} />
+                                    AI 补全
+                                </button>
+                            </div>
                         </div>
                         <textarea
                             value={cfg.interface_code || ""}
                             onChange={e => setCfg({ ...cfg, interface_code: e.target.value })}
                             className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm font-mono h-[120px]"
-                            placeholder={`# Available variables: query, target, prompt\nparams = {\n    "messages": [{"role": "user", "content": query}]\n}`}
+                            placeholder={`# Available variables: query, target, prompt, history, session_id\nparams = {\n    "messages": [{"role": "user", "content": query}]\n}`}
                         />
                     </div>
+
+                    {/* 多轮会话级变量配置（仅多轮项目显示） */}
+                    {projectType === "multi" && (
+                        <div className="mt-4 p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-sm font-medium text-purple-300">会话级变量</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                                    多轮专用
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-400 mb-2">
+                                指定在同一条数据的多轮对话中保持不变的变量名（逗号分隔），这些变量会在首轮生成后复用
+                            </p>
+                            <input
+                                type="text"
+                                value={cfg.session_vars || ""}
+                                onChange={e => setCfg({ ...cfg, session_vars: e.target.value })}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 transition-colors text-sm font-mono"
+                                placeholder="例如: sessionId, requestId"
+                            />
+                            <p className="text-[10px] text-slate-500 mt-1.5">
+                                提示：在脚本中使用 <code className="text-purple-400">str(uuid.uuid4())</code> 生成的值会在多轮中保持一致
+                            </p>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -1004,6 +1108,118 @@ export default function ModelConfig({ onClose, projectId, onSave, defaultTab = "
                     </button>
                 </div>
             </motion.div>
+
+            {/* AI 补全弹窗 */}
+            <AnimatePresence>
+                {showAiComplete && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]"
+                        onClick={(e) => {
+                            if (e.target === e.currentTarget && !isAiCompleting) {
+                                setShowAiComplete(false);
+                            }
+                        }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-slate-900 border border-white/10 rounded-xl w-full max-w-2xl shadow-2xl"
+                        >
+                            <div className="flex items-center justify-between p-4 border-b border-white/10">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles className="text-purple-400" size={20} />
+                                    <h3 className="text-lg font-semibold">AI 生成参数转换脚本</h3>
+                                </div>
+                                <button
+                                    onClick={() => !isAiCompleting && setShowAiComplete(false)}
+                                    className="text-slate-400 hover:text-white transition-colors"
+                                    disabled={isAiCompleting}
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="p-4 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        请粘贴目标接口的示例请求体 (JSON)
+                                    </label>
+                                    <p className="text-xs text-slate-500 mb-3">
+                                        AI 将根据示例请求体自动生成 Python 转换脚本，将 query/target/prompt/history 等变量映射到接口参数
+                                    </p>
+                                    <textarea
+                                        value={aiCompleteInput}
+                                        onChange={(e) => setAiCompleteInput(e.target.value)}
+                                        className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 transition-colors text-sm font-mono h-[200px]"
+                                        placeholder={`{
+  "messages": [
+    {"role": "system", "content": "你是一个助手"},
+    {"role": "user", "content": "用户问题"}
+  ],
+  "history": [
+    {"role": "user", "content": "历史问题"},
+    {"role": "assistant", "content": "历史回答"}
+  ],
+  "session_id": "xxx",
+  "intent": "查询订单"
+}`}
+                                        disabled={isAiCompleting}
+                                    />
+                                </div>
+                                <div className="bg-slate-800/50 rounded-lg p-3 space-y-2">
+                                    <p className="text-xs text-slate-400">
+                                        <span className="text-purple-400 font-medium">可用变量：</span>
+                                        <code className="ml-2 text-blue-300">query</code> (当前用户输入)、
+                                        <code className="text-emerald-300">target</code> (期望意图)、
+                                        <code className="text-amber-300">prompt</code> (系统提示词)、
+                                        <code className="text-pink-300">history</code> (历史对话列表)
+                                    </p>
+                                    <p className="text-xs text-slate-400">
+                                        <span className="text-cyan-400 font-medium">可用模块：</span>
+                                        <code className="ml-2 text-cyan-300">uuid.uuid4()</code> (生成UUID)、
+                                        <code className="text-cyan-300">time.time()</code> (时间戳)
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                        提示：示例中的 <code className="text-orange-300">{`{{$string.uuid}}`}</code> 等占位符会自动识别并生成动态值
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3 p-4 border-t border-white/10">
+                                <button
+                                    onClick={() => setShowAiComplete(false)}
+                                    disabled={isAiCompleting}
+                                    className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm disabled:opacity-50"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleAiComplete}
+                                    disabled={isAiCompleting || !aiCompleteInput.trim()}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors text-sm ${isAiCompleting || !aiCompleteInput.trim()
+                                        ? "bg-purple-600/50 cursor-not-allowed"
+                                        : "bg-purple-600 hover:bg-purple-500"
+                                        }`}
+                                >
+                                    {isAiCompleting ? (
+                                        <>
+                                            <Loader2 size={14} className="animate-spin" />
+                                            生成中...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles size={14} />
+                                            生成脚本
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

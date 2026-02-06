@@ -183,30 +183,36 @@ class TaskResult(SQLModel, table=True):
     存储每条数据的执行结果
     """
     __tablename__ = "task_results"
-    
+
     # 主键 ID
     id: Optional[int] = Field(default=None, primary_key=True)
-    
+
     # 外键：关联任务
     task_id: str = Field(foreign_key="tasks.id", index=True)
-    
+
     # 查询内容
     query: str = Field(default="", sa_column=Column(Text))
-    
+
     # 预期输出
     target: str = Field(default="", sa_column=Column(Text))
-    
+
     # 实际输出
     output: str = Field(default="", sa_column=Column(Text))
-    
+
     # 是否正确
     is_correct: bool = Field(default=False)
-    
+
     # 原因说明
     reason: str = Field(default="", sa_column=Column(Text))
-    
+
     # 其他数据（JSON 格式）
     extra_data: str = Field(default="{}", sa_column=Column(Text))
+
+    # 多轮验证字段
+    round_number: int = Field(default=1)  # 当前轮次（1-based），单轮验证默认为 1
+    session_id: str = Field(default="", index=True)  # 会话 ID（同一行数据的多轮请求共享）
+    row_index: int = Field(default=0)  # 原始数据行索引
+    history_context: str = Field(default="[]", sa_column=Column(Text))  # 历史消息 JSON
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
@@ -216,7 +222,16 @@ class TaskResult(SQLModel, table=True):
             "output": self.output,
             "is_correct": self.is_correct,
             "reason": self.reason,
+            "round_number": self.round_number,
+            "session_id": self.session_id,
+            "row_index": self.row_index,
         }
+        # 解析历史上下文
+        try:
+            result["history_context"] = json.loads(self.history_context) if self.history_context else []
+        except json.JSONDecodeError:
+            result["history_context"] = []
+        # 解析额外数据
         try:
             extra: Dict[str, Any] = json.loads(self.extra_data) if self.extra_data else {}
             result.update(extra)

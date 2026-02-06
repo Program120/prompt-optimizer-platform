@@ -26,7 +26,7 @@ class Verifier:
     ) -> Dict[str, Any]:
         """
         验证单条数据
-        
+
         :param index: 数据行索引
         :param query: 用户输入
         :param target: 预期输出
@@ -38,32 +38,49 @@ class Verifier:
         """
         import time
         import uuid
-        
+        from .extractor import ResultExtractor
+
         # 生成请求 ID
         request_id: str = str(uuid.uuid4())
         start_time: float = time.time()
-        
+
         try:
             mode = model_config.get("validation_mode", "llm")
             output = ""
-            
+            request_params = None
+            extracted_intent_value = None
+
             # 将 request_id 注入到配置中
             config_with_request_id = {**model_config, "_request_id": request_id}
-            
+
             if mode == "interface":
-                output = Verifier._call_interface(query, target, prompt, config_with_request_id)
+                result = Verifier._call_interface(query, target, prompt, config_with_request_id)
+                # _call_interface 可能返回 tuple (output, request_params) 或 str
+                if isinstance(result, tuple):
+                    output, request_params = result
+                else:
+                    output = result
             else:
                 output = Verifier._call_llm(query, prompt, config_with_request_id)
-                
+
             # 自动去除 markdown 代码块标记
             output = Verifier._clean_markdown(output)
-            
+
+            # 提取意图值
+            if extract_field:
+                extracted_intent = ResultExtractor.extract(output, extract_field)
+                if extracted_intent is not None:
+                    if isinstance(extracted_intent, bool):
+                        extracted_intent_value = str(extracted_intent)
+                    else:
+                        extracted_intent_value = str(extracted_intent).strip()
+
             is_correct = Verifier.check_match(output, target, extract_field)
-            
+
             # 计算耗时
             latency_ms: float = round((time.time() - start_time) * 1000, 2)
-            
-            return {
+
+            result = {
                 "index": index,
                 "query": query,
                 "target": target,
@@ -73,7 +90,17 @@ class Verifier:
                 "latency_ms": latency_ms,
                 "request_id": request_id
             }
-            
+
+            # 如果有完整入参，添加到结果中
+            if request_params:
+                result["request_params"] = request_params
+
+            # 如果有提取的意图值，添加到结果中
+            if extracted_intent_value is not None:
+                result["extracted_intent"] = extracted_intent_value
+
+            return result
+
         except Exception as e:
             logger.error(f"[Verifier] Error index={index}: {str(e)}")
             # 计算耗时（即使失败也记录）
@@ -90,50 +117,455 @@ class Verifier:
             }
 
     @staticmethod
-    def _call_interface(query: str, target: str, prompt: str, config: Dict[str, Any]) -> str:
-        """调用自定义接口"""
+    def verify_single_with_history(
+        index: int,
+        row_index: int,
+        round_number: int,
+        session_id: str,
+        query: str,
+        target: str,
+        prompt: str,
+        model_config: Dict[str, Any],
+        history_messages: list,
+        extract_field: Optional[str] = None,
+        reason_col_value: Optional[str] = None,
+        api_config: Optional[Dict[str, Any]] = None,
+        response_extract_path: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        带历史上下文的单条数据验证（多轮验证专用）
+
+        :param index: 全局索引（用于进度追踪）
+        :param row_index: 原始数据行索引
+        :param round_number: 当前轮次（1-based）
+        :param session_id: 会话 ID（同一行数据的多轮请求共享）
+        :param query: 当前轮用户输入
+        :param target: 预期输出
+        :param prompt: 提示词
+        :param model_config: 模型配置
+        :param history_messages: 历史消息列表
+        :param extract_field: 意图提取字段/路径 (可选)
+        :param reason_col_value: 原因列值 (可选)
+        :param api_config: 自定义 API 配置 (可选)，包含 api_url, api_headers, api_timeout, request_template
+        :param response_extract_path: 回复内容提取路径 (可选)，用于从响应中提取 assistant 回复构建历史
+        :return: 验证结果字典
+        """
+        import time
+        import uuid
+
+        request_id: str = str(uuid.uuid4())
+        start_time: float = time.time()
+
+        try:
+            output = ""
+            extracted_response = ""  # 用于构建下一轮历史的回复内容
+            extracted_intent_value = None  # 提取的意图值
+            request_params = None  # 完整入参
+
+            # 判断使用哪种 API 调用方式
+            # 1. 如果 api_config 存在且 request_template 是有效的 JSON（以 { 开头），使用 _call_custom_api
+            # 2. 否则使用 _call_interface（Python 脚本方式）
+            use_custom_api = False
+            if api_config and api_config.get("api_url"):
+                request_template = api_config.get("request_template", "").strip()
+                # 检查是否是 JSON 模板（以 { 开头）
+                if request_template.startswith("{"):
+                    use_custom_api = True
+
+            if use_custom_api:
+                # 使用自定义 API 接口（JSON 模板变量替换）
+                output, request_params = Verifier._call_custom_api(
+                    query=query,
+                    target=target,
+                    prompt=prompt,
+                    api_config=api_config,
+                    history_messages=history_messages,
+                    session_id=session_id,
+                    current_round=round_number
+                )
+
+                # 使用 ResultExtractor 提取意图和回复（支持 py: 前缀的 Python 代码）
+                from .extractor import ResultExtractor
+
+                intent_path = extract_field or ""
+                extracted_intent = ResultExtractor.extract(output, intent_path) if intent_path else None
+
+                # 保存提取的意图值（转为字符串）
+                if extracted_intent is not None:
+                    if isinstance(extracted_intent, bool):
+                        extracted_intent_value = str(extracted_intent)
+                    else:
+                        extracted_intent_value = str(extracted_intent).strip()
+
+                if response_extract_path:
+                    extracted_response = ResultExtractor.extract(output, response_extract_path)
+                    if extracted_response is None:
+                        extracted_response = ""
+                    elif not isinstance(extracted_response, str):
+                        extracted_response = json.dumps(extracted_response, ensure_ascii=False)
+
+                # 检查匹配（使用提取的意图值）
+                is_correct = False
+                if extracted_intent is not None:
+                    if isinstance(extracted_intent, bool):
+                        is_correct = extracted_intent
+                    else:
+                        is_correct = str(extracted_intent).strip() == target.strip()
+                else:
+                    # 兜底：直接匹配
+                    is_correct = target.strip() in output
+
+            elif api_config and api_config.get("api_url"):
+                # 使用 _call_interface（Python 脚本方式）
+                # 构建兼容的 config 对象
+                interface_config = {
+                    "base_url": api_config.get("api_url"),
+                    "interface_code": api_config.get("request_template", ""),
+                    "api_key": "",  # 从 api_headers 中提取或留空
+                    "timeout": api_config.get("api_timeout", 60),
+                    "_request_id": request_id
+                }
+
+                output, request_params = Verifier._call_interface(
+                    query, target, prompt, interface_config,
+                    history_messages=history_messages,
+                    session_id=session_id
+                )
+
+                # 使用 ResultExtractor 提取意图和回复
+                from .extractor import ResultExtractor
+
+                intent_path = extract_field or ""
+                extracted_intent = ResultExtractor.extract(output, intent_path) if intent_path else None
+
+                if extracted_intent is not None:
+                    if isinstance(extracted_intent, bool):
+                        extracted_intent_value = str(extracted_intent)
+                    else:
+                        extracted_intent_value = str(extracted_intent).strip()
+
+                if response_extract_path:
+                    extracted_response = ResultExtractor.extract(output, response_extract_path)
+                    if extracted_response is None:
+                        extracted_response = ""
+                    elif not isinstance(extracted_response, str):
+                        extracted_response = json.dumps(extracted_response, ensure_ascii=False)
+
+                # 检查匹配
+                is_correct = False
+                if extracted_intent is not None:
+                    if isinstance(extracted_intent, bool):
+                        is_correct = extracted_intent
+                    else:
+                        is_correct = str(extracted_intent).strip() == target.strip()
+                else:
+                    is_correct = target.strip() in output
+
+            else:
+                # 使用原有逻辑（LLM 或旧接口模式）
+                mode = model_config.get("validation_mode", "llm")
+                config_with_request_id = {**model_config, "_request_id": request_id}
+
+                if mode == "interface":
+                    output, request_params = Verifier._call_interface(
+                        query, target, prompt, config_with_request_id,
+                        history_messages=history_messages,
+                        session_id=session_id
+                    )
+                else:
+                    output = Verifier._call_llm(
+                        query, prompt, config_with_request_id,
+                        None, history_messages
+                    )
+
+                output = Verifier._clean_markdown(output)
+                is_correct = Verifier.check_match(output, target, extract_field)
+
+            latency_ms: float = round((time.time() - start_time) * 1000, 2)
+
+            result = {
+                "index": index,
+                "row_index": row_index,
+                "round_number": round_number,
+                "session_id": session_id,
+                "query": query,
+                "target": target,
+                "reason": reason_col_value or "",
+                "output": output,
+                "is_correct": is_correct,
+                "latency_ms": latency_ms,
+                "request_id": request_id,
+                "history_context": json.dumps(history_messages, ensure_ascii=False)
+            }
+
+            # 如果有完整入参，添加到结果中
+            if request_params:
+                result["request_params"] = request_params
+
+            # 如果有提取的意图值，添加到结果中
+            if extracted_intent_value is not None:
+                result["extracted_intent"] = extracted_intent_value
+
+            # 如果有提取的回复内容，添加到结果中
+            if extracted_response:
+                result["extracted_response"] = extracted_response
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[Verifier] Error index={index}, round={round_number}: {str(e)}")
+            latency_ms: float = round((time.time() - start_time) * 1000, 2)
+            return {
+                "index": index,
+                "row_index": row_index,
+                "round_number": round_number,
+                "session_id": session_id,
+                "query": query,
+                "target": target,
+                "reason": reason_col_value or "",
+                "output": f"ERROR: {str(e)}",
+                "is_correct": False,
+                "latency_ms": latency_ms,
+                "request_id": request_id,
+                "history_context": json.dumps(history_messages, ensure_ascii=False)
+            }
+
+    @staticmethod
+    def _call_interface(
+        query: str,
+        target: str,
+        prompt: str,
+        config: Dict[str, Any],
+        history_messages: Optional[list] = None,
+        session_id: Optional[str] = None
+    ) -> tuple:
+        """
+        调用自定义接口（支持多轮历史消息）
+
+        :param query: 用户输入
+        :param target: 预期输出
+        :param prompt: 提示词
+        :param config: 接口配置
+        :param history_messages: 历史消息列表（可选）
+        :param session_id: 会话 ID（可选）
+        :return: (接口响应内容, 请求参数字典)
+        """
         import requests
-        
+
         interface_code = config.get("interface_code", "")
         base_url = config.get("base_url", "")
         api_key = config.get("api_key", "")
         timeout = int(config.get("timeout", 60))
-        
+
         if not base_url:
             raise ValueError("Interface URL is required")
-            
+
         # 准备执行环境
+        # 为多轮验证提供 history 和 session_id 变量
         local_scope = {
-            "query": query, 
+            "query": query,
             "target": target,
             "prompt": prompt,
+            "history": history_messages if history_messages is not None else [],
+            "session_id": session_id if session_id is not None else "",
             "params": None
         }
-        
+
+        # 提供安全的内置模块
+        import uuid as uuid_module
+        import time as time_module
+        import json as json_module
+        safe_globals = {
+            "__builtins__": {
+                "str": str,
+                "int": int,
+                "float": float,
+                "bool": bool,
+                "list": list,
+                "dict": dict,
+                "tuple": tuple,
+                "len": len,
+                "range": range,
+                "True": True,
+                "False": False,
+                "None": None,
+            },
+            "uuid": uuid_module,
+            "time": time_module,
+            "json": json_module
+        }
+
         # 执行参数转换脚本
         try:
-            exec(interface_code, {"__builtins__": None}, local_scope)
+            exec(interface_code, safe_globals, local_scope)
             params = local_scope.get("params")
         except Exception as e:
             raise ValueError(f"Python script execution failed: {e}")
-            
+
         if not isinstance(params, dict):
             raise ValueError("Script must assign a dict to 'params' variable")
-            
+
         # 发起请求
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-            headers["api-key"] = api_key 
-        
+            headers["api-key"] = api_key
+
         resp = requests.post(base_url, json=params, headers=headers, timeout=timeout)
         resp.raise_for_status()
-        
+
         # 获取输出
         try:
-            return json.dumps(resp.json(), ensure_ascii=False)
+            return json.dumps(resp.json(), ensure_ascii=False), params
         except:
-            return resp.text
+            return resp.text, params
+
+    @staticmethod
+    def _call_custom_api(
+        query: str,
+        target: str,
+        prompt: str,
+        api_config: Dict[str, Any],
+        history_messages: Optional[list] = None,
+        session_id: Optional[str] = None,
+        current_round: int = 1
+    ) -> tuple:
+        """
+        调用自定义 API 接口（使用 JSON 模板变量替换）
+
+        :param query: 当前轮用户输入
+        :param target: 预期输出
+        :param prompt: 提示词
+        :param api_config: API 配置，包含 api_url, api_headers, api_timeout, request_template
+        :param history_messages: 历史消息列表（OpenAI 格式）
+        :param session_id: 会话 ID
+        :param current_round: 当前轮次编号
+        :return: (API 响应内容, 请求参数字典)
+        """
+        import requests
+
+        api_url = api_config.get("api_url", "")
+        api_headers_str = api_config.get("api_headers", "{}")
+        api_timeout = int(api_config.get("api_timeout", 60))
+        request_template = api_config.get("request_template", "{}")
+
+        if not api_url:
+            raise ValueError("API URL 不能为空")
+
+        # 解析请求头
+        try:
+            custom_headers = json.loads(api_headers_str) if api_headers_str else {}
+        except json.JSONDecodeError:
+            custom_headers = {}
+
+        # 准备变量替换
+        history = history_messages if history_messages is not None else []
+        history_json = json.dumps(history, ensure_ascii=False)
+
+        # 构建历史文本格式
+        history_text_parts = []
+        for msg in history:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "user":
+                history_text_parts.append(f"用户: {content}")
+            elif role == "assistant":
+                history_text_parts.append(f"助手: {content}")
+        history_text = "\n".join(history_text_parts)
+
+        # 变量替换映射
+        variables = {
+            "{{current_query}}": query,
+            "{{current_round}}": str(current_round),
+            "{{session_id}}": session_id or "",
+            "{{history}}": history_json,
+            "{{history_text}}": history_text,
+            "{{prompt}}": prompt,
+            "{{target}}": target
+        }
+
+        # 执行变量替换
+        request_body_str = request_template
+        for var_name, var_value in variables.items():
+            # 对于 {{history}}，不加引号（因为它本身是 JSON 数组）
+            if var_name == "{{history}}":
+                request_body_str = request_body_str.replace(var_name, var_value)
+            else:
+                # 其他变量需要转义特殊字符
+                escaped_value = var_value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+                request_body_str = request_body_str.replace(var_name, escaped_value)
+
+        # 解析请求体
+        try:
+            request_body = json.loads(request_body_str)
+        except json.JSONDecodeError as e:
+            logger.error(f"[Verifier] 请求体 JSON 解析失败: {request_body_str[:500]}")
+            raise ValueError(f"请求体 JSON 格式错误: {e}")
+
+        # 构建请求头
+        headers = {"Content-Type": "application/json"}
+        headers.update(custom_headers)
+
+        logger.debug(f"[Verifier] _call_custom_api - URL: {api_url}")
+        logger.debug(f"[Verifier] _call_custom_api - 请求体: {json.dumps(request_body, ensure_ascii=False)[:500]}")
+
+        # 发起请求
+        try:
+            resp = requests.post(api_url, json=request_body, headers=headers, timeout=api_timeout)
+            resp.raise_for_status()
+        except requests.exceptions.Timeout:
+            logger.error(f"[Verifier] _call_custom_api - 请求超时 (timeout={api_timeout}s)")
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"[Verifier] _call_custom_api - 请求失败: {str(e)}")
+            raise
+
+        # 强制 UTF-8 编码
+        resp.encoding = 'utf-8'
+
+        # 返回响应
+        try:
+            return json.dumps(resp.json(), ensure_ascii=False), request_body
+        except:
+            return resp.text, request_body
+
+    @staticmethod
+    def extract_by_path(data: Any, path: str) -> Any:
+        """
+        根据字段路径从数据中提取值
+
+        :param data: 数据对象（字典或 JSON 字符串）
+        :param path: 字段路径，如 "data.intent" 或 "response.content"
+        :return: 提取的值，如果路径无效则返回 None
+        """
+        if not path:
+            return data
+
+        # 如果是字符串，先解析为 JSON
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except json.JSONDecodeError:
+                return None
+
+        # 按点号分割路径
+        parts = path.split(".")
+        current = data
+
+        for part in parts:
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            elif isinstance(current, list):
+                # 支持数组索引，如 "items.0.name"
+                try:
+                    idx = int(part)
+                    current = current[idx]
+                except (ValueError, IndexError):
+                    return None
+            else:
+                return None
+
+        return current
 
     @staticmethod
     def _call_llm(

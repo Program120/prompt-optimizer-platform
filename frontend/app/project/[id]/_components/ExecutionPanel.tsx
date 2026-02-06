@@ -8,6 +8,7 @@ import {
 const API_BASE = "/api";
 
 interface ExecutionPanelProps {
+    projectId: string;  // 项目 ID
     taskStatus: any;
     fileInfo: any;
     config: { query_col: string; target_col: string; reason_col?: string };
@@ -42,6 +43,7 @@ interface ExecutionPanelProps {
 }
 
 export default function ExecutionPanel({
+    projectId,
     taskStatus,
     fileInfo,
     config,
@@ -81,10 +83,12 @@ export default function ExecutionPanel({
     return (
         <section className="glass p-6 rounded-2xl">
             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <Rocket size={20} className="text-emerald-400" />
-                    批处理执行
-                </h2>
+                <div className="flex items-center gap-4">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <Rocket size={20} className="text-emerald-400" />
+                        批处理执行
+                    </h2>
+                </div>
                 <div className="flex gap-2">
                     {/* 暂停/继续按钮 - 仅普通任务运行时显示，服务重启中断时不显示 */}
                     {taskStatus?.status === "running" && !isAutoIterating && autoIterateStatus?.status !== "error" ? (
