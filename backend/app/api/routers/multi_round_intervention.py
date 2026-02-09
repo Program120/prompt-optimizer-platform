@@ -5,7 +5,7 @@
 """
 from fastapi import APIRouter, HTTPException, Query, Form
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 from loguru import logger
 import json
@@ -13,6 +13,7 @@ import io
 import pandas as pd
 
 from app.services import multi_round_intervention_service as service
+from app.db import storage
 
 router = APIRouter()
 
@@ -299,3 +300,152 @@ async def export_interventions(
             "Content-Disposition": f"attachment; filename=multi_round_interventions_{project_id}.xlsx"
         }
     )
+
+
+# ==================== 单条数据测试验证 ====================
+
+class SingleTestRequest(BaseModel):
+    """单条数据测试请求"""
+    rounds_data: Dict[str, RoundInterventionData]  # 各轮次数据
+    intent_extract_field: str = ""  # 意图提取路径
+    response_extract_field: str = ""  # 回复提取路径
+
+
+@router.post("/projects/{project_id}/multi-round-interventions/{intervention_id}/test")
+async def test_single_intervention(
+    project_id: str,
+    intervention_id: int,
+    request: SingleTestRequest
+) -> Dict[str, Any]:
+    """
+    测试单条多轮干预数据
+
+    使用项目配置的 API 接口，对单条数据执行多轮验证
+
+    :param project_id: 项目 ID
+    :param intervention_id: 干预记录 ID
+    :param request: 测试请求（包含各轮次数据和提取配置）
+    :return: 各轮次验证结果
+    """
+    from app.engine.helpers.verifier import Verifier
+    from app.engine.helpers.history_formatter import HistoryFormatter
+
+    logger.info(f"测试单条多轮干预: project={project_id}, intervention_id={intervention_id}")
+
+    # 获取干预记录
+    record = service.get_by_id(intervention_id)
+    if not record or record.project_id != project_id:
+        raise HTTPException(status_code=404, detail="干预记录不存在")
+
+    # 获取项目配置
+    project = storage.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    model_config = project.get("model_config", {})
+    project_config = project.get("config", {})
+    multi_round_config = project_config.get("multi_round_config", {})
+
+    # 获取提示词
+    prompt = project.get("current_prompt", "")
+
+    # 构建 API 配置
+    api_config = {
+        "api_url": model_config.get("base_url", ""),
+        "api_headers": model_config.get("api_headers", "{}"),
+        "api_timeout": model_config.get("timeout", 60),
+        "request_template": model_config.get("interface_code", "{}")
+    }
+
+    if not api_config["api_url"]:
+        raise HTTPException(status_code=400, detail="请先配置 API 地址")
+
+    # 提取配置
+    intent_extract_field = request.intent_extract_field or multi_round_config.get("intent_extract_field", "")
+    response_extract_field = request.response_extract_field or multi_round_config.get("response_extract_field", "")
+
+    # 转换 rounds_data
+    rounds_data = {k: v.model_dump() for k, v in request.rounds_data.items()}
+
+    # 按轮次排序
+    round_nums = sorted(rounds_data.keys(), key=lambda x: int(x))
+
+    # 生成 session_id
+    session_id = HistoryFormatter.generate_session_id()
+
+    # 历史消息
+    history_messages: List[Dict[str, str]] = []
+
+    # 各轮结果
+    round_results: List[Dict[str, Any]] = []
+
+    for round_num in round_nums:
+        rd = rounds_data[round_num]
+        # 使用改写后的 query，如果没有则使用原始 query
+        query = rd.get("query_rewrite") or rd.get("original_query") or ""
+        target = rd.get("target") or ""
+
+        if not query:
+            # 跳过空 query
+            continue
+
+        try:
+            result = Verifier.verify_single_with_history(
+                index=int(round_num),
+                row_index=record.row_index,
+                round_number=int(round_num),
+                session_id=session_id,
+                query=query,
+                target=target,
+                prompt=prompt,
+                model_config=model_config,
+                history_messages=history_messages.copy(),
+                extract_field=intent_extract_field,
+                reason_col_value=rd.get("reason", ""),
+                api_config=api_config,
+                response_extract_path=response_extract_field
+            )
+
+            round_results.append({
+                "round": int(round_num),
+                "query": query,
+                "target": target,
+                "output": result.get("output", ""),
+                "extracted_intent": result.get("extracted_intent"),
+                "extracted_response": result.get("extracted_response"),
+                "is_correct": result.get("is_correct", False),
+                "latency_ms": result.get("latency_ms", 0),
+                "request_params": result.get("request_params"),  # 完整入参
+            })
+
+            # 更新历史消息
+            history_messages.append({"role": "user", "content": query})
+            extracted_response = result.get("extracted_response", "")
+            if extracted_response:
+                history_messages.append({"role": "assistant", "content": extracted_response})
+
+        except Exception as e:
+            logger.error(f"第 {round_num} 轮验证失败: {e}")
+            round_results.append({
+                "round": int(round_num),
+                "query": query,
+                "target": target,
+                "output": f"ERROR: {str(e)}",
+                "is_correct": False,
+                "latency_ms": 0
+            })
+            break  # 出错后停止后续轮次
+
+    # 计算总体结果
+    total_rounds = len(round_results)
+    correct_rounds = sum(1 for r in round_results if r.get("is_correct"))
+
+    return {
+        "intervention_id": intervention_id,
+        "row_index": record.row_index,
+        "session_id": session_id,
+        "total_rounds": total_rounds,
+        "correct_rounds": correct_rounds,
+        "accuracy": round(correct_rounds / total_rounds * 100, 1) if total_rounds > 0 else 0,
+        "round_results": round_results
+    }

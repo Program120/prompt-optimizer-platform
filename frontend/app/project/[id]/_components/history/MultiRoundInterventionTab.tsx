@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Search, RefreshCw, Download, Trash2, ChevronDown, ChevronUp,
-    Save, RotateCcw, Edit3, FileText, AlertCircle, CheckCircle2
+    Save, RotateCcw, Edit3, FileText, AlertCircle, CheckCircle2, Play, Loader2
 } from "lucide-react";
+import MultiRoundTestModal from "@/app/components/MultiRoundTestModal";
 
 const API_BASE = "/api";
 
@@ -15,6 +16,18 @@ interface RoundData {
     query_rewrite: string;
     reason: string;
     original_query?: string;
+}
+
+interface TestResult {
+    round: number;
+    query: string;
+    target: string;
+    output: string;
+    extracted_intent?: string;
+    extracted_response?: string;
+    is_correct: boolean;
+    latency_ms: number;
+    request_params?: Record<string, unknown>;
 }
 
 interface MultiRoundInterventionItem {
@@ -417,6 +430,7 @@ export default function MultiRoundInterventionTab({
                         <InterventionCard
                             key={item.id}
                             item={item}
+                            projectId={project?.id || ""}
                             isExpanded={expandedRows.has(item.id)}
                             isEditing={editingId === item.id}
                             editingData={editingId === item.id ? editingData : null}
@@ -456,6 +470,7 @@ export default function MultiRoundInterventionTab({
 
 interface InterventionCardProps {
     item: MultiRoundInterventionItem;
+    projectId: string;
     isExpanded: boolean;
     isEditing: boolean;
     editingData: Record<string, RoundData> | null;
@@ -468,10 +483,12 @@ interface InterventionCardProps {
     onDelete: () => void;
     onUpdateRound: (roundNum: string, field: keyof RoundData, value: string) => void;
     roundsConfig: Array<{ round: number; query_col: string; target_col: string }>;
+    showToast?: (message: string, type?: "success" | "error") => void;
 }
 
 function InterventionCard({
     item,
+    projectId,
     isExpanded,
     isEditing,
     editingData,
@@ -483,9 +500,59 @@ function InterventionCard({
     onReset,
     onDelete,
     onUpdateRound,
-    roundsConfig
+    roundsConfig,
+    showToast
 }: InterventionCardProps) {
     const roundNums = Object.keys(item.rounds_data || {}).sort((a, b) => parseInt(a) - parseInt(b));
+
+    // 测试状态
+    const [isTesting, setIsTesting] = useState(false);
+    const [testResults, setTestResults] = useState<TestResult[] | null>(null);
+    const [testAccuracy, setTestAccuracy] = useState<number | null>(null);
+    const [showTestModal, setShowTestModal] = useState(false);
+
+    // 执行测试
+    const handleTest = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIsTesting(true);
+        setTestResults(null);
+        setTestAccuracy(null);
+
+        try {
+            const res = await fetch(
+                `${API_BASE}/projects/${projectId}/multi-round-interventions/${item.id}/test`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        rounds_data: item.rounds_data,
+                        intent_extract_field: "",
+                        response_extract_field: ""
+                    })
+                }
+            );
+
+            if (res.ok) {
+                const data = await res.json();
+                setTestResults(data.round_results || []);
+                setTestAccuracy(data.accuracy);
+                setShowTestModal(true);  // 显示弹窗
+            } else {
+                const err = await res.json();
+                showToast?.(err.detail || "测试失败", "error");
+            }
+        } catch (err) {
+            console.error("测试失败:", err);
+            showToast?.("测试请求失败", "error");
+        } finally {
+            setIsTesting(false);
+        }
+    };
+
+    // 获取某轮的测试结果
+    const getTestResultForRound = (roundNum: string): TestResult | undefined => {
+        return testResults?.find(r => r.round === parseInt(roundNum));
+    };
 
     return (
         <div className={`bg-slate-800/50 rounded-xl border transition-colors ${
@@ -507,6 +574,18 @@ function InterventionCard({
                         {roundNums.length} 轮 · 更新于 {new Date(item.updated_at).toLocaleString()}
                     </p>
                 </div>
+                {/* 测试结果标识 */}
+                {testAccuracy !== null && (
+                    <span className={`px-2 py-0.5 text-xs rounded ${
+                        testAccuracy === 100
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : testAccuracy >= 50
+                            ? "bg-amber-500/20 text-amber-400"
+                            : "bg-red-500/20 text-red-400"
+                    }`}>
+                        {testAccuracy}%
+                    </span>
+                )}
                 {item.is_modified && (
                     <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded">
                         已修改
@@ -531,20 +610,39 @@ function InterventionCard({
                                     ? editingData[roundNum] || {}
                                     : item.rounds_data[roundNum] || {};
                                 const isModified = rd.target !== rd.original_target || rd.query_rewrite || rd.reason;
+                                const testResult = getTestResultForRound(roundNum);
 
                                 return (
                                     <div
                                         key={roundNum}
                                         className={`p-3 rounded-lg border ${
-                                            isModified ? "bg-purple-500/5 border-purple-500/20" : "bg-black/20 border-white/5"
+                                            testResult
+                                                ? testResult.is_correct
+                                                    ? "bg-emerald-500/5 border-emerald-500/20"
+                                                    : "bg-red-500/5 border-red-500/20"
+                                                : isModified
+                                                    ? "bg-purple-500/5 border-purple-500/20"
+                                                    : "bg-black/20 border-white/5"
                                         }`}
                                     >
                                         <div className="flex items-center gap-2 mb-2">
                                             <span className="text-xs font-medium text-slate-400">
                                                 第 {roundNum} 轮
                                             </span>
-                                            {isModified && (
+                                            {testResult && (
+                                                testResult.is_correct ? (
+                                                    <CheckCircle2 size={12} className="text-emerald-400" />
+                                                ) : (
+                                                    <AlertCircle size={12} className="text-red-400" />
+                                                )
+                                            )}
+                                            {isModified && !testResult && (
                                                 <span className="text-[10px] text-purple-400">已修改</span>
+                                            )}
+                                            {testResult && (
+                                                <span className="text-[10px] text-slate-500 ml-auto">
+                                                    {testResult.latency_ms}ms
+                                                </span>
                                             )}
                                         </div>
 
@@ -583,6 +681,31 @@ function InterventionCard({
                                                     </div>
                                                 )}
                                             </div>
+
+                                            {/* 测试结果：识别意图 */}
+                                            {testResult && (
+                                                <div>
+                                                    <label className="text-[10px] text-slate-500 block mb-1">识别意图</label>
+                                                    <div className={`text-xs rounded px-2 py-1.5 ${
+                                                        testResult.is_correct
+                                                            ? "bg-emerald-500/10 text-emerald-400"
+                                                            : "bg-red-500/10 text-red-400"
+                                                    }`}>
+                                                        {testResult.extracted_intent || "N/A"}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* 测试结果：回复内容 */}
+                                            {testResult && testResult.extracted_response && (
+                                                <div>
+                                                    <label className="text-[10px] text-slate-500 block mb-1">回复内容</label>
+                                                    <div className="text-xs text-slate-400 bg-black/20 rounded px-2 py-1.5 max-h-20 overflow-y-auto">
+                                                        {testResult.extracted_response.slice(0, 200)}
+                                                        {testResult.extracted_response.length > 200 ? "..." : ""}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Query 改写 */}
                                             <div>
@@ -676,6 +799,18 @@ function InterventionCard({
                                             <Edit3 size={12} />
                                             编辑
                                         </button>
+                                        <button
+                                            onClick={handleTest}
+                                            disabled={isTesting}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs rounded-lg transition-colors disabled:opacity-50"
+                                        >
+                                            {isTesting ? (
+                                                <Loader2 size={12} className="animate-spin" />
+                                            ) : (
+                                                <Play size={12} />
+                                            )}
+                                            {isTesting ? "测试中..." : "测试"}
+                                        </button>
                                     </>
                                 )}
                             </div>
@@ -683,6 +818,16 @@ function InterventionCard({
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* 测试结果弹窗 */}
+            {showTestModal && testResults && testAccuracy !== null && (
+                <MultiRoundTestModal
+                    results={testResults}
+                    accuracy={testAccuracy}
+                    rowIndex={item.row_index}
+                    onClose={() => setShowTestModal(false)}
+                />
+            )}
         </div>
     );
 }
