@@ -743,6 +743,26 @@ def get_project_tasks(project_id: str) -> List[Dict[str, Any]]:
         return result
 
 
+def get_latest_task_by_project(project_id: str) -> Optional[Dict[str, Any]]:
+    """
+    获取项目最近的一个任务
+
+    :param project_id: 项目 ID
+    :return: 任务信息字典（包含 extra_config）
+    """
+    with get_db_session() as session:
+        statement = select(Task).where(Task.project_id == project_id).order_by(Task.id.desc()).limit(1)
+        task: Optional[Task] = session.exec(statement).first()
+
+        if not task:
+            return None
+
+        return {
+            "id": task.id,
+            "extra_config": task.extra_config
+        }
+
+
 def delete_task(task_id: str) -> bool:
     """
     删除任务及相关数据

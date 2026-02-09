@@ -515,8 +515,6 @@ function InterventionCard({
     const handleTest = async (e: React.MouseEvent) => {
         e.stopPropagation();
         setIsTesting(true);
-        setTestResults(null);
-        setTestAccuracy(null);
 
         try {
             const res = await fetch(
@@ -536,7 +534,7 @@ function InterventionCard({
                 const data = await res.json();
                 setTestResults(data.round_results || []);
                 setTestAccuracy(data.accuracy);
-                setShowTestModal(true);  // 显示弹窗
+                setShowTestModal(true);
             } else {
                 const err = await res.json();
                 showToast?.(err.detail || "测试失败", "error");
@@ -547,11 +545,6 @@ function InterventionCard({
         } finally {
             setIsTesting(false);
         }
-    };
-
-    // 获取某轮的测试结果
-    const getTestResultForRound = (roundNum: string): TestResult | undefined => {
-        return testResults?.find(r => r.round === parseInt(roundNum));
     };
 
     return (
@@ -610,39 +603,22 @@ function InterventionCard({
                                     ? editingData[roundNum] || {}
                                     : item.rounds_data[roundNum] || {};
                                 const isModified = rd.target !== rd.original_target || rd.query_rewrite || rd.reason;
-                                const testResult = getTestResultForRound(roundNum);
 
                                 return (
                                     <div
                                         key={roundNum}
                                         className={`p-3 rounded-lg border ${
-                                            testResult
-                                                ? testResult.is_correct
-                                                    ? "bg-emerald-500/5 border-emerald-500/20"
-                                                    : "bg-red-500/5 border-red-500/20"
-                                                : isModified
-                                                    ? "bg-purple-500/5 border-purple-500/20"
-                                                    : "bg-black/20 border-white/5"
+                                            isModified
+                                                ? "bg-purple-500/5 border-purple-500/20"
+                                                : "bg-black/20 border-white/5"
                                         }`}
                                     >
                                         <div className="flex items-center gap-2 mb-2">
                                             <span className="text-xs font-medium text-slate-400">
                                                 第 {roundNum} 轮
                                             </span>
-                                            {testResult && (
-                                                testResult.is_correct ? (
-                                                    <CheckCircle2 size={12} className="text-emerald-400" />
-                                                ) : (
-                                                    <AlertCircle size={12} className="text-red-400" />
-                                                )
-                                            )}
-                                            {isModified && !testResult && (
+                                            {isModified && (
                                                 <span className="text-[10px] text-purple-400">已修改</span>
-                                            )}
-                                            {testResult && (
-                                                <span className="text-[10px] text-slate-500 ml-auto">
-                                                    {testResult.latency_ms}ms
-                                                </span>
                                             )}
                                         </div>
 
@@ -681,31 +657,6 @@ function InterventionCard({
                                                     </div>
                                                 )}
                                             </div>
-
-                                            {/* 测试结果：识别意图 */}
-                                            {testResult && (
-                                                <div>
-                                                    <label className="text-[10px] text-slate-500 block mb-1">识别意图</label>
-                                                    <div className={`text-xs rounded px-2 py-1.5 ${
-                                                        testResult.is_correct
-                                                            ? "bg-emerald-500/10 text-emerald-400"
-                                                            : "bg-red-500/10 text-red-400"
-                                                    }`}>
-                                                        {testResult.extracted_intent || "N/A"}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* 测试结果：回复内容 */}
-                                            {testResult && testResult.extracted_response && (
-                                                <div>
-                                                    <label className="text-[10px] text-slate-500 block mb-1">回复内容</label>
-                                                    <div className="text-xs text-slate-400 bg-black/20 rounded px-2 py-1.5 max-h-20 overflow-y-auto">
-                                                        {testResult.extracted_response.slice(0, 200)}
-                                                        {testResult.extracted_response.length > 200 ? "..." : ""}
-                                                    </div>
-                                                </div>
-                                            )}
 
                                             {/* Query 改写 */}
                                             <div>

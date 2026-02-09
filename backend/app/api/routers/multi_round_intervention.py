@@ -265,20 +265,15 @@ async def export_interventions(
             max_round = max(int(k) for k in rounds_data.keys())
             max_rounds = max(max_rounds, max_round)
 
-    # 构建 DataFrame
+    # 构建 DataFrame - 只导出最新数据
     rows = []
     for item in items:
-        row = {
-            "行索引": item["row_index"],
-            "第一轮Query": item["original_query"],
-            "是否修改": "是" if item["is_modified"] else "否"
-        }
+        row = {}
 
         rounds_data = item.get("rounds_data", {})
         for r in range(1, max_rounds + 1):
             rd = rounds_data.get(str(r), {})
-            row[f"第{r}轮_原始Query"] = rd.get("original_query", "")
-            row[f"第{r}轮_原始意图"] = rd.get("original_target", "")
+            row[f"第{r}轮_Query"] = rd.get("original_query", "")
             row[f"第{r}轮_期望意图"] = rd.get("target", "")
             row[f"第{r}轮_Query改写"] = rd.get("query_rewrite", "")
             row[f"第{r}轮_备注"] = rd.get("reason", "")
@@ -360,9 +355,33 @@ async def test_single_intervention(
     if not api_config["api_url"]:
         raise HTTPException(status_code=400, detail="请先配置 API 地址")
 
-    # 提取配置
-    intent_extract_field = request.intent_extract_field or multi_round_config.get("intent_extract_field", "")
-    response_extract_field = request.response_extract_field or multi_round_config.get("response_extract_field", "")
+    # 提取配置 - 优先从请求获取，其次从项目配置，最后从最近任务获取
+    intent_extract_field = (
+        request.intent_extract_field or
+        multi_round_config.get("intentExtractField") or
+        multi_round_config.get("intent_extract_field") or
+        ""
+    )
+    response_extract_field = (
+        request.response_extract_field or
+        multi_round_config.get("responseExtractField") or
+        multi_round_config.get("response_extract_field") or
+        ""
+    )
+
+    # 如果仍然为空，尝试从最近的任务配置中获取
+    if not intent_extract_field or not response_extract_field:
+        latest_task = storage.get_latest_task_by_project(project_id)
+        if latest_task and latest_task.get("extra_config"):
+            import json
+            try:
+                extra_config = json.loads(latest_task["extra_config"]) if isinstance(latest_task["extra_config"], str) else latest_task["extra_config"]
+                if not intent_extract_field:
+                    intent_extract_field = extra_config.get("intent_extract_field", "")
+                if not response_extract_field:
+                    response_extract_field = extra_config.get("response_extract_field", "")
+            except:
+                pass
 
     # 转换 rounds_data
     rounds_data = {k: v.model_dump() for k, v in request.rounds_data.items()}
