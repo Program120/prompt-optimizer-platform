@@ -624,14 +624,21 @@ class TaskManager:
         file_basename = os.path.basename(file_path)
         file_id = file_basename.split("_")[0] if "_" in file_basename else file_basename.rsplit(".", 1)[0]
 
-        # 加载数据
-        if file_path.endswith(".csv"):
-            df = pd.read_csv(file_path)
-        else:
-            df = pd.read_excel(file_path)
+        # 将数据集同步到多轮干预表（如果尚未同步）
+        from app.services import multi_round_intervention_service
+        existing_count = multi_round_intervention_service.get_intervention_count(project_id, file_id)
+        if existing_count == 0:
+            logger.info(f"[Task {task_id}] 多轮干预表为空，从数据集同步数据...")
+            sync_result = multi_round_intervention_service.sync_from_data_file(
+                project_id=project_id,
+                file_id=file_id,
+                rounds_config=rounds_config,
+                validation_limit=validation_limit
+            )
+            logger.info(f"[Task {task_id}] 同步完成: {sync_result}")
 
-        # 计算数据行数
-        row_count = len(df)
+        # 从多轮干预表获取数据行数
+        row_count = multi_round_intervention_service.get_intervention_count(project_id, file_id)
         if validation_limit and isinstance(validation_limit, int) and validation_limit > 0:
             row_count = min(row_count, validation_limit)
 
@@ -713,12 +720,13 @@ class TaskManager:
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from app.engine.helpers.history_formatter import HistoryFormatter
         from app.engine.helpers.extractor import ResultExtractor
+        from app.services import multi_round_intervention_service
 
         task = self.tasks[task_id]
         info = info_override or task["info"]
 
         project_id = info["project_id"]
-        file_path = info["file_path"]
+        file_id = info.get("file_id", "")
         prompt = info["prompt"]
         model_config = info.get("model_config", {})
         api_config = info.get("api_config")  # 获取自定义 API 配置
@@ -730,20 +738,23 @@ class TaskManager:
         # 并发数：优先从 api_config 获取，否则从 model_config 获取
         concurrency = int((api_config or {}).get("concurrency") or model_config.get("concurrency", 1))
 
-        # 加载数据
-        if file_path.endswith(".csv"):
-            df = pd.read_csv(file_path)
-        else:
-            df = pd.read_excel(file_path)
+        # 从多轮干预表加载数据
+        interventions_result = multi_round_intervention_service.get_interventions_paginated(
+            project_id=project_id,
+            page=1,
+            page_size=validation_limit if validation_limit else 10000,
+            file_id=file_id
+        )
+        intervention_items = interventions_result.get("items", [])
 
-        # 应用验证数量限制
-        if validation_limit and isinstance(validation_limit, int) and validation_limit > 0:
-            df = df.head(validation_limit)
-
-        total_rows = len(df)
+        total_rows = len(intervention_items)
         total_rounds = len(rounds_config)
 
-        logger.info(f"[Task {task_id}] 多轮验证任务开始 | 数据行数: {total_rows} | 轮数: {total_rounds} | 并发: {concurrency}")
+        # 更新实际的 total_count（可能与创建时不同）
+        info["total_count"] = total_rows * total_rounds
+        info["row_count"] = total_rows
+
+        logger.info(f"[Task {task_id}] 多轮验证任务开始（从干预表加载）| 数据行数: {total_rows} | 轮数: {total_rounds} | 并发: {concurrency}")
 
         # 为每行数据维护历史消息和 session_id
         # row_contexts[row_idx] = {"session_id": "...", "history": [...]}
@@ -781,24 +792,19 @@ class TaskManager:
                     return None
                 pause_event.wait()
 
-                row_data = df.iloc[row_idx].to_dict()
+                # 从干预数据获取当前行
+                intervention_item = intervention_items[row_idx]
+                rounds_data = intervention_item.get("rounds_data", {})
                 ctx = row_contexts[row_idx]
                 session_id = ctx["session_id"]
                 history = ctx["history"].copy()  # 复制历史，避免并发修改
 
-                # 获取当前轮的 query 和 target
-                query = ""
-                target = ""
+                # 从 rounds_data 获取当前轮的数据
+                round_data = rounds_data.get(str(round_num), {})
 
-                if query_col and query_col in row_data:
-                    val = row_data.get(query_col)
-                    if val is not None and not pd.isna(val):
-                        query = str(val).strip()
-
-                if target_col and target_col in row_data:
-                    val = row_data.get(target_col)
-                    if val is not None and not pd.isna(val):
-                        target = str(val).strip()
+                # 优先使用 query_rewrite，否则使用 original_query
+                query = round_data.get("query_rewrite") or round_data.get("original_query") or ""
+                target = round_data.get("target") or ""
 
                 # 跳过空 query
                 if not query:
