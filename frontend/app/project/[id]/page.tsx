@@ -941,7 +941,10 @@ export default function ProjectDetail() {
                         taskStatus={taskStatus}
                         project={project}
                         runHistory={taskHistory}
-                        fileId={fileInfo?.file_id} // Pass fileId logic
+                        fileId={project?.config?.project_type === "multi"
+                            ? (multiRoundConfig?.fileInfo?.file_id || project?.config?.multi_round_file_info?.file_id)
+                            : fileInfo?.file_id
+                        }
                         onSelectLog={setSelectedLog}
                         onSelectIteration={setSelectedIteration}
                         knowledgeRecords={knowledgeRecords}
@@ -976,6 +979,9 @@ export default function ProjectDetail() {
                         onRefresh={fetchProject}
                         reasonsUpdateCount={reasonsUpdateCount}
                         onInterventionDataChange={() => setReasonsUpdateCount(c => c + 1)}
+                        // 多轮验证相关
+                        isMultiRoundProject={project?.config?.project_type === "multi"}
+                        roundsConfig={multiRoundConfig?.roundsConfig || project?.config?.multi_round_config?.rounds_config || []}
                     />
                 </div>
             </div>

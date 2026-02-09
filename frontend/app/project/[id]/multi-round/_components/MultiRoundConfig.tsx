@@ -11,6 +11,8 @@ export interface RoundConfig {
     round: number;
     query_col: string;
     target_col: string;  // 每轮都有 target（期望意图）
+    rewrite_col?: string;  // Query 改写列（可选）
+    reason_col?: string;   // 原因/备注列（可选）
 }
 
 interface MultiRoundConfigProps {
@@ -57,7 +59,9 @@ export default function MultiRoundConfig({
         const newConfig: RoundConfig = {
             round: newRound,
             query_col: "",
-            target_col: ""
+            target_col: "",
+            rewrite_col: "",
+            reason_col: ""
         };
         onRoundsConfigChange([...roundsConfig, newConfig]);
     };
@@ -179,7 +183,7 @@ export default function MultiRoundConfig({
                                 )}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-4 gap-2">
                                 {/* Query 列 */}
                                 <div>
                                     <label className="block text-xs text-blue-400 mb-1">Query 列</label>
@@ -198,12 +202,46 @@ export default function MultiRoundConfig({
                                 {/* Target 列（期望意图） */}
                                 <div>
                                     <label className="block text-xs text-emerald-400 mb-1">
-                                        Target 列（期望意图）
+                                        Target 列
                                     </label>
                                     <select
                                         value={cfg.target_col}
                                         onChange={(e) => updateRound(index, "target_col", e.target.value)}
                                         className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm focus:border-emerald-500 focus:outline-none"
+                                    >
+                                        <option value="">选择列...</option>
+                                        {availableColumns.map((col) => (
+                                            <option key={col} value={col}>{col}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Query 改写列（可选） */}
+                                <div>
+                                    <label className="block text-xs text-purple-400 mb-1">
+                                        改写列
+                                    </label>
+                                    <select
+                                        value={cfg.rewrite_col || ""}
+                                        onChange={(e) => updateRound(index, "rewrite_col", e.target.value)}
+                                        className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+                                    >
+                                        <option value="">选择列...</option>
+                                        {availableColumns.map((col) => (
+                                            <option key={col} value={col}>{col}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* 原因列（可选） */}
+                                <div>
+                                    <label className="block text-xs text-amber-400 mb-1">
+                                        原因列
+                                    </label>
+                                    <select
+                                        value={cfg.reason_col || ""}
+                                        onChange={(e) => updateRound(index, "reason_col", e.target.value)}
+                                        className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm focus:border-amber-500 focus:outline-none"
                                     >
                                         <option value="">选择列...</option>
                                         {availableColumns.map((col) => (

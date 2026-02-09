@@ -663,3 +663,103 @@ class PlaygroundHistory(SQLModel, table=True):
             "is_favorite": self.is_favorite,
             "created_at": self.created_at
         }
+
+
+class MultiRoundIntervention(SQLModel, table=True):
+    """
+    多轮意图干预库
+    按 row_index 关联，存储每行数据各轮次的干预配置
+    """
+    __tablename__ = "multi_round_interventions"
+
+    # 主键 ID
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # 外键：关联项目
+    project_id: str = Field(foreign_key="projects.id", index=True)
+
+    # 文件版本 ID（与数据文件绑定）
+    file_id: str = Field(default="", index=True)
+
+    # 原始数据行索引（0-based，与 TaskResult.row_index 对应）
+    row_index: int = Field(index=True)
+
+    # 原始第一轮 Query（用于展示和搜索）
+    original_query: str = Field(default="", sa_column=Column(Text))
+
+    # 各轮次干预数据（JSON 格式存储）
+    # 格式: {
+    #   "1": {"target": "...", "original_target": "...", "query_rewrite": "...", "reason": "..."},
+    #   "2": {"target": "...", "original_target": "...", "query_rewrite": "...", "reason": "..."}
+    # }
+    rounds_data: str = Field(default="{}", sa_column=Column(Text))
+
+    # 是否有任何轮次被修改
+    is_modified: bool = Field(default=False)
+
+    # 创建时间
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+    # 更新时间
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        转换为字典格式
+
+        :return: 包含所有字段的字典
+        """
+        rounds = {}
+        try:
+            rounds = json.loads(self.rounds_data) if self.rounds_data else {}
+        except json.JSONDecodeError:
+            pass
+
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "file_id": self.file_id,
+            "row_index": self.row_index,
+            "original_query": self.original_query,
+            "rounds_data": rounds,
+            "is_modified": self.is_modified,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at
+        }
+
+    def get_round_data(self, round_number: int) -> Dict[str, Any]:
+        """
+        获取指定轮次的干预数据
+
+        :param round_number: 轮次号（1-based）
+        :return: 轮次干预数据字典
+        """
+        try:
+            rounds = json.loads(self.rounds_data) if self.rounds_data else {}
+            return rounds.get(str(round_number), {})
+        except json.JSONDecodeError:
+            return {}
+
+    def set_round_data(self, round_number: int, data: Dict[str, Any]) -> None:
+        """
+        设置指定轮次的干预数据
+
+        :param round_number: 轮次号（1-based）
+        :param data: 轮次干预数据
+        """
+        try:
+            rounds = json.loads(self.rounds_data) if self.rounds_data else {}
+        except json.JSONDecodeError:
+            rounds = {}
+
+        rounds[str(round_number)] = data
+        self.rounds_data = json.dumps(rounds, ensure_ascii=False)
+        self.updated_at = datetime.now().isoformat()
+
+        # 检查是否有任何轮次被修改
+        self.is_modified = any(
+            rd.get("target") != rd.get("original_target") or
+            rd.get("query_rewrite") or
+            rd.get("reason")
+            for rd in rounds.values()
+        )

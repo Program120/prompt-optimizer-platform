@@ -97,8 +97,8 @@ export default function MultiRoundExecutionPanel({
 
     // 轮次配置
     const [roundsConfig, setRoundsConfig] = useState<RoundConfig[]>([
-        { round: 1, query_col: "", target_col: "" },
-        { round: 2, query_col: "", target_col: "" }
+        { round: 1, query_col: "", target_col: "", rewrite_col: "", reason_col: "" },
+        { round: 2, query_col: "", target_col: "", rewrite_col: "", reason_col: "" }
     ]);
     const [isDetecting, setIsDetecting] = useState(false);
 
@@ -235,7 +235,9 @@ export default function MultiRoundExecutionPanel({
                 const newConfig: RoundConfig[] = res.data.rounds_config.map((cfg: any) => ({
                     round: cfg.round,
                     query_col: cfg.query_col || "",
-                    target_col: cfg.target_col || ""
+                    target_col: cfg.target_col || "",
+                    rewrite_col: cfg.rewrite_col || "",
+                    reason_col: cfg.reason_col || ""
                 }));
                 setRoundsConfig(newConfig);
                 showToast(`检测到 ${res.data.max_rounds} 轮配置`);
@@ -253,7 +255,9 @@ export default function MultiRoundExecutionPanel({
                     const newConfig: RoundConfig[] = llmRes.data.rounds_config.map((cfg: any) => ({
                         round: cfg.round,
                         query_col: cfg.query_col || "",
-                        target_col: cfg.target_col || ""
+                        target_col: cfg.target_col || "",
+                        rewrite_col: cfg.rewrite_col || "",
+                        reason_col: cfg.reason_col || ""
                     }));
                     setRoundsConfig(newConfig);
                     showToast(`AI 检测到 ${llmRes.data.max_rounds} 轮配置`);

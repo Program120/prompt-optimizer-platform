@@ -5,6 +5,7 @@ import RunHistoryTab from "./history/RunHistoryTab";
 import IterationHistoryTab from "./history/IterationHistoryTab";
 import OptimizationAnalysisTab from "./history/OptimizationAnalysisTab";
 import IntentInterventionTab from "./history/IntentInterventionTab";
+import MultiRoundInterventionTab from "./history/MultiRoundInterventionTab";
 
 const API_BASE = "/api";
 
@@ -28,6 +29,10 @@ interface HistoryPanelProps {
     reasonsUpdateCount?: number;
     fileId?: string;
     onInterventionDataChange?: () => void;  // 意图干预数据变更时回调
+
+    // 多轮验证相关
+    isMultiRoundProject?: boolean;  // 是否为多轮验证项目
+    roundsConfig?: Array<{ round: number; query_col: string; target_col: string }>;  // 轮次配置
 }
 
 export default function HistoryPanel({
@@ -44,7 +49,9 @@ export default function HistoryPanel({
     onDeleteKnowledge,
     onRefresh,
     reasonsUpdateCount = 0,
-    onInterventionDataChange
+    onInterventionDataChange,
+    isMultiRoundProject = false,
+    roundsConfig = []
 }: HistoryPanelProps) {
     const [activeTab, setActiveTab] = useState("run"); // run, history, runHistory, knowledge, intent
     const [showPromptModal, setShowPromptModal] = useState(false);
@@ -187,12 +194,21 @@ export default function HistoryPanel({
                 >
                     优化分析
                 </button>
-                <button
-                    onClick={() => setActiveTab("intent")}
-                    className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "intent" ? "bg-white/5 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-500 hover:text-slate-300"}`}
-                >
-                    意图干预
-                </button>
+                {isMultiRoundProject ? (
+                    <button
+                        onClick={() => setActiveTab("multiRound")}
+                        className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "multiRound" ? "bg-white/5 text-pink-400 border-b-2 border-pink-500" : "text-slate-500 hover:text-slate-300"}`}
+                    >
+                        多轮干预
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => setActiveTab("intent")}
+                        className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === "intent" ? "bg-white/5 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-500 hover:text-slate-300"}`}
+                    >
+                        意图干预
+                    </button>
+                )}
             </div>
 
             <div className="flex-1 overflow-hidden flex flex-col relative">
@@ -237,15 +253,26 @@ export default function HistoryPanel({
                     />
                 </div>
 
-                <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === "intent" ? "" : "hidden"}`}>
-                    <IntentInterventionTab
-                        project={project}
-                        fileId={fileId}
-                        saveReason={saveReason}
-                        reasonsUpdateCount={reasonsUpdateCount}
-                        onDataChange={onInterventionDataChange}
-                    />
-                </div>
+                {isMultiRoundProject ? (
+                    <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === "multiRound" ? "" : "hidden"}`}>
+                        <MultiRoundInterventionTab
+                            project={project}
+                            fileId={fileId}
+                            roundsConfig={roundsConfig}
+                            onDataChange={onInterventionDataChange}
+                        />
+                    </div>
+                ) : (
+                    <div className={`flex-1 overflow-hidden flex flex-col ${activeTab === "intent" ? "" : "hidden"}`}>
+                        <IntentInterventionTab
+                            project={project}
+                            fileId={fileId}
+                            saveReason={saveReason}
+                            reasonsUpdateCount={reasonsUpdateCount}
+                            onDataChange={onInterventionDataChange}
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Prompt Detail Modal */}

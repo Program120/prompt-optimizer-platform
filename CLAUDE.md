@@ -18,6 +18,8 @@ pip install -r requirements.txt
 python -m app.main                    # 启动服务 (端口 8000)
 python -m app.main --port 8080        # 指定端口
 python -m app.main --log-level DEBUG  # 调试日志
+
+uvicorn app.main:app --reload
 ```
 
 ### 前端 (Node.js 20+)
@@ -92,7 +94,3 @@ core/            → LLM 工厂、HTTP 客户端、提示词模板
 - `create_task()` → 创建任务并启动后台线程
 - 任务状态存储在内存 `self.tasks` 字典中
 - 支持暂停/恢复/停止操作
-
-
-## 大文件写入规则
-当需要写入超过500行的文件时，禁止使用Write工具，改用Bash的cat heredoc分段写入。

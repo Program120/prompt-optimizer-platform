@@ -13,6 +13,20 @@ from app.db import storage
 
 router = APIRouter(tags=["upload"])
 
+# 中文数字映射
+CN_NUM_MAP = {
+    '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+    '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+    '十一': 11, '十二': 12, '十三': 13, '十四': 14, '十五': 15,
+}
+
+def cn_to_num(s: str) -> Optional[int]:
+    """将中文数字或阿拉伯数字字符串转换为整数"""
+    s = s.strip()
+    if s.isdigit():
+        return int(s)
+    return CN_NUM_MAP.get(s)
+
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
@@ -124,13 +138,15 @@ async def detect_multi_round_columns(
         logger.error(f"读取文件失败: {e}")
         raise HTTPException(status_code=400, detail=f"读取文件失败: {e}")
 
-    # 定义列名匹配模式
+    # 定义列名匹配模式（支持阿拉伯数字和中文数字）
     query_patterns = [
         (r'^query(\d+)$', 'query'),           # query1, query2, ...
         (r'^q(\d+)$', 'q'),                    # q1, q2, ...
         (r'^问题(\d+)$', '问题'),              # 问题1, 问题2, ...
         (r'^user(\d+)$', 'user'),              # user1, user2, ...
         (r'^input(\d+)$', 'input'),            # input1, input2, ...
+        (r'^第(.+)轮问题$', '轮问题'),          # 第一轮问题, 第1轮问题, ...
+        (r'^第(.+)轮query$', '轮query'),        # 第一轮query, 第1轮query, ...
     ]
 
     answer_patterns = [
@@ -150,6 +166,27 @@ async def detect_multi_round_columns(
         (r'^intent(\d+)$', 'intent'),          # intent1, intent2, ...
         (r'^expected(\d+)$', 'expected'),      # expected1, expected2, ...
         (r'^label(\d+)$', 'label'),            # label1, label2, ...
+        (r'^第(.+)轮.*(?:期望)?意图$', '轮意图'),  # 第一轮期望意图, 第1轮意图, ...
+        (r'^第(.+)轮.*target$', '轮target'),    # 第一轮target, ...
+    ]
+
+    rewrite_patterns = [
+        (r'^rewrite(\d+)$', 'rewrite'),        # rewrite1, rewrite2, ...
+        (r'^改写(\d+)$', '改写'),              # 改写1, 改写2, ...
+        (r'^query_rewrite(\d+)$', 'query_rewrite'),  # query_rewrite1, ...
+        (r'^rw(\d+)$', 'rw'),                  # rw1, rw2, ...
+        (r'^第(.+)轮.*(?:query)?重写$', '轮重写'),  # 第一轮期望query重写, 第1轮重写, ...
+        (r'^第(.+)轮.*改写$', '轮改写'),        # 第一轮改写, 第1轮query改写, ...
+    ]
+
+    reason_patterns = [
+        (r'^reason(\d+)$', 'reason'),          # reason1, reason2, ...
+        (r'^原因(\d+)$', '原因'),              # 原因1, 原因2, ...
+        (r'^备注(\d+)$', '备注'),              # 备注1, 备注2, ...
+        (r'^note(\d+)$', 'note'),              # note1, note2, ...
+        (r'^comment(\d+)$', 'comment'),        # comment1, comment2, ...
+        (r'^第(.+)轮.*原因$', '轮原因'),        # 第一轮原因, ...
+        (r'^第(.+)轮.*备注$', '轮备注'),        # 第一轮备注, ...
     ]
 
     # 检测 query 列
@@ -160,9 +197,10 @@ async def detect_multi_round_columns(
         for pattern, prefix in query_patterns:
             match = re.match(pattern, col, re.IGNORECASE)
             if match:
-                round_num = int(match.group(1))
-                query_cols[round_num] = col
-                query_prefix = prefix
+                round_num = cn_to_num(match.group(1))
+                if round_num:
+                    query_cols[round_num] = col
+                    query_prefix = prefix
                 break
 
     # 检测 target 列（每轮都有）
@@ -173,9 +211,38 @@ async def detect_multi_round_columns(
         for pattern, prefix in target_patterns:
             match = re.match(pattern, col, re.IGNORECASE)
             if match:
-                round_num = int(match.group(1))
-                target_cols[round_num] = col
-                target_prefix = prefix
+                round_num = cn_to_num(match.group(1))
+                if round_num:
+                    target_cols[round_num] = col
+                    target_prefix = prefix
+                break
+
+    # 检测 rewrite 列（可选）
+    rewrite_cols: Dict[int, str] = {}
+    rewrite_prefix: Optional[str] = None
+
+    for col in columns:
+        for pattern, prefix in rewrite_patterns:
+            match = re.match(pattern, col, re.IGNORECASE)
+            if match:
+                round_num = cn_to_num(match.group(1))
+                if round_num:
+                    rewrite_cols[round_num] = col
+                    rewrite_prefix = prefix
+                break
+
+    # 检测 reason 列（可选）
+    reason_cols: Dict[int, str] = {}
+    reason_prefix: Optional[str] = None
+
+    for col in columns:
+        for pattern, prefix in reason_patterns:
+            match = re.match(pattern, col, re.IGNORECASE)
+            if match:
+                round_num = cn_to_num(match.group(1))
+                if round_num:
+                    reason_cols[round_num] = col
+                    reason_prefix = prefix
                 break
 
     # 如果没有检测到 query 列，返回未检测到
@@ -188,7 +255,7 @@ async def detect_multi_round_columns(
             "columns": columns
         }
 
-    # 构建轮次配置（每轮都有 query_col 和 target_col）
+    # 构建轮次配置（每轮都有 query_col 和 target_col，rewrite_col 和 reason_col 可选）
     max_round = max(query_cols.keys())
     rounds_config: List[Dict[str, Any]] = []
 
@@ -197,6 +264,8 @@ async def detect_multi_round_columns(
             "round": round_num,
             "query_col": query_cols.get(round_num, ""),
             "target_col": target_cols.get(round_num, ""),
+            "rewrite_col": rewrite_cols.get(round_num, ""),
+            "reason_col": reason_cols.get(round_num, ""),
         }
         rounds_config.append(config)
 
@@ -209,7 +278,9 @@ async def detect_multi_round_columns(
         "columns": columns,
         "detected_patterns": {
             "query_prefix": query_prefix,
-            "target_prefix": target_prefix
+            "target_prefix": target_prefix,
+            "rewrite_prefix": rewrite_prefix,
+            "reason_prefix": reason_prefix
         }
     }
 
@@ -309,8 +380,10 @@ async def detect_multi_round_columns_with_llm(
 
 ## 任务说明
 这是一个多轮对话验证数据集，每一行代表一个完整的多轮对话场景。
-- **Query 列**：用户在每一轮提出的问题/输入
-- **Target 列**：每一轮期望的意图/标签/分类结果
+- **Query 列**：用户在每一轮提出的问题/输入（如：第一轮问题、query1、问题1）
+- **Target 列**：每一轮期望的意图/标签/分类结果（如：第一轮期望意图、target1、意图1）
+- **Rewrite 列**（可选）：Query 的改写版本，用于替代原始 Query 进行验证（如：第一轮期望query重写、rewrite1、改写1）
+- **Reason 列**（可选）：原因/备注说明（如：第一轮原因、reason1、备注1）
 
 数据集可能包含任意数量的轮次（1轮、2轮、3轮、4轮或更多），请识别出所有轮次。
 
@@ -324,8 +397,13 @@ async def detect_multi_round_columns_with_llm(
 请分析列名和数据内容，识别出：
 1. 哪些列是第1轮、第2轮、第3轮...的 Query（用户问题）
 2. 哪些列是第1轮、第2轮、第3轮...的 Target（期望意图/标签）
+3. 哪些列是第1轮、第2轮、第3轮...的 Rewrite（Query改写）- 列名中包含"重写"、"改写"、"rewrite"等关键词
+4. 哪些列是第1轮、第2轮、第3轮...的 Reason（原因/备注）- 列名中包含"原因"、"备注"、"reason"、"note"等关键词
 
-**重要：请识别文件中的所有轮次，不要遗漏任何一轮！**
+**重要提示：**
+- 请识别文件中的所有轮次，不要遗漏任何一轮！
+- 仔细检查每个列名，特别注意包含"重写"、"改写"的列应该映射到 rewrite_col
+- 中文列名如"第一轮期望query重写"应该识别为第1轮的 rewrite_col
 
 请严格按照以下 JSON 格式输出，不要输出其他内容：
 ```json
@@ -333,8 +411,8 @@ async def detect_multi_round_columns_with_llm(
   "detected": true,
   "max_rounds": N,
   "rounds_config": [
-    {{"round": 1, "query_col": "第1轮的Query列名", "target_col": "第1轮的Target列名"}},
-    {{"round": 2, "query_col": "第2轮的Query列名", "target_col": "第2轮的Target列名"}},
+    {{"round": 1, "query_col": "第1轮的Query列名", "target_col": "第1轮的Target列名", "rewrite_col": "第1轮的Rewrite列名或空字符串", "reason_col": "第1轮的Reason列名或空字符串"}},
+    {{"round": 2, "query_col": "第2轮的Query列名", "target_col": "第2轮的Target列名", "rewrite_col": "第2轮的Rewrite列名或空字符串", "reason_col": "第2轮的Reason列名或空字符串"}},
     ... (根据实际轮次数量继续添加)
   ],
   "reasoning": "简要说明识别逻辑，包括识别到的轮次数量"
@@ -353,6 +431,7 @@ async def detect_multi_round_columns_with_llm(
 
 注意：
 - query_col 和 target_col 必须是文件中实际存在的列名（完全匹配，包括中文字符）
+- rewrite_col 和 reason_col 是可选的，如果没有对应列，设为空字符串 ""
 - 如果某一轮没有对应的 target 列，target_col 可以为空字符串
 - 轮次从 1 开始编号
 - max_rounds 应该等于 rounds_config 数组的长度"""
