@@ -32,7 +32,7 @@ cd backend
 # 安装依赖
 pip install -r requirements.txt
 # 启动服务
-python app.main:app --reload
+uvicorn app.main:app --reload
 ```
 
 ### 前端 (Frontend)
